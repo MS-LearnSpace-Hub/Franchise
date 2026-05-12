@@ -1,0 +1,69 @@
+import React from "react";
+import Login from "./components/Login";
+import Dashboard from "./components/Dashboard";
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
+
+export type Page =
+  | "dashboard"
+  | "profile"
+  | "fee"
+  | "fee-type"
+  | "class-fee-structure"
+  | "assign-special-fee"
+  | "fee-installments"
+  | "take-fee"
+  | "administration"
+  | "academic"
+  | "academics"
+  | "setup"
+  | "classes-management"
+  | "student-attendance"
+  | "student-administration"
+  | "concession-master"
+  | "student-concession"
+  | "update-student-fee-structure"
+  | "create-student"
+  | "import-student-data"
+  | "fee-reports"
+  | "attendance-report"
+  | "configuration"
+  | "document-administration"
+  | "student-document-management"
+  | "document-management"
+  | "user-management"
+  | "role-permissions"
+  | "franchise-management"
+  | "control-panel";
+
+// Inner component that can access AuthContext
+const AppInner: React.FC = () => {
+  const { isAuthenticated, setUser, clearUser } = useAuth();
+
+  const handleLoginSuccess = (user: any) => {
+    setUser(user);
+  };
+
+  const handleLogout = () => {
+    clearUser();
+  };
+
+  return (
+    <>
+      {isAuthenticated ? (
+        <Dashboard onLogout={handleLogout} />
+      ) : (
+        <Login onLoginSuccess={handleLoginSuccess} />
+      )}
+    </>
+  );
+};
+
+const App: React.FC = () => {
+  return (
+    <AuthProvider>
+      <AppInner />
+    </AuthProvider>
+  );
+};
+
+export default App;
