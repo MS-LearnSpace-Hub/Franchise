@@ -1,5 +1,5 @@
 # ERP Workflow Guide - End User Documentation
-## MS Hifz Academy ERP System - Complete User Journey
+## MS Learn Space  ERP System - Complete User Journey
 
 **Version:** 1.0  
 **Last Updated:** January 13, 2026  
@@ -28,9 +28,9 @@
 
 ## System Overview
 
-### What is the MS Hifz Academy ERP?
+### What is the MS LearnSpace?
 
-The MS Hifz Academy ERP (Enterprise Resource Planning) is a comprehensive management system designed to handle all administrative and academic operations across multiple branches of an educational institution.
+The MS LearnSpace is a comprehensive management system designed to handle all administrative and academic operations across multiple branches of an educational institution.
 
 ### Core Features
 
@@ -46,7 +46,7 @@ The MS Hifz Academy ERP (Enterprise Resource Planning) is a comprehensive manage
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│           MS Hifz Academy ERP System                     │
+│           MS Learn Space  ERP System                     │
 ├─────────────────────────────────────────────────────────┤
 │  Frontend (React/TypeScript) → Backend (Flask/Python)   │
 │  ├─ Authentication & Authorization                       │
@@ -141,7 +141,7 @@ The MS Hifz Academy ERP (Enterprise Resource Planning) is a comprehensive manage
 
 1. Open your web browser
 2. Navigate to the ERP system URL
-3. The **Login Page** will display with MS Hifz Academy branding
+3. The **Login Page** will display with MS Learn Space  branding
 
 ### Step 2: Enter Credentials
 
@@ -1150,7 +1150,7 @@ An assignment of:
 10. **Receipt Generated:**
     ```
     ╔════════════════════════════════════════╗
-    ║      MS HIFZ ACADEMY FEE RECEIPT        ║
+    ║      MS Learn Space  FEE RECEIPT        ║
     ║      Hyderabad Main Campus              ║
     ║───────────────────────────────────────│
     │ Receipt Number: RCP/2025/001/12700    │
@@ -1171,7 +1171,7 @@ An assignment of:
     ╚════════════════════════════════════════╝
 1115:     ```
 1116:     ╔════════════════════════════════════════╗
-1117:     ║      MS HIFZ ACADEMY FEE RECEIPT        ║
+1117:     ║      MS Learn Space  FEE RECEIPT        ║
 1118:     ║      Hyderabad Main Campus              ║
 1119:     ║───────────────────────────────────────│
 1120:     │ Receipt Number: RCP/2025/001/12700    │
@@ -1777,6 +1777,8 @@ StudentTestAssignment {
 ---
 
 **END OF DOCUMENT**
-#   F r a n c h i s e A p p l i c a t i o n  
- #   f r a n c h i s e  
+#   F r a n c h i s e A p p l i c a t i o n 
+ 
+ #   f r a n c h i s e 
+ 
  
