@@ -57,5 +57,4 @@ Media/
 media/
 uploads/
 
-#CI/CD 
-.github/workflows/
+

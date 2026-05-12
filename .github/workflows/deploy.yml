@@ -1,0 +1,61 @@
+name: ERP Production Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Deploy to EC2
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Build Frontend
+        working-directory: ./frontend
+        run: |
+          npm ci
+          npm run build
+        env:
+          VITE_API_URL: /api
+
+      - name: Copy Frontend to EC2
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "mkdir -p /home/ubuntu/frontend-dist"
+          scp -o StrictHostKeyChecking=no -r frontend/dist/* ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/home/ubuntu/frontend-dist/
+
+      - name: Deploy Application on EC2
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "
+            cd /home/ubuntu/ERP-Software-Application &&
+            git pull origin main &&
+
+            echo 'Updating Backend...' &&
+            cd erp-backend &&
+            source venv/bin/activate &&
+            pip install -r requirements.txt &&
+            sudo systemctl restart gunicorn &&
+
+            echo 'Updating Frontend...' &&
+            sudo rm -rf /var/www/frontend/* &&
+            sudo cp -r /home/ubuntu/frontend-dist/* /var/www/frontend/ &&
+            sudo rm -rf /home/ubuntu/frontend-dist &&
+            sudo systemctl reload nginx &&
+
+            echo 'Deployment Complete'
+          "
