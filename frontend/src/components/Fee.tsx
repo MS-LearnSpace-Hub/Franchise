@@ -137,7 +137,7 @@ const Fee: React.FC<FeeProps> = ({ navigateTo }) => {
                                 className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors shadow-sm"
                                 onClick={() => navigateTo('take-fee')}
                             >
-                                Take Fee
+                                Collect Fee
                             </button>
                         )}
                         {concessionItems.length > 0 && renderDropdown('concession', concessionItems)}
@@ -161,7 +161,7 @@ const Fee: React.FC<FeeProps> = ({ navigateTo }) => {
                         onClick={() => navigateTo('take-fee')}
                         className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors shadow-sm font-medium"
                     >
-                        Collect Due Fees
+                        Collect Fees
                     </button>
                 </div>
             </div>
