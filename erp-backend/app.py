@@ -214,7 +214,7 @@ if __name__ == "__main__":
     from sqlalchemy import inspect, text
     with app.app_context():
         upgrade()
-        print("✅ Database upgraded.")
+        print("[OK] Database upgraded.")
 
     port = int(os.getenv("PORT", 5001))
     debug = os.getenv("FLASK_DEBUG", "false").lower() == "true"

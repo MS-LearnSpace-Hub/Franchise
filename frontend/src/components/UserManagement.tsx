@@ -330,13 +330,20 @@ const UserManagement: React.FC = () => {
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   id="um-role"
                 >
-                  {roles.length > 0
-                    ? roles
-                      .filter(r => r.is_active && (isSuperAdmin || r.name !== 'SuperAdmin'))
-                      .map(r => <option key={r.id} value={r.id}>{r.name}</option>)
-                    : ROLES.filter(r => isSuperAdmin || r !== 'SuperAdmin').map(r => (
+                  {roles.length > 0 ? (
+                    <>
+                      {roles
+                        .filter(r => r.is_active && (isSuperAdmin || r.name !== 'SuperAdmin'))
+                        .map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                      {!roles.some(r => r.id === Number(form.role_id) || r.name === form.role) && form.role && (
+                        <option value={form.role_id || form.role}>{form.role}</option>
+                      )}
+                    </>
+                  ) : (
+                    ROLES.filter(r => isSuperAdmin || r !== 'SuperAdmin').map(r => (
                       <option key={r} value={r}>{r}</option>
-                    ))}                </select>
+                    ))
+                  )}                </select>
               </div>
 
               {/* School (SuperAdmin only) */}

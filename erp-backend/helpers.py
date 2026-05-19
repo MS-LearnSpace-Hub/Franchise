@@ -1,4 +1,7 @@
+
+# pyrefly: ignore [missing-import]
 from flask import request, jsonify, current_app
+# pyrefly: ignore [missing-import]
 import jwt
 from functools import wraps
 import traceback
@@ -8,9 +11,11 @@ import os
 import hmac
 import hashlib
 from models import Branch, OrgMaster, Student, FeeInstallment, StudentFee, User, FeeType
+# pyrefly: ignore [missing-import]
 from werkzeug.security import generate_password_hash, check_password_hash
 import smtplib
 from email.message import EmailMessage
+# pyrefly: ignore [missing-import]
 from flask import current_app
 import logging
 
@@ -205,14 +210,16 @@ def get_user_permissions(user):
 
     # Backward compatibility for legacy users that have not been moved to role_id yet.
     if not getattr(user, "role_id", None):
-        legacy_actions = {f"can_{action}": role_name == "Admin" for action in ACTION_KEYS}
-        legacy_actions["can_read"] = True
+        is_admin_or_super = role_name in ("Admin", "SuperAdmin")
         return with_aliases({
             p.code: {
                 "dashboard": p.dashboard,
                 "module": p.module,
                 "component": p.component,
-                **legacy_actions,
+                "can_read": is_admin_or_super or not (p.code.startswith("fees.") or p.code.startswith("system.") or p.code.startswith("setup.")),
+                "can_write": is_admin_or_super,
+                "can_append": is_admin_or_super,
+                "can_delete": is_admin_or_super,
             }
             for p in permissions
         })
