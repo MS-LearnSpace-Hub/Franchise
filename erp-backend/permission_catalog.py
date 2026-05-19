@@ -49,6 +49,7 @@ PERMISSION_CATALOG = [
     permission("Fees", "Fee", "Class Fee Structure", "fees.fee.class-fee-structure"),
     permission("Fees", "Fee", "Assign Special Fee", "fees.fee.assign-special-fee"),
     permission("Fees", "Fee", "Update Student Fee Structure", "fees.fee.update-student-fee-structure"),
+    permission("Fees", "Fee", "Update Rebate Date", "fees.fee.update-rebate-date"),
     permission("Fees", "Fee", "Fee Installments", "fees.fee.fee-installments"),
     permission("Fees", "Fee", "Concession Master", "fees.fee.concession-master"),
     permission("Fees", "Fee", "Fee Reports", "fees.fee.fee-reports"),

@@ -2,14 +2,11 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app import create_app
 from extensions import db
 from models import Role, User, Permission, RolePermission
 from routes.rbac_routes import _sync_permission_catalog
 
-app = create_app()
-
-with app.app_context():
+def run_migration():
     print("=== STARTING DATABASE SEEDING & MIGRATION ===")
     
     # 1. Sync Permission Catalog
@@ -59,26 +56,36 @@ with app.app_context():
     existing_user_permissions = {rp.permission_id: rp for rp in user_role.permissions.all()}
 
     for p in permissions:
-        # Determine if this permission is restricted (fees, system, setup)
-        is_restricted = p.code.startswith("fees.") or p.code.startswith("system.") or p.code.startswith("setup.")
-        
+        # Determine if this permission is restricted
+        is_restricted = (
+            p.code.startswith("fees.")
+            or p.code.startswith("system.")
+            or p.code.startswith("setup.")
+        )
+
         rp = existing_user_permissions.get(p.id)
+
+        # Only create defaults if permission does not already exist
         if not rp:
-            rp = RolePermission(role_id=user_id_role, permission_id=p.id)
+            rp = RolePermission(
+                role_id=user_id_role,
+                permission_id=p.id
+            )
+
+            if is_restricted:
+                # Restricted: No access
+                rp.can_read = False
+                rp.can_write = False
+                rp.can_append = False
+                rp.can_delete = False
+            else:
+                # Default user access
+                rp.can_read = True
+                rp.can_write = True
+                rp.can_append = True
+                rp.can_delete = False
+
             db.session.add(rp)
-        
-        if is_restricted:
-            # Restricted: No access
-            rp.can_read = False
-            rp.can_write = False
-            rp.can_append = False
-            rp.can_delete = False
-        else:
-            # Basic: Read and Write access
-            rp.can_read = True
-            rp.can_write = True
-            rp.can_append = True
-            rp.can_delete = False
 
     print("   [OK] Seeding user permissions completed.")
 
@@ -110,3 +117,9 @@ with app.app_context():
 
     db.session.commit()
     print("\n=== MIGRATION COMPLETE AND COMMITTED SUCCESSFULLY ===")
+
+if __name__ == "__main__":
+    from app import create_app
+    app = create_app()
+    with app.app_context():
+        run_migration()

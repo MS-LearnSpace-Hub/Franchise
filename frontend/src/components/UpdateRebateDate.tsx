@@ -33,31 +33,30 @@ const UpdateRebateDate: React.FC = () => {
     }, [branch, academicYear]);
 
     const fetchInstallments = async () => {
-    try {
-        setLoading(true);
-        const response = await api.get(`/installment-schedule?branch=${branch}`);
-        
-        // Handle both response formats safely
-        const installmentsData = Array.isArray(response.data) 
-            ? response.data 
-            : (response.data.installments || []);
-        
-        // Filter by academic year (backend should already filter, but safety check)
-        const filtered = academicYear 
-            ? installmentsData.filter((inst: Installment) => 
-                !inst.academic_year || inst.academic_year === academicYear
-              )
-            : installmentsData;
-            
-        setInstallments(filtered);
-        setError('');
-    } catch (err: any) {
-        console.error("Error fetching installments", err);
-        setError(err.response?.data?.error || 'Failed to fetch installments');
-    } finally {
-        setLoading(false);
-    }
-};
+        try {
+            setLoading(true);
+            const response = await api.get(`/installment-schedule?branch=${branch}`);
+
+            // Handle both response formats safely
+            const installmentsData = Array.isArray(response.data)
+                ? response.data
+                : (response.data.installments || []);
+
+            // Filter by academic year (backend should already filter, but safety check)
+            const filtered = academicYear
+                ? installmentsData.filter((inst: Installment) =>
+                    inst.academic_year === academicYear
+                )
+                : installmentsData;
+            setInstallments(filtered);
+            setError('');
+        } catch (err: any) {
+            console.error("Error fetching installments", err);
+            setError(err.response?.data?.error || 'Failed to fetch installments');
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const handleDateChange = (id: number, value: string) => {
         setNewDates(prev => ({ ...prev, [id]: value }));
@@ -84,17 +83,17 @@ const UpdateRebateDate: React.FC = () => {
             };
 
             const response = await api.put('/update-rebate-date', payload);
-            
+
             setSuccessMessage(`Success: ${response.data.message}`);
             setTimeout(() => setSuccessMessage(''), 5000);
-            
+
             // Clear the local state for this row
             setNewDates(prev => {
                 const updated = { ...prev };
                 delete updated[inst.id];
                 return updated;
             });
-            
+
         } catch (err: any) {
             console.error("Error updating rebate date", err);
             setError(err.response?.data?.error || 'Failed to update rebate date');
@@ -182,13 +181,12 @@ const UpdateRebateDate: React.FC = () => {
                                             <button
                                                 onClick={() => handleSave(inst)}
                                                 disabled={!newDates[inst.id] || savingId === inst.id}
-                                                className={`px-4 py-1.5 rounded text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-violet-500 transition-colors ${
-                                                    !newDates[inst.id] 
-                                                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                                    : savingId === inst.id
-                                                        ? 'bg-violet-400 text-white cursor-wait'
-                                                        : 'bg-violet-600 text-white hover:bg-violet-700'
-                                                }`}
+                                                className={`px-4 py-1.5 rounded text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-violet-500 transition-colors ${!newDates[inst.id]
+                                                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                                        : savingId === inst.id
+                                                            ? 'bg-violet-400 text-white cursor-wait'
+                                                            : 'bg-violet-600 text-white hover:bg-violet-700'
+                                                    }`}
                                             >
                                                 {savingId === inst.id ? 'Saving...' : 'Update'}
                                             </button>

@@ -31,6 +31,8 @@ const Fee: React.FC<FeeProps> = ({ navigateTo }) => {
             navigateTo('concession-master');
         } else if (item === 'Update Student Fee Structure') {
             navigateTo('update-student-fee-structure');
+        } else if (item === 'Update Rebate Date') {
+            navigateTo('update-rebate-date');
         }
         setOpenDropdown(null);
     };
@@ -97,6 +99,7 @@ const Fee: React.FC<FeeProps> = ({ navigateTo }) => {
     const canAssignSpecialFee = hasPermission('fees.fee.assign-special-fee', 'read');
     const canClassFeeStructure = hasPermission('fees.fee.class-fee-structure', 'read');
     const canUpdateStudentFee = hasPermission('fees.fee.update-student-fee-structure', 'read');
+    const canUpdateRebateDate = hasPermission('fees.fee.update-rebate-date', 'read');
     const canConcession = hasPermission('fees.fee.concession-master', 'read');
 
     const feeMasterItems: (string | DropdownItem)[] = [
@@ -105,6 +108,7 @@ const Fee: React.FC<FeeProps> = ({ navigateTo }) => {
         ...(canAssignSpecialFee ? ['Assign Special Fee Type' as string] : []),
         ...(canClassFeeStructure ? ['Create Class Fee Structure' as string] : []),
         ...(canUpdateStudentFee ? ['Update Student Fee Structure' as string] : []),
+        ...(canUpdateRebateDate ? ['Update Rebate Date' as string] : []),
     ];
 
     const concessionItems: (string | DropdownItem)[] = canConcession ? [
