@@ -1,4 +1,5 @@
 
+# pyrefly: ignore [missing-import] 
 from flask import Blueprint, jsonify, request, send_file
 from extensions import db, get_now, to_local_time
 from models import Student, Branch, UserBranchAccess, StudentFee, StudentAcademicRecord
@@ -17,7 +18,7 @@ from models import (
 
 
 from services.sequence_service import SequenceService
-from helpers import token_required, require_academic_year, get_branch_query_filter, student_to_dict, auto_enroll_student_fee, require_editable_student, is_admin_level
+from helpers import token_required, require_academic_year, get_branch_query_filter, student_to_dict, auto_enroll_student_fee, require_editable_student, is_admin_level, has_permission
 from datetime import datetime
 from sqlalchemy import or_, and_, func
 import io
@@ -140,6 +141,9 @@ def save_student_photo(student, photo_data):
 @bp.route("/api/students", methods=["GET"])
 @token_required
 def get_students(current_user):
+    if not (has_permission(current_user, "administration.student.student-administration", "read") or
+            has_permission(current_user, "administration.student.search-student", "read")):
+        return jsonify({"error": "Forbidden: missing permission"}), 403
     try:
         class_name = request.args.get("class")
         section = request.args.get("section")
@@ -332,6 +336,8 @@ def get_students(current_user):
 @token_required
 @require_editable_student
 def update_student(current_user, student_id):
+    if not has_permission(current_user, "administration.student.update-student-details", "write"):
+        return jsonify({"error": "Forbidden: missing permission"}), 403
     try:
         student = Student.query.get(student_id)
         if not student:
@@ -547,6 +553,8 @@ def update_student(current_user, student_id):
 @bp.route("/api/students", methods=["POST"])
 @token_required
 def create_student(current_user):
+    if not has_permission(current_user, "administration.student.create-student", "write"):
+        return jsonify({"error": "Forbidden: missing permission"}), 403
     h_year, err, code = require_academic_year()
     if h_year:
         h_year = h_year.strip()
@@ -741,6 +749,8 @@ def create_student(current_user):
 @token_required
 @require_editable_student
 def delete_student(current_user, student_id):
+    if not has_permission(current_user, "administration.student.make-student-inactive", "write"):
+        return jsonify({"error": "Forbidden: missing permission"}), 403
     try:
         student = Student.query.get(student_id)
         if not student:
@@ -766,6 +776,8 @@ def delete_student(current_user, student_id):
 @bp.route("/api/students/upload_csv", methods=["POST"])
 @token_required
 def upload_students_csv(current_user):
+    if not has_permission(current_user, "administration.student.import-student-data", "write"):
+        return jsonify({"error": "Forbidden: missing permission"}), 403
     """Bulk upload students from CSV file"""
     try:
         if 'file' not in request.files:
@@ -966,6 +978,8 @@ def upload_students_csv(current_user):
 @bp.route("/api/students/<int:student_id>/history", methods=["GET"])
 @token_required
 def get_student_history(current_user, student_id):
+    if not has_permission(current_user, "administration.student.student-administration", "read"):
+        return jsonify({"error": "Forbidden: missing permission"}), 403
     """Get academic history (promotion records) for a student"""
     try:
         student = Student.query.get(student_id)
@@ -997,6 +1011,8 @@ def get_student_history(current_user, student_id):
 @bp.route("/api/students/promote-bulk", methods=["POST"])
 @token_required
 def promote_students_bulk(current_user):
+    if not has_permission(current_user, "administration.student.promote-students", "write"):
+        return jsonify({"error": "Forbidden: missing permission"}), 403
     """
     Bulk promote students to a new academic year.
     Mirrors the individual promote logic for each student.
@@ -1141,6 +1157,8 @@ def promote_students_bulk(current_user):
 @bp.route("/api/students/demote-bulk", methods=["POST"])
 @token_required
 def demote_students_bulk(current_user):
+    if not has_permission(current_user, "administration.student.demote-students", "write"):
+        return jsonify({"error": "Forbidden: missing permission"}), 403
     """
     Bulk DEMOTE (de-promote) students — reverting a mistaken promotion.
 
@@ -1262,6 +1280,8 @@ def demote_students_bulk(current_user):
 @bp.route("/api/students/change-section-bulk", methods=["POST"])
 @token_required
 def change_section_bulk(current_user):
+    if not has_permission(current_user, "administration.student.change-section", "write"):
+        return jsonify({"error": "Forbidden: missing permission"}), 403
     """
     Bulk change student sections within the same academic year.
     """
@@ -1345,6 +1365,9 @@ def change_section_bulk(current_user):
 @bp.route("/api/students/summary", methods=["GET"])
 @token_required
 def get_student_summary(current_user):
+    if not (has_permission(current_user, "setup.school-setup.class-summary", "read") or
+            has_permission(current_user, "administration.student.student-administration", "read")):
+        return jsonify({"error": "Forbidden: missing permission"}), 403
     """
     Get aggregated student summary:
     - Overall counts by status
