@@ -1,4 +1,3 @@
-
 # pyrefly: ignore [missing-import]
 from flask import request, jsonify, current_app
 # pyrefly: ignore [missing-import]
@@ -139,6 +138,7 @@ def get_default_location():
         return "Hyderabad"
 
 
+# pyrefly: ignore [missing-import]
 from flask import g
 
 def token_required(f):
@@ -181,6 +181,55 @@ def get_effective_role_name(user):
     if role_obj and getattr(role_obj, "is_active", True):
         return role_obj.name
     return getattr(user, "role", None)
+
+
+def get_user_allowed_branches(user):
+    """
+    Returns a dictionary with:
+      - 'names': set of branch names the user can access
+      - 'ids': set of branch IDs the user can access
+      - 'is_unlimited': True if SuperAdmin (no restriction)
+    """
+    from models import Branch, UserBranchAccess
+    from datetime import date
+    
+    role = get_effective_role_name(user)
+    if role == 'SuperAdmin':
+        return {
+            'names': None,
+            'ids': None,
+            'is_unlimited': True
+        }
+        
+    if role == 'Admin' and user.school_id:
+        branches = Branch.query.filter_by(school_id=user.school_id, is_active=True).all()
+        return {
+            'names': {b.branch_name for b in branches},
+            'ids': {b.id for b in branches},
+            'is_unlimited': False
+        }
+        
+    # Non-admin / Admin without school_id (fallback to UserBranchAccess)
+    today = date.today()
+    access_records = UserBranchAccess.query.filter(
+        UserBranchAccess.user_id == user.user_id,
+        UserBranchAccess.is_active == True,
+        UserBranchAccess.start_date <= today,
+        (UserBranchAccess.end_date.is_(None)) | (UserBranchAccess.end_date >= today)
+    ).join(Branch).all()
+    
+    names = {r.branch.branch_name for r in access_records if r.branch}
+    ids = {r.branch_id for r in access_records}
+    if user.branch and user.branch != 'All':
+        names.add(user.branch)
+    if user.branch_id:
+        ids.add(user.branch_id)
+        
+    return {
+        'names': names,
+        'ids': ids,
+        'is_unlimited': False
+    }
 
 
 def get_user_permissions(user):

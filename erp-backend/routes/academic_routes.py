@@ -1,9 +1,10 @@
+# pyrefly: ignore [missing-import]
 from flask import Blueprint, jsonify, request
 from extensions import db, to_local_time
 from models import SubjectMaster, Branch, OrgMaster, ClassSubjectAssignment
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.sql import exists
-from helpers import token_required, ensure_student_editable
+from helpers import token_required, ensure_student_editable, get_user_allowed_branches
 
 bp = Blueprint("academic", __name__)
 @bp.route("/api/academic/subjects", methods=["POST"])
@@ -196,15 +197,26 @@ def assign_subjects(current_user):
         # Optional: Resolve if location_id is provided and you have a Location Master. 
         # Current logic often defaults to Hyderabad or takes string.
 
+        # Check permissions
+        allowed = get_user_allowed_branches(current_user)
+
         target_branches = []
         if branch_id_input == "All" or branch_id_input == -1:
              branches = Branch.query.filter_by(is_active=True).all()
-             target_branches = [b for b in branches]
+             if not allowed['is_unlimited']:
+                 target_branches = [b for b in branches if b.branch_name in allowed['names']]
+             else:
+                 target_branches = [b for b in branches]
         else:
              # Fetch specific branch obj
              br = Branch.query.filter_by(id=branch_id_input).first()
              if br:
-                 target_branches = [br]
+                  target_branches = [br]
+
+        if not allowed['is_unlimited']:
+            for br_obj in target_branches:
+                if br_obj.branch_name not in allowed['names']:
+                    return jsonify({"error": f"Unauthorized branch: '{br_obj.branch_name}'"}), 403
         
         assignments_created = 0
         
@@ -239,7 +251,8 @@ def assign_subjects(current_user):
         return jsonify({"error": str(e)}), 500
 
 @bp.route("/api/academic/assigned-subjects", methods=["GET"])
-def get_assigned_subjects():
+@token_required
+def get_assigned_subjects(current_user):
     try:
         # Filters (Inputs might be IDs or Names)
         class_id = request.args.get("class_id")
@@ -273,8 +286,18 @@ def get_assigned_subjects():
         if academic_year_name:
             query = query.filter(ClassSubjectAssignment.academic_year == academic_year_name)
             
-        if branch_name:
-            query = query.filter(ClassSubjectAssignment.branch_name == branch_name)
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited']:
+             if branch_name and branch_name != "All":
+                  if branch_name not in allowed['names']:
+                       branch_name = None
+             if branch_name:
+                  query = query.filter(ClassSubjectAssignment.branch_name == branch_name)
+             else:
+                  query = query.filter(ClassSubjectAssignment.branch_name.in_(list(allowed['names'])))
+        else:
+             if branch_name:
+                  query = query.filter(ClassSubjectAssignment.branch_name == branch_name)
 
         results = query.all()
         
@@ -305,6 +328,10 @@ def delete_assignment(current_user, id):
         record = ClassSubjectAssignment.query.get(id)
         if not record:
             return jsonify({"error": "Assignment not found"}), 404
+
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited'] and record.branch_name not in allowed['names']:
+            return jsonify({"error": "Unauthorized"}), 403
 
         # 🔒 ERP LOCK:
         # Block deletion if subject is already used by any student
@@ -378,6 +405,13 @@ def manage_subject_assignment_bulk(current_user):
              else:
                  # fallback if input was name?
                  target_branches = [str(branch_id_input)]
+
+        # Check permissions
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited']:
+            for b_name in target_branches:
+                if b_name not in allowed['names']:
+                    return jsonify({"error": f"Unauthorized branch: '{b_name}'"}), 403
 
         location_name = "Hyderabad" # Default/Hardcoded as per previous logic
 
@@ -454,8 +488,6 @@ def manage_subject_assignment_bulk(current_user):
             
         db.session.commit()
         return jsonify({"message": f"Successfully processed {processed_count} updates for {len(target_branches)} branches (Year: {academic_year_name})"}), 200
-        db.session.commit()
-        return jsonify({"message": f"Successfully processed {processed_count} updates for {len(target_branches)} branches (Year: {academic_year_name})"}), 200
 
     except Exception as e:
         db.session.rollback()
@@ -494,6 +526,13 @@ def manage_subject_assignment(current_user):
                  target_branches = [br.branch_name]
              else:
                  target_branches = [str(branch_id_input)]
+
+        # Check permissions
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited']:
+            for b_name in target_branches:
+                if b_name not in allowed['names']:
+                    return jsonify({"error": f"Unauthorized branch: '{b_name}'"}), 403
                  
         location_name = "Hyderabad"
 
@@ -524,7 +563,8 @@ def manage_subject_assignment(current_user):
         return jsonify({"error": str(e)}), 500
 
 @bp.route("/api/sections", methods=["GET"])
-def get_sections():
+@token_required
+def get_sections(current_user):
     """
     Get sections for a specific class.
     Query Param: class (required)
@@ -554,16 +594,35 @@ def get_sections():
         if academic_year:
             query = query.filter(ClassSection.academic_year == academic_year)
 
-        if branch_input and branch_input != "All":
-            branch_obj = None
-            if str(branch_input).isdigit():
-                branch_obj = Branch.query.get(int(branch_input))
-            else:
-                branch_obj = Branch.query.filter_by(branch_name=branch_input).first() or \
-                             Branch.query.filter_by(branch_code=branch_input).first()
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited']:
+            if branch_input and branch_input != "All":
+                branch_obj = None
+                if str(branch_input).isdigit():
+                    branch_obj = Branch.query.get(int(branch_input))
+                else:
+                    branch_obj = Branch.query.filter_by(branch_name=branch_input).first() or \
+                                 Branch.query.filter_by(branch_code=branch_input).first()
 
-            if branch_obj:
-                query = query.filter(ClassSection.branch_id == branch_obj.id)
+                if branch_obj and branch_obj.branch_name in allowed['names']:
+                    query = query.filter(ClassSection.branch_id == branch_obj.id)
+                else:
+                    allowed_br_ids = [b.id for b in Branch.query.filter(Branch.branch_name.in_(list(allowed['names']))).all()]
+                    query = query.filter(ClassSection.branch_id.in_(allowed_br_ids))
+            else:
+                allowed_br_ids = [b.id for b in Branch.query.filter(Branch.branch_name.in_(list(allowed['names']))).all()]
+                query = query.filter(ClassSection.branch_id.in_(allowed_br_ids))
+        else:
+            if branch_input and branch_input != "All":
+                branch_obj = None
+                if str(branch_input).isdigit():
+                    branch_obj = Branch.query.get(int(branch_input))
+                else:
+                    branch_obj = Branch.query.filter_by(branch_name=branch_input).first() or \
+                                 Branch.query.filter_by(branch_code=branch_input).first()
+
+                if branch_obj:
+                    query = query.filter(ClassSection.branch_id == branch_obj.id)
 
         sections = query.distinct().all()
         # Flatten list of tuples
@@ -586,7 +645,8 @@ def get_sections():
 # Student Subject Assignment (Overrides)
 # ---------------------------------------------------------
 @bp.route("/api/academics/assignment-data", methods=["GET"])
-def get_assignment_data():
+@token_required
+def get_assignment_data(current_user):
     from sqlalchemy import or_, and_
 
     try:
@@ -615,8 +675,17 @@ def get_assignment_data():
         )
 
         # Check Branch
-        if branch and branch != "All":
-             query = query.filter(Student.branch == branch)
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited']:
+             if branch and branch != "All":
+                  if branch not in allowed['names']:
+                       return jsonify({"error": "Unauthorized branch"}), 403
+                  query = query.filter(Student.branch == branch)
+             else:
+                  query = query.filter(Student.branch.in_(list(allowed['names'])))
+        else:
+             if branch and branch != "All":
+                  query = query.filter(Student.branch == branch)
 
         # Filter by Class and Academic Year
         # We MUST ensure the student was in this class in THIS academic year.
@@ -716,11 +785,16 @@ def get_assignment_data():
         # Extract student IDs from the processed list
         student_ids = [s['student_id'] for s in student_list]
         
-        overrides = StudentSubjectAssignment.query.filter(
+        overrides_query = StudentSubjectAssignment.query.filter(
             StudentSubjectAssignment.student_id.in_(student_ids),
-            StudentSubjectAssignment.academic_year == academic_year,
-            StudentSubjectAssignment.branch == branch
-        ).all()
+            StudentSubjectAssignment.academic_year == academic_year
+        )
+        if not allowed['is_unlimited']:
+             overrides_query = overrides_query.filter(StudentSubjectAssignment.branch.in_(list(allowed['names'])))
+        else:
+             if branch:
+                  overrides_query = overrides_query.filter(StudentSubjectAssignment.branch == branch)
+        overrides = overrides_query.all()
         
         override_map = {}
         for o in overrides:
@@ -760,6 +834,10 @@ def save_student_subjects(current_user):
 
         if not all([academic_year, branch, student_data]):
             return jsonify({"error": "Missing data"}), 400
+
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited'] and branch not in allowed['names']:
+             return jsonify({"error": "Unauthorized"}), 403
             
         # Normalize academic year
         academic_year = academic_year.strip() if academic_year else academic_year
@@ -866,6 +944,15 @@ def copy_subject_assignments(current_user):
 
         # Target Branches (Fetch all to get names and locations)
         target_branches = Branch.query.filter(Branch.id.in_(target_branch_ids)).all()
+
+        # Check permissions
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited']:
+            if source_branch_name not in allowed['names']:
+                return jsonify({"error": f"Unauthorized access to source branch: '{source_branch_name}'"}), 403
+            for t_br in target_branches:
+                if t_br.branch_name not in allowed['names']:
+                    return jsonify({"error": f"Unauthorized access to target branch: '{t_br.branch_name}'"}), 403
         
         # Location Helper (if needed, but ClassSubjectAssignment stores location_name)
         # We should use the target branch's location.

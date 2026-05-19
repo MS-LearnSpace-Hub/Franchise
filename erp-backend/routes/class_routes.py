@@ -1,9 +1,10 @@
+# pyrefly: ignore [missing-import]
 from flask import Blueprint, jsonify, request
 from extensions import db, to_local_time
 from models import ClassMaster, ClassSection, Branch, Student, OrgMaster, User
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func
-from helpers import token_required
+from helpers import token_required, get_user_allowed_branches
               
 bp = Blueprint("class_routes", __name__)
 
@@ -34,6 +35,15 @@ def create_class_with_sections(current_user):
 
         if not sections:
             return jsonify({"error": "At least one section is required"}), 400
+
+        # Resolve branch and check permissions
+        branch_obj = Branch.query.get(branch_id)
+        if not branch_obj:
+             return jsonify({"error": f"Invalid Branch ID: {branch_id}"}), 400
+
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited'] and branch_obj.branch_name not in allowed['names']:
+             return jsonify({"error": "Unauthorized branch access"}), 403
 
         # Normalize Class Name
         class_name = class_name_raw.strip() # Could add .title() if desired
@@ -191,6 +201,14 @@ def copy_class_structure(current_user):
         if not sections:
             return jsonify({"error": "At least one section is required to copy"}), 400
 
+        # Enforce allowed branch boundaries
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited']:
+             target_branches = Branch.query.filter(Branch.id.in_(target_branch_ids)).all()
+             for tb in target_branches:
+                 if tb.branch_name not in allowed['names']:
+                     return jsonify({"error": f"Unauthorized branch access for branch {tb.branch_name}"}), 403
+
         class_name = class_name_raw.strip()
         
         # We need to make sure the ClassMaster exists (it likely does if we are copying, but handling just in case)
@@ -275,8 +293,16 @@ def copy_branch_structure(current_user):
         if not all([source_branch_id, target_branch_ids, academic_year]):
             return jsonify({"error": "Missing required fields"}), 400
 
-        if not all([source_branch_id, target_branch_ids, academic_year]):
-            return jsonify({"error": "Missing required fields"}), 400
+        # Enforce allowed branch boundaries
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited']:
+             src_branch = Branch.query.get(source_branch_id)
+             if src_branch and src_branch.branch_name not in allowed['names']:
+                 return jsonify({"error": f"Unauthorized branch access for source branch {src_branch.branch_name}"}), 403
+             target_branches = Branch.query.filter(Branch.id.in_(target_branch_ids)).all()
+             for tb in target_branches:
+                 if tb.branch_name not in allowed['names']:
+                     return jsonify({"error": f"Unauthorized branch access for target branch {tb.branch_name}"}), 403
 
         # 1. Fetch Source Sections
         # We need ClassMaster info too
@@ -339,25 +365,7 @@ def copy_branch_structure(current_user):
         print(f"Error copying branch structure: {e}")
         return jsonify({"error": str(e)}), 500
 
-@bp.route("/api/classes", methods=["GET"])
-def get_classes():
-    """
-    Get all classes (ClassMaster).
-    """
-    classes = ClassMaster.query.all()
-    # Sort nicely if possible (custom sort/numeric)
-    # Simple sort by ID or Name
-    classes.sort(key=lambda x: x.id) 
-    return jsonify([
-        {
-            "id": c.id,
-            "class_name": c.class_name,
-            "created_at": to_local_time(c.created_at).isoformat() if c.created_at else None,
-            "updated_at": to_local_time(c.updated_at).isoformat() if c.updated_at else None,
-            "created_by": c.created_by,
-            "updated_by": c.updated_by
-        } for c in classes
-    ])
+
 
 
 @bp.route("/api/classes/summary", methods=["GET"])
@@ -381,9 +389,20 @@ def get_class_summary(current_user):
             ClassSection.academic_year == academic_year
         )
 
-        # Apply Branch Filter if provided
-        if branch_id_param and branch_id_param != 'all':
-             query = query.filter(ClassSection.branch_id == branch_id_param)
+        # Apply Branch Filter & allowed branch boundaries
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited']:
+             allowed_ids = list(allowed['ids'])
+             if branch_id_param and branch_id_param != 'all':
+                  if int(branch_id_param) in allowed_ids:
+                       query = query.filter(ClassSection.branch_id == int(branch_id_param))
+                  else:
+                       query = query.filter(ClassSection.branch_id.in_(allowed_ids))
+             else:
+                  query = query.filter(ClassSection.branch_id.in_(allowed_ids))
+        else:
+             if branch_id_param and branch_id_param != 'all':
+                  query = query.filter(ClassSection.branch_id == int(branch_id_param))
 
         results = query.order_by(ClassMaster.class_name, ClassSection.section_name).all()
 

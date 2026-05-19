@@ -2,7 +2,7 @@ from flask import Blueprint, jsonify, request
 from extensions import db, to_local_time
 from models import FeeType, ClassFeeStructure, StudentFee, FeeInstallment, Concession, Branch, OrgMaster, Student
 from helpers import fee_type_to_dict
-from helpers import token_required, require_academic_year, generate_installments, shift_installments, assign_fee_to_student, normalize_fee_title, get_default_location
+from helpers import token_required, require_academic_year, generate_installments, shift_installments, assign_fee_to_student, normalize_fee_title, get_default_location, get_user_allowed_branches
 from datetime import datetime
 from sqlalchemy import or_, and_, select
 import traceback
@@ -27,15 +27,20 @@ def get_fee_types(current_user):
         return err, code
 
     # STRICT BRANCH ENFORCEMENT
-    if current_user.role != 'Admin':
-        h_branch = current_user.branch
-
+    allowed = get_user_allowed_branches(current_user)
     query = FeeType.query.filter_by(academic_year=h_year)
     
-    if h_branch and h_branch != "All":
-        # Strict Branch Filter: Show ONLY fees for this branch + Global "All" fees
-        # (Assuming "All" fee types are visible to everyone)
-        query = query.filter(or_(FeeType.branch == h_branch, FeeType.branch == "All"))
+    if not allowed['is_unlimited']:
+        if h_branch and h_branch != "All":
+            if h_branch in allowed['names']:
+                query = query.filter(or_(FeeType.branch == h_branch, FeeType.branch == "All"))
+            else:
+                query = query.filter(or_(FeeType.branch.in_(list(allowed['names'])), FeeType.branch == "All"))
+        else:
+            query = query.filter(or_(FeeType.branch.in_(list(allowed['names'])), FeeType.branch == "All"))
+    else:
+        if h_branch and h_branch != "All":
+            query = query.filter(or_(FeeType.branch == h_branch, FeeType.branch == "All"))
         
     fee_types = query.all()
     return jsonify({
@@ -52,10 +57,13 @@ def create_fee_type(current_user):
     description = data.get("description")
     
     # 1. Branch Handling
-    if current_user.role == 'Admin':
-        branch = data.get("branch", "All")
-    else:
-        branch = current_user.branch # Force User's Branch
+    allowed = get_user_allowed_branches(current_user)
+    branch = data.get("branch", "All")
+    if not allowed['is_unlimited']:
+        if branch == "All":
+            return jsonify({"error": "Unauthorized: Only SuperAdmin can create Global/All branch fee types"}), 403
+        if branch not in allowed['names']:
+            return jsonify({"error": f"Unauthorized: branch '{branch}' is not in your allowed list"}), 403
         
     academic_year = data.get("academic_year", "2025-2026")
 
@@ -100,12 +108,15 @@ def update_fee_type(current_user, id):
     if not ft:
         return jsonify({"error": "Fee Type not found"}), 404
         
-    # Validation: Only Admin or Owner Branch can edit
-    if current_user.role != 'Admin':
-         if ft.branch not in ("All", current_user.branch):
-             return jsonify({"error": "Unauthorized"}), 403
-         if ft.branch == "All":
-             return jsonify({"error": "Only Admin can edit Global Fee Types"}), 403
+    # Validation: Allowed branches check
+    allowed = get_user_allowed_branches(current_user)
+    if not allowed['is_unlimited']:
+        if ft.branch not in allowed['names']:
+            return jsonify({"error": "Unauthorized"}), 403
+        
+        new_branch = data.get("branch", ft.branch)
+        if new_branch != ft.branch and new_branch not in allowed['names']:
+            return jsonify({"error": "Unauthorized: target branch not allowed"}), 403
 
     ft.feetype = data.get("feetype", ft.feetype)
     ft.type = data.get("type", ft.type)
@@ -126,6 +137,9 @@ def update_fee_type(current_user, id):
 def delete_fee_type(current_user, fee_type_id):
     """Delete a fee type with proper validation and cascade cleanup"""
     fee_type = FeeType.query.get_or_404(fee_type_id)
+    allowed = get_user_allowed_branches(current_user)
+    if not allowed['is_unlimited'] and fee_type.branch not in allowed['names']:
+        return jsonify({"error": "Unauthorized"}), 403
     
     # 1. CRITICAL CHECK: Is it used in FINANCE (StudentFee)?
     student_fees_count = StudentFee.query.filter_by(fee_type_id=fee_type_id, is_active = True).count()
@@ -179,15 +193,21 @@ def get_class_fee_structure(current_user):
     branch_arg = request.args.get('branch')
     location_param = request.args.get('location') # New param
     
-    if current_user.role != 'Admin':
-        target_branch = current_user.branch
+    allowed = get_user_allowed_branches(current_user)
+    target_branch = branch_arg or h_branch or "All"
+    if not allowed['is_unlimited']:
+        if target_branch and target_branch != "All":
+            if target_branch in allowed['names']:
+                query = query.filter_by(branch=target_branch)
+            else:
+                query = query.filter(ClassFeeStructure.branch.in_(list(allowed['names'])))
+        else:
+            query = query.filter(or_(ClassFeeStructure.branch.in_(list(allowed['names'])), ClassFeeStructure.branch == "All"))
     else:
-        target_branch = branch_arg or h_branch or "All"
-        
-    if target_branch and target_branch != "All":
-        query = query.filter_by(branch=target_branch)
-    elif target_branch == "All":
-        query = query.filter_by(branch="All")
+        if target_branch and target_branch != "All":
+            query = query.filter_by(branch=target_branch)
+        elif target_branch == "All":
+            query = query.filter_by(branch="All")
         # Location Filtering for All Branches
         if location_param and location_param not in ["All", "All Locations"]:
             query = query.filter_by(location=location_param)
@@ -278,6 +298,12 @@ def create_class_fee_structure(current_user):
         academic_year = data.get("academic_year", "2025-2026")
         fee_group = data.get("fee_group")
         branch = data.get("branch", "All") 
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited']:
+            if branch == "All":
+                return jsonify({"error": "Unauthorized: Only SuperAdmin can create Global/All branch fee structures"}), 403
+            if branch not in allowed['names']:
+                return jsonify({"error": f"Unauthorized: branch '{branch}' is not allowed"}), 403
         
         for fee_item in data["fees"]:
             fee_id = fee_item.get("id")
@@ -289,6 +315,9 @@ def create_class_fee_structure(current_user):
             # 1. Try to find by ID if provided
             if fee_id:
                 fs = ClassFeeStructure.query.get(fee_id)
+                if fs and not allowed['is_unlimited']:
+                    if fs.branch == "All" or fs.branch not in allowed['names']:
+                        return jsonify({"error": "Unauthorized to modify this fee structure"}), 403
             
             # 2. If not found by ID, try to find by unique constraints AND BRANCH
             if not fs:
@@ -302,6 +331,11 @@ def create_class_fee_structure(current_user):
             
             if fs:
                 # UPDATE existing record
+                if not allowed['is_unlimited']:
+                    if fs.branch == "All" or fs.branch not in allowed['names']:
+                        return jsonify({"error": "Unauthorized to modify this fee structure"}), 403
+                    if branch == "All" or branch not in allowed['names']:
+                        return jsonify({"error": "Unauthorized to set this branch on the fee structure"}), 403
                 fs.totalamount = fee_item.get("total_amount")
                 fs.monthly_amount = fee_item.get("monthly_amount")
                 fs.installments_count = len(fee_item.get("installments", []))
@@ -350,6 +384,10 @@ def delete_class_fee_structure(current_user, id):
         if not fs:
             return jsonify({"error": "Fee structure not found"}), 404
             
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited'] and fs.branch not in allowed['names']:
+            return jsonify({"error": "Unauthorized"}), 403
+            
         from sqlalchemy.sql.expression import true
         assigned_count = StudentFee.query.join(Student).filter(
             StudentFee.fee_type_id == fs.feetypeid,
@@ -381,17 +419,19 @@ def get_concessions(current_user):
 
     query = Concession.query.filter_by(academic_year=academic_year)
     
-    if current_user.role == 'Admin':
-        h_branch = request.headers.get("X-Branch", "All")
+    h_branch = request.headers.get("X-Branch", "All")
+    allowed = get_user_allowed_branches(current_user)
+    if not allowed['is_unlimited']:
         if h_branch and h_branch not in ["All", "AllBranches"]:
-            from sqlalchemy import or_
-            query = query.filter(or_(Concession.branch == h_branch, Concession.branch == "All"))
+            if h_branch in allowed['names']:
+                query = query.filter(or_(Concession.branch == h_branch, Concession.branch == "All"))
+            else:
+                query = query.filter(or_(Concession.branch.in_(list(allowed['names'])), Concession.branch == "All"))
+        else:
+            query = query.filter(or_(Concession.branch.in_(list(allowed['names'])), Concession.branch == "All"))
     else:
-        target_branch = current_user.branch
-        if not target_branch:
-             return jsonify({"concessions": []}), 200
-        from sqlalchemy import or_
-        query = query.filter(or_(Concession.branch == target_branch, Concession.branch == "All"))
+        if h_branch and h_branch not in ["All", "AllBranches"]:
+            query = query.filter(or_(Concession.branch == h_branch, Concession.branch == "All"))
 
     concessions = query.all()
     
@@ -427,12 +467,13 @@ def create_concession(current_user):
     description = data.get("description")
     academic_year = data.get("academic_year")
     
-    if current_user.role == 'Admin':
-        branch = data.get("branch") or "All"
-    else:
-        branch = current_user.branch
-        if not branch:
-             return jsonify({"error": "User has no branch assigned"}), 403
+    branch = data.get("branch") or "All"
+    allowed = get_user_allowed_branches(current_user)
+    if not allowed['is_unlimited']:
+        if branch == "All":
+            return jsonify({"error": "Unauthorized: Only SuperAdmin can create Global concessions"}), 403
+        if branch not in allowed['names']:
+            return jsonify({"error": f"Unauthorized: branch '{branch}' is not allowed"}), 403
 
     is_percentage = data.get("is_percentage", True)
     show_in_payment = data.get("show_in_payment", False)
@@ -472,12 +513,18 @@ def create_concession(current_user):
 @token_required
 def delete_concession(current_user, title, year):
     try:
-        query = Concession.query.filter_by(title=title, academic_year=year)
-        
-        if current_user.role != 'Admin':
-             if not current_user.branch:
-                  return jsonify({"error": "Unauthorized"}), 403
-             query = query.filter_by(branch=current_user.branch)
+        target_branch = request.headers.get("X-Branch") or request.args.get("branch") or current_user.branch
+        if not target_branch:
+            return jsonify({"error": "Branch identifier is required"}), 400
+             
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited']:
+            if target_branch == "All":
+                return jsonify({"error": "Unauthorized: Non-SuperAdmin cannot mutate All-branch concessions"}), 403
+            if target_branch not in allowed['names']:
+                return jsonify({"error": "Unauthorized for this branch"}), 403
+                
+        query = Concession.query.filter_by(title=title, academic_year=year, branch=target_branch)
              
         deleted = query.delete()
         db.session.commit()
@@ -501,12 +548,13 @@ def update_concession(current_user, original_title, original_year):
     description = data.get("description")
     new_year = data.get("academic_year")
     
-    if current_user.role == 'Admin':
-        new_branch = data.get("branch") or "All"
-    else:
-        new_branch = current_user.branch
-        if not new_branch:
-             return jsonify({"error": "Unauthorized"}), 403
+    new_branch = data.get("branch") or "All"
+    allowed = get_user_allowed_branches(current_user)
+    if not allowed['is_unlimited']:
+        if new_branch == "All":
+            return jsonify({"error": "Unauthorized: Only SuperAdmin can assign All branch to concessions"}), 403
+        if new_branch not in allowed['names']:
+            return jsonify({"error": "Unauthorized branch requested"}), 403
 
     is_percentage = data.get("is_percentage", True)
     show_in_payment = data.get("show_in_payment", False)
@@ -516,10 +564,7 @@ def update_concession(current_user, original_title, original_year):
         return jsonify({"error": "Title and Academic Year are required"}), 400
         
     try:
-        query = Concession.query.filter_by(title=original_title, academic_year=original_year)
-        
-        if current_user.role != 'Admin':
-             query = query.filter_by(branch=new_branch)
+        query = Concession.query.filter_by(title=original_title, academic_year=original_year, branch=new_branch)
 
         deleted = query.delete()
         if deleted == 0 and current_user.role != 'Admin':
@@ -565,6 +610,11 @@ def get_installments(current_user):
         target_branch = branch or h_branch
         
         query = FeeInstallment.query
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited']:
+            if target_branch and target_branch != "All" and target_branch not in allowed['names']:
+                target_branch = None
+            query = query.filter(or_(FeeInstallment.branch.in_(list(allowed['names'])), FeeInstallment.branch == "All"))
         
         if fee_type_id:
             query = query.filter_by(fee_type_id=fee_type_id)
@@ -650,6 +700,17 @@ def create_installment(current_user):
             target_branch = data.get("branch", "All")
             target_location = data.get("location") 
 
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited']:
+            if isinstance(data, list):
+                for item in data:
+                    item_branch = item.get("branch", "All")
+                    if item_branch == "All" or item_branch not in allowed['names']:
+                        return jsonify({"error": f"Unauthorized branch: '{item_branch}'"}), 403
+            else:
+                if target_branch == "All" or target_branch not in allowed['names']:
+                    return jsonify({"error": f"Unauthorized branch: '{target_branch}'"}), 403
+
         # Bulk creation
         if isinstance(data, list):
             created_ids = []
@@ -715,8 +776,15 @@ def update_installment(current_user, id):
         if not inst:
             return jsonify({"error": "Installment not found"}), 404
             
-        new_no = data.get("installment_no")
         current_branch = data.get("branch", inst.branch) or "All"
+        new_no = data.get("installment_no")
+            
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited']:
+            if inst.branch not in allowed['names']:
+                return jsonify({"error": "Unauthorized"}), 403
+            if current_branch == "All" or current_branch not in allowed['names']:
+                return jsonify({"error": f"Unauthorized branch: '{current_branch}'"}), 403
         # Fix: Remove hardcoded fallback. Use existing year if not provided.
         current_year = data.get("academic_year", inst.academic_year)
         if not current_year:
@@ -767,6 +835,10 @@ def delete_installment(current_user, id):
         if not inst:
             return jsonify({"error": "Installment not found"}), 404
             
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited'] and inst.branch not in allowed['names']:
+            return jsonify({"error": "Unauthorized"}), 403
+            
         deleted_no = inst.installment_no
         branch = inst.branch
         academic_year = inst.academic_year
@@ -809,6 +881,14 @@ def copy_class_fee_structure(current_user):
         if not all([source_branch_id, target_branch_ids, academic_year, class_name]):
             return jsonify({"error": "Missing required fields (source_branch_id, target_branch_ids, academic_year, class)"}), 400
             
+        # Check branch permission
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited']:
+            for t_br_id in target_branch_ids:
+                t_br = Branch.query.filter_by(id=t_br_id).first()
+                if not t_br or t_br.branch_name not in allowed['names']:
+                    return jsonify({"error": "Unauthorized access to target branch"}), 403
+            
         # 1. Resolve Source Branch Name (Frontend sends ID)
         source_branch_name = None
         s_br = Branch.query.filter_by(id=source_branch_id).first()
@@ -818,6 +898,12 @@ def copy_class_fee_structure(current_user):
              source_branch_name = source_branch_id
         else:
              return jsonify({"error": "Source branch not found"}), 404
+
+        # Check branch permission for source
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited']:
+            if source_branch_name not in allowed['names']:
+                return jsonify({"error": f"Unauthorized access to source branch: '{source_branch_name}'"}), 403
 
         # 2. Fetch Source Fee Structure
         source_fees = ClassFeeStructure.query.filter_by(
@@ -957,6 +1043,16 @@ def copy_fee_types(current_user):
         else:
              return jsonify({"error": "Source branch not found"}), 404
 
+        # Check branch permission
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited']:
+            if source_branch_name not in allowed['names']:
+                return jsonify({"error": f"Unauthorized access to source branch: '{source_branch_name}'"}), 403
+            for t_br_id in target_branch_ids:
+                t_br = Branch.query.filter_by(id=t_br_id).first()
+                if not t_br or t_br.branch_name not in allowed['names']:
+                    return jsonify({"error": "Unauthorized access to target branch"}), 403
+
         # 2. Fetch Source Fee Types (Only specific to this branch, not 'All')
         source_fee_types = FeeType.query.filter_by(
             branch=source_branch_name,
@@ -1030,6 +1126,16 @@ def copy_installments(current_user):
         # 1. Resolve Source
         s_br = Branch.query.filter_by(id=source_branch_id).first()
         source_branch_name = s_br.branch_name if s_br else str(source_branch_id)
+        
+        # Check branch permission
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited']:
+            if source_branch_name not in allowed['names']:
+                return jsonify({"error": f"Unauthorized access to source branch: '{source_branch_name}'"}), 403
+            for t_br_id in target_branch_ids:
+                t_br = Branch.query.filter_by(id=t_br_id).first()
+                if not t_br or t_br.branch_name not in allowed['names']:
+                    return jsonify({"error": "Unauthorized access to target branch"}), 403
         
         src_ft = FeeType.query.get(source_fee_type_id)
         if not src_ft:
@@ -1137,6 +1243,16 @@ def copy_concessions(current_user):
         # 1. Resolve Source Branch Name
         s_br = Branch.query.filter_by(id=source_branch_id).first()
         source_branch_name = s_br.branch_name if s_br else str(source_branch_id)
+        
+        # Check branch permission
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited']:
+            if source_branch_name not in allowed['names']:
+                return jsonify({"error": f"Unauthorized access to source branch: '{source_branch_name}'"}), 403
+            for t_br_id in target_branch_ids:
+                t_br = Branch.query.filter_by(id=t_br_id).first()
+                if not t_br or t_br.branch_name not in allowed['names']:
+                    return jsonify({"error": "Unauthorized access to target branch"}), 403
         
         # 2. Fetch Source Concessions
         # Concessions are stored as one row per fee type per concession title

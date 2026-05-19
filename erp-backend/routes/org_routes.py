@@ -1,10 +1,12 @@
 import os
+# pyrefly: ignore [missing-import]
 from flask import Blueprint, jsonify, request, current_app, send_from_directory
 from extensions import db
 from models import Branch, School, OrgMaster, User, UserBranchAccess, ClassMaster, ClassSection
-from helpers import token_required, require_academic_year, get_branch_query_filter
+from helpers import token_required, require_academic_year, get_branch_query_filter, get_user_allowed_branches
 from datetime import date, datetime
-from sqlalchemy import or_
+from sqlalchemy import or_ 
+# pyrefly: ignore [missing-import]
 from werkzeug.utils import secure_filename
 
 bp = Blueprint('org_routes', __name__)
@@ -213,9 +215,9 @@ def get_all_branches(current_user):
     try:
         query = Branch.query.filter_by(is_active=True)
 
-        # Admin: restrict to their school's branches
-        if current_user.role == 'Admin' and current_user.school_id:
-            query = query.filter_by(school_id=current_user.school_id)
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited']:
+            query = query.filter(Branch.id.in_(allowed['ids']))
 
         branches = query.all()
       
@@ -449,45 +451,77 @@ def seed_branches(current_user):
 
 
 @bp.route("/api/classes", methods=["GET"])
-def get_classes():
-    from sqlalchemy import and_
+@token_required
+def get_classes(current_user):
+    from sqlalchemy import and_, or_
     
     h_branch = request.args.get("branch") or request.headers.get("X-Branch")
     academic_year = request.args.get("academic_year") or request.headers.get("X-Academic-Year")
+    
+    allowed = get_user_allowed_branches(current_user)
     
     query = ClassMaster.query
     query = query.join(ClassSection, ClassSection.class_id == ClassMaster.id)
     if academic_year:
         query = query.filter(ClassSection.academic_year == academic_year)
     
+    # Resolve the requested branch if passed
+    branch_obj = None
     if h_branch and h_branch != "All":
-         branch_obj = None
-         location_filter = "Global"
-
-         if h_branch.isdigit():
-             branch_obj = Branch.query.get(int(h_branch))
-         else:
-             branch_obj = Branch.query.filter_by(branch_name=h_branch).first()
-             if not branch_obj:
-                 branch_obj = Branch.query.filter_by(branch_code=h_branch).first()
+        if h_branch.isdigit():
+            branch_obj = Branch.query.get(int(h_branch))
+        else:
+            branch_obj = Branch.query.filter_by(branch_name=h_branch).first()
+            if not branch_obj:
+                branch_obj = Branch.query.filter_by(branch_code=h_branch).first()
+                
+    # Security constraint:
+    if not allowed['is_unlimited']:
+        if branch_obj:
+            if branch_obj.id not in allowed['ids']:
+                branch_obj = None
+                query = query.filter(ClassSection.branch_id.in_(allowed['ids']))
+            else:
+                query = query.filter(ClassSection.branch_id == branch_obj.id)
+        else:
+            query = query.filter(ClassSection.branch_id.in_(allowed['ids']))
+    else:
+        if branch_obj:
+            query = query.filter(ClassSection.branch_id == branch_obj.id)
+            
+    # Apply branch/location-specific criteria for global vs specific classes
+    if branch_obj:
+        location_filter = "Global"
+        loc_obj = OrgMaster.query.filter_by(master_type='LOCATION', code=branch_obj.location_code).first()
+        if loc_obj:
+            location_filter = loc_obj.display_name
+            
+        branch_specific_cond = or_(ClassMaster.branch == str(branch_obj.id), ClassMaster.branch == branch_obj.branch_name)
         
-         if branch_obj:
-             loc_obj = OrgMaster.query.filter_by(master_type='LOCATION', code=branch_obj.location_code).first()
-             if loc_obj:
-                 location_filter = loc_obj.display_name
-         
-         branch_specific_cond = (ClassMaster.branch == h_branch)
-         if branch_obj:
-             branch_specific_cond = or_(ClassMaster.branch == str(branch_obj.id), ClassMaster.branch == branch_obj.branch_name)
-
-         query = query.filter(or_(
-             branch_specific_cond,
-             and_(ClassMaster.branch == 'All', ClassMaster.location == location_filter),
-             and_(ClassMaster.branch == 'All', ClassMaster.location == 'All')
-         ))
-
-         if branch_obj:
-             query = query.filter(ClassSection.branch_id == branch_obj.id)
+        query = query.filter(or_(
+            branch_specific_cond,
+            and_(ClassMaster.branch == 'All', ClassMaster.location == location_filter),
+            and_(ClassMaster.branch == 'All', ClassMaster.location == 'All')
+        ))
+    else:
+        if not allowed['is_unlimited']:
+            allowed_branches = Branch.query.filter(Branch.id.in_(allowed['ids'])).all()
+            loc_codes = {b.location_code for b in allowed_branches if b.location_code}
+            loc_names = set()
+            if loc_codes:
+                loc_objs = OrgMaster.query.filter(OrgMaster.master_type == 'LOCATION', OrgMaster.code.in_(list(loc_codes))).all()
+                loc_names = {l.display_name for l in loc_objs}
+            
+            allowed_branch_names = allowed['names']
+            allowed_branch_ids_str = {str(bid) for bid in allowed['ids']}
+            
+            branch_cond = or_(
+                ClassMaster.branch.in_(list(allowed_branch_names)),
+                ClassMaster.branch.in_(list(allowed_branch_ids_str)),
+                and_(ClassMaster.branch == 'All', ClassMaster.location.in_(list(loc_names))),
+                and_(ClassMaster.branch == 'All', ClassMaster.location == 'All')
+            )
+            query = query.filter(branch_cond)
 
     query = query.distinct(ClassMaster.id)
     classes = query.order_by(ClassMaster.id.asc()).all()

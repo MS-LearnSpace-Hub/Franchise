@@ -16,6 +16,7 @@ from helpers import (
     get_effective_role_name,
     get_user_permissions,
     has_permission,
+    get_user_allowed_branches,
 )
  
 bp = Blueprint('auth_routes', __name__)
@@ -137,20 +138,18 @@ def login_user():
     # Phase 4: Fetch Valid Branches
     valid_branches = []
     try:
-        today = date.today()
-        access_records = UserBranchAccess.query.filter(
-            UserBranchAccess.user_id == user.user_id,
-            UserBranchAccess.is_active == True,
-            UserBranchAccess.start_date <= today,
-            (UserBranchAccess.end_date.is_(None)) | (UserBranchAccess.end_date >= today)
-        ).join(Branch).all()
-        
-        for record in access_records:
+        allowed = get_user_allowed_branches(user)
+        if allowed['is_unlimited']:
+            branches = Branch.query.filter_by(is_active=True).all()
+        else:
+            branches = Branch.query.filter(Branch.id.in_(allowed['ids']), Branch.is_active == True).all()
+            
+        for b in branches:
             valid_branches.append({
-                "branch_id": record.branch_id,
-                "branch_code": record.branch.branch_code,
-                "branch_name": record.branch.branch_name,
-                "location_code": record.branch.location_code
+                "branch_id": b.id,
+                "branch_code": b.branch_code,
+                "branch_name": b.branch_name,
+                "location_code": b.location_code
             })
     except Exception as e:
         current_app.logger.warning("Error fetching branches for user %s: %s", username, e)

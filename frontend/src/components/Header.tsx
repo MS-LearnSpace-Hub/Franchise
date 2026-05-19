@@ -61,17 +61,12 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, navigateTo, onLogout, go
 
   // ── School options (SuperAdmin only): derived from allBranchesData filtered by location ──
   const schoolOptions: { id: string; name: string }[] = [];
-  //Wait for locationData to load before applying location filters
-  const locationDataReady = selectedLocation === 'All' || locationData.length > 0;
-  if (isSuperAdmin && allBranchesData.length > 0 && locationDataReady) {
+  if (isSuperAdmin && allBranchesData.length > 0) {
     const seen = new Set<string>();
     for (const b of allBranchesData) {
       // Location filter
-      if (selectedLocation !== 'All') {
-        const code = (b.location_code || '').toUpperCase();
-        const locObj = locationData.find((l: any) => l.code.toUpperCase() === code);
-        const locName = locObj ? locObj.name : '';
-        if (locName !== selectedLocation) continue;
+      if (selectedLocation !== 'All' && b.location_name !== selectedLocation) {
+        continue;
       }
       const key = String(b.school_id);
       if (b.school_id && !seen.has(key)) {
@@ -89,11 +84,7 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, navigateTo, onLogout, go
 
     // Filter by location
     if (selectedLocation !== 'All') {
-      filtered = filtered.filter(b => {
-        const code = (b.location_code || '').toUpperCase();
-        const locObj = locationData.find((l: any) => l.code.toUpperCase() === code);
-        return (locObj ? locObj.name : '') === selectedLocation;
-      });
+      filtered = filtered.filter(b => b.location_name === selectedLocation);
     }
 
     // For SuperAdmin: also filter by selected school
@@ -183,8 +174,7 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, navigateTo, onLogout, go
   const [locationList, setLocationList] = useState<string[]>(['All']);
 
   useEffect(() => {
-    // Fetch Locations if Admin
-    if (user.role === 'Admin' || user.role === 'SuperAdmin') {
+    if (user.role === 'SuperAdmin') {
       api.get('/org/locations')
         .then(res => {
           const locs = res.data.locations || [];
@@ -195,6 +185,26 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, navigateTo, onLogout, go
         .catch(err => console.error("Failed to load locations in Header", err));
     }
   }, [user.role]);
+
+  useEffect(() => {
+    if (user.role === 'Admin' && allBranchesData.length > 0) {
+      const branchLocations = Array.from(new Set(
+        allBranchesData
+          .map(b => b.location_name)
+          .filter(name => name && name !== 'Unknown Location')
+      ));
+
+      setLocationList(branchLocations);
+
+      // Auto-set selectedLocation if current value is invalid or 'All'
+      const currentLoc = localStorage.getItem('currentLocation');
+      if (!currentLoc || currentLoc === 'All' || !branchLocations.includes(currentLoc)) {
+        const defaultLoc = branchLocations[0] || 'All';
+        localStorage.setItem('currentLocation', defaultLoc);
+        setSelectedLocation(defaultLoc);
+      }
+    }
+  }, [allBranchesData, user.role]);
 
   return (
     <header
@@ -233,7 +243,7 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, navigateTo, onLogout, go
           <div className="flex items-center space-x-2 md:space-x-4">
 
             {/* Location Dropdown (Admin / SuperAdmin Only) */}
-            {(user.role === 'Admin' || user.role === 'SuperAdmin') && (
+            {(user.role === 'Admin' || user.role === 'SuperAdmin') && locationList.length > 1 && (
               <div className="relative mr-2">
                 <button
                   onClick={() => setLocationDropdownOpen(!locationDropdownOpen)}

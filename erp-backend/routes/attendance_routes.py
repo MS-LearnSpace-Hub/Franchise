@@ -1,7 +1,8 @@
+# pyrefly: ignore [missing-import]
 from flask import Blueprint, jsonify, request
 from extensions import db, get_today, get_now, to_local_time
 from models import Student, Attendance, Branch, UserBranchAccess, StudentAcademicRecord
-from helpers import token_required, require_academic_year, student_to_dict, get_default_location, ensure_student_editable
+from helpers import token_required, require_academic_year, student_to_dict, get_default_location, ensure_student_editable, get_user_allowed_branches
 from datetime import datetime, date
 from sqlalchemy import or_
 from routes.config_routes import is_weekoff_or_holiday
@@ -23,19 +24,6 @@ def get_attendance(current_user):
         h_year, err, code = require_academic_year()
         if err: return err, code
         
-        # Branch Permissions Logic
-        if current_user.role != 'Admin':
-             # Enforce user's branch
-             if current_user.branch and current_user.branch != 'All':
-                  h_branch = current_user.branch
-             else:
-                  # If user has "All" (legacy) but really shouldn't see global
-                  # We might need to check "allowed_branches" but for now stick to current_user.branch
-                  h_branch = current_user.branch 
-        
-        elif not h_branch:
-             h_branch = "All"
-        
         # Base query joining Student and Academic Record
         # We need students who were in the requested class/section DURING the requested academic year
         q = db.session.query(Student, StudentAcademicRecord).join(
@@ -47,17 +35,19 @@ def get_attendance(current_user):
         )
         
         # STRICT BRANCH SEGREGATION
-        if current_user.role != 'Admin':
-             if current_user.branch and current_user.branch != 'All':
-                  q = q.filter(Student.branch == current_user.branch)
+        allowed = get_user_allowed_branches(current_user)
+        req_branch = request.args.get("branch") or request.headers.get("X-Branch")
+        if req_branch in ("All", "All Branches", "AllBranches", None):
+            req_branch = None
+
+        if not allowed['is_unlimited']:
+            if req_branch and req_branch in allowed['names']:
+                q = q.filter(Student.branch == req_branch)
+            else:
+                q = q.filter(Student.branch.in_(list(allowed['names'])))
         else:
-             branch_param = request.args.get("branch")
-             if branch_param == "All" or branch_param == "All Branches":
-                 pass
-             elif branch_param:
-                 q = q.filter(Student.branch == branch_param)
-             elif h_branch and h_branch != "All":
-                 q = q.filter(Student.branch == h_branch)
+            if req_branch:
+                q = q.filter(Student.branch == req_branch)
         
         if class_name:
             q = q.filter(StudentAcademicRecord.class_name == class_name)
@@ -175,9 +165,6 @@ def save_attendance(current_user):
             except Exception as e:
                 locked_students.add(att["student_id"])
         
-        if current_user.role != 'Admin':
-             h_branch = current_user.branch
-
         # 1. Collect IDs and Dates for Bulk Fetch
         student_ids = set()
         dates = set()
@@ -231,11 +218,17 @@ def save_attendance(current_user):
                  "details": skip_details
             }), 400
 
+        # Enforce allowed branch boundaries
+        allowed = get_user_allowed_branches(current_user)
+        students = Student.query.filter(Student.student_id.in_(student_ids)).all()
+        students_obj_map = {s.student_id: s for s in students}
+        
+        if not allowed['is_unlimited']:
+            for s in students:
+                if s.branch not in allowed['names']:
+                    return jsonify({"error": f"Unauthorized to edit attendance for student {s.first_name} in branch {s.branch}"}), 403
+
         # 2. Bulk Fetch Existing Records
-        # We need records matching (student_id, date) pairs. 
-        # Doing a simple IN clause on both might fetch extra combinations (s1-d2, s2-d1) but it's okay, we filter in memory.
-        # CRITICAL FIX: Do NOT filter by academic_year here. 
-        # The UniqueConstraint is on (student_id, date). Use that to find records.
         existing_records = Attendance.query.filter(
             Attendance.student_id.in_(student_ids),
             Attendance.date.in_(dates)
@@ -247,27 +240,15 @@ def save_attendance(current_user):
         added_count = 0
         updated_count = 0
 
-        # 2.5 Resolve branch to ID for weekoff/holiday check
-        check_branch_id = None
+        # Resolve branch to ID for weekoff/holiday check
         student_branch_map = {}
-        students_obj_map = {}
-        
-        if h_branch in ("All", "All Branches"):
-            students = Student.query.filter(Student.student_id.in_(student_ids)).all()
-            students_obj_map = {s.student_id: s for s in students}
-            branch_names = set([s.branch for s in students if s.branch])
-            if branch_names:
-                branches = Branch.query.filter(Branch.branch_name.in_(branch_names)).all()
-                branch_name_to_id = {b.branch_name: b.id for b in branches}
-                for s in students:
-                    if s.branch in branch_name_to_id:
-                        student_branch_map[s.student_id] = branch_name_to_id[s.branch]
-        else:
-            branch_obj = Branch.query.filter_by(branch_name=h_branch).first()
-            if not branch_obj:
-                # Log warning and abort if branch is not found
-                return jsonify({"error": f"Branch '{h_branch}' not found. Cannot validate attendance against weekoff/holiday rules."}), 400
-            check_branch_id = branch_obj.id
+        branch_names = set([s.branch for s in students if s.branch])
+        if branch_names:
+            branches = Branch.query.filter(Branch.branch_name.in_(branch_names)).all()
+            branch_name_to_id = {b.branch_name: b.id for b in branches}
+            for s in students:
+                if s.branch in branch_name_to_id:
+                    student_branch_map[s.student_id] = branch_name_to_id[s.branch]
 
         # 3. Process Batch
         for item in valid_items:
@@ -275,7 +256,7 @@ def save_attendance(current_user):
             status = item["status"]
 
             # 3a. Check weekoff / holiday
-            s_branch_id = check_branch_id if h_branch not in ("All", "All Branches") else student_branch_map.get(item["student_id"])
+            s_branch_id = student_branch_map.get(item["student_id"])
             if s_branch_id:
                 date_check = is_weekoff_or_holiday(item["date"], s_branch_id, h_year)
                 if date_check["is_weekoff"] or date_check["is_holiday"]:
@@ -283,10 +264,8 @@ def save_attendance(current_user):
                     skip_details.append(f"Date {item['date']} blocked: {date_check['reason']}")
                     continue
 
-            record_branch = h_branch
-            if h_branch in ("All", "All Branches"):
-                s_obj = students_obj_map.get(item["student_id"])
-                record_branch = s_obj.branch if s_obj and s_obj.branch else "Main"
+            s_obj = students_obj_map.get(item["student_id"])
+            record_branch = s_obj.branch if s_obj and s_obj.branch else "Main"
 
             if key in record_map:
                 # Update
@@ -349,15 +328,17 @@ def generate_template(current_user):
         month = int(month)
         year = int(year)             
         # Reuse logic to fetch students
-        h_branch = request.headers.get("X-Branch") or "Main"
+        req_branch = request.headers.get("X-Branch") or request.args.get("branch")
+        if req_branch in ("All", "All Branches", "AllBranches", None):
+            req_branch = None
+            
         h_year, err, code = require_academic_year()
         if err: return err, code
         
-        if current_user.role != 'Admin':
-             h_branch = current_user.branch
+        allowed = get_user_allowed_branches(current_user)
 
         q = db.session.query(Student, StudentAcademicRecord).join(
-            StudentAcademicRecord,Student.student_id == StudentAcademicRecord.student_id
+            StudentAcademicRecord, Student.student_id == StudentAcademicRecord.student_id
         ).filter(
             StudentAcademicRecord.academic_year == h_year,
             Student.status == "Active",
@@ -368,8 +349,14 @@ def generate_template(current_user):
             q = q.filter(StudentAcademicRecord.section == section)
             
         # Branch Logic
-        if current_user.role != 'Admin' or (h_branch and h_branch != "All"):
-             q = q.filter(Student.branch == h_branch)
+        if not allowed['is_unlimited']:
+            if req_branch and req_branch in allowed['names']:
+                q = q.filter(Student.branch == req_branch)
+            else:
+                q = q.filter(Student.branch.in_(list(allowed['names'])))
+        else:
+            if req_branch:
+                q = q.filter(Student.branch == req_branch)
         
         results = q.order_by(StudentAcademicRecord.roll_number).all()
         
@@ -404,6 +391,7 @@ def generate_template(current_user):
             
         output.seek(0)
         
+        # pyrefly: ignore [missing-import]
         from flask import send_file
         filename = f"Attendance_Template_{class_name}_{month}_{year}.xlsx"
         return send_file(output, as_attachment=True, download_name=filename, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
@@ -511,12 +499,20 @@ def upload_attendance(current_user):
         
         h_year, err, code = require_academic_year()
         if err: return err, code
-        h_branch = request.headers.get("X-Branch") or "Main"
-        if current_user.role != 'Admin': h_branch = current_user.branch
 
         # 1. Collect IDs and Dates
         student_ids = set([x['student_id'] for x in attendance_list])
         dates = set([datetime.strptime(x['date'], '%Y-%m-%d').date() for x in attendance_list])
+
+        # Enforce allowed branch boundaries
+        allowed = get_user_allowed_branches(current_user)
+        students = Student.query.filter(Student.student_id.in_(student_ids)).all()
+        students_obj_map = {s.student_id: s for s in students}
+        
+        if not allowed['is_unlimited']:
+            for s in students:
+                if s.branch not in allowed['names']:
+                    return jsonify({"error": f"Unauthorized to edit attendance for student {s.first_name} in branch {s.branch}"}), 403
         
         # 2. Bulk Fetch
         existing_records = Attendance.query.filter(
@@ -542,11 +538,13 @@ def upload_attendance(current_user):
                      r.update_count = (r.update_count or 0) + 1
                      updated += 1
              else:
+                 s_obj = students_obj_map.get(s_id)
+                 record_branch = s_obj.branch if s_obj and s_obj.branch else "Main"
                  new_r = Attendance(
                     student_id=s_id,
                     date=d_obj,
                     status=status,
-                    branch=h_branch,
+                    branch=record_branch,
                     academic_year=h_year,
                     location=current_user.location or get_default_location()
                  )

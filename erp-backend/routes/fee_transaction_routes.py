@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, request
 from extensions import db, get_now, get_today
 from models import Student, StudentFee, FeePayment, Branch, FeeInstallment, Concession, ClassFeeStructure, StudentAcademicRecord, FeeType
-from helpers import token_required, require_academic_year, normalize_fee_title, assign_fee_to_student, require_editable_student, ensure_student_editable
+from helpers import token_required, require_academic_year, normalize_fee_title, assign_fee_to_student, require_editable_student, ensure_student_editable, get_user_allowed_branches
 from services.sequence_service import SequenceService
 from datetime import datetime, date
 from decimal import Decimal
@@ -27,10 +27,15 @@ def get_fee_students(current_user):
         return err, code
     
     # STRICT BRANCH ENFORCEMENT
-    if current_user.role != 'Admin':
-         h_branch = current_user.branch
-    elif not h_branch:
-         h_branch = "All"
+    allowed = get_user_allowed_branches(current_user)
+    if not allowed['is_unlimited']:
+        if h_branch and h_branch != "All" and h_branch in allowed['names']:
+            pass
+        else:
+            h_branch = None
+    else:
+        if not h_branch:
+            h_branch = "All"
     
     # HISTORY-AWARE QUERY
     # query selects: Student, StudentAcademicRecord, total, paid, due, concession
@@ -59,17 +64,25 @@ def get_fee_students(current_user):
     )
 
     # STRICT BRANCH SEGREGATION
-    if current_user.role == 'Admin':
-         # Admins: Check Query Param first, then Header
-         branch_param = request.args.get("branch")
-         if branch_param and branch_param != "All":
-             q = q.filter(Student.branch == branch_param)
-         elif branch_param == "All":
-             pass # Explicitly show all
-         elif h_branch and h_branch != "All":
-             q = q.filter(Student.branch == h_branch)
-    elif current_user.branch != 'All':
-         q = q.filter(Student.branch == current_user.branch)
+    branch_param = request.args.get("branch")
+    allowed = get_user_allowed_branches(current_user)
+    if not allowed['is_unlimited']:
+        if branch_param and branch_param != "All":
+            if branch_param in allowed['names']:
+                q = q.filter(Student.branch == branch_param)
+            else:
+                q = q.filter(Student.branch.in_(list(allowed['names'])))
+        else:
+            if h_branch:
+                q = q.filter(Student.branch == h_branch)
+            else:
+                q = q.filter(Student.branch.in_(list(allowed['names'])))
+    else:
+        # SuperAdmin
+        if branch_param and branch_param != "All":
+            q = q.filter(Student.branch == branch_param)
+        elif h_branch and h_branch != "All":
+            q = q.filter(Student.branch == h_branch)
 
     if class_name:
         q = q.filter(StudentAcademicRecord.class_name == class_name) # Use Record's class
@@ -120,10 +133,12 @@ def get_student_fees_detail(current_user, student_id):
         h_year = request.headers.get("X-Academic-Year")
         
         # Verify Student belongs to user's branch
-        if current_user.role != 'Admin':
-            student = Student.query.get(student_id)
-            if not student or (current_user.branch != 'All' and student.branch != current_user.branch):
-                return jsonify({"error": "Unauthorized access to student data"}), 403
+        student = Student.query.get(student_id)
+        if not student:
+            return jsonify({"error": "Student not found"}), 404
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited'] and student.branch not in allowed['names']:
+            return jsonify({"error": "Unauthorized access to student data"}), 403
         
         # Use join to filter by Student's branch
         q = StudentFee.query.join(Student).filter(StudentFee.student_id == student_id, StudentFee.is_active == True)
@@ -313,10 +328,12 @@ def record_fee_payment(current_user):
     if err:
         return err, code
 
-    if current_user.role != 'Admin':
-        student = Student.query.get(student_id)
-        if not student or student.branch != current_user.branch:
-            return jsonify({"error": "Unauthorized: Cannot accept fees for student from another branch"}), 403
+    student = Student.query.get(student_id)
+    if not student:
+        return jsonify({"error": "Student not found"}), 404
+    allowed = get_user_allowed_branches(current_user)
+    if not allowed['is_unlimited'] and student.branch not in allowed['names']:
+        return jsonify({"error": "Unauthorized: Cannot accept fees for student from another branch"}), 403
     
     if not student_id or not allocations:
         return jsonify({"error": "Student ID and Allocations are required"}), 400
@@ -367,10 +384,12 @@ def get_student_payment_history(current_user, student_id):
     """Fetch all payments for a student"""
     try:
         # Check permissions
-        if current_user.role != 'Admin':
-            student = Student.query.get(student_id)
-            if not student or (current_user.branch != 'All' and student.branch != current_user.branch):
-                return jsonify({"error": "Unauthorized"}), 403
+        student = Student.query.get(student_id)
+        if not student:
+            return jsonify({"error": "Student not found"}), 404
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited'] and student.branch not in allowed['names']:
+            return jsonify({"error": "Unauthorized"}), 403
         
         # Filter by Academic Year (SMART FILTER)
         h_year = request.headers.get("X-Academic-Year")
@@ -453,7 +472,8 @@ def delete_fee_payment(current_user, payment_id):
             return jsonify({"error": "Payment is already cancelled"}), 400
 
         # Permission Check
-        if current_user.role != 'Admin' and payment.branch != current_user.branch:
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited'] and payment.branch not in allowed['names']:
              return jsonify({"error": "Unauthorized"}), 403
 
         # Revert Logic
@@ -530,8 +550,9 @@ def assign_special_fee(current_user):
         student_map = {s.student_id: s for s in students}
 
         # Validate Access
-        if current_user.role != 'Admin' and current_user.branch != 'All':
-            if unauthorized_ids := [sid for sid, s in student_map.items() if s.branch != current_user.branch]:
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited']:
+            if unauthorized_ids := [sid for sid, s in student_map.items() if s.branch not in allowed['names']]:
                 return jsonify({"error": "Unauthorized access to some students"}), 403
 
         # Process Assignments
@@ -625,7 +646,8 @@ def add_student_fee(current_user):
         if not student:
             return jsonify({"error": "Student not found"}), 404
             
-        if current_user.role != 'Admin' and current_user.branch != 'All' and student.branch != current_user.branch:
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited'] and student.branch not in allowed['names']:
              return jsonify({"error": "Unauthorized"}), 403
              
         # Create Fee
@@ -677,7 +699,8 @@ def update_student_fee(current_user, fee_id):
              
         # Check permissions
         student = Student.query.get(sf.student_id)
-        if current_user.role != 'Admin' and current_user.branch != 'All' and student.branch != current_user.branch:
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited'] and student.branch not in allowed['names']:
              return jsonify({"error": "Unauthorized"}), 403
              
         # Validation
@@ -728,7 +751,8 @@ def delete_student_fee(current_user, fee_id):
              
         # Check permissions
         student = Student.query.get(sf.student_id)
-        if current_user.role != 'Admin' and current_user.branch != 'All' and student.branch != current_user.branch:
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited'] and student.branch not in allowed['names']:
              return jsonify({"error": "Unauthorized"}), 403
              
         if sf.paid_amount and sf.paid_amount > 0:
@@ -803,7 +827,8 @@ def assign_concession(current_user):
         if not student:
             return jsonify({"error": "Student not found"}), 404
             
-        if current_user.role != 'Admin' and current_user.branch != 'All' and student.branch != current_user.branch:
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited'] and student.branch not in allowed['names']:
              return jsonify({"error": "Unauthorized"}), 403
              
         # 2. Fetch Concession Template (All items for this title)
@@ -840,7 +865,8 @@ def assign_fee_type(current_user):
         if not student:
             return jsonify({"error": "Student not found"}), 404
             
-        if current_user.role != 'Admin' and current_user.branch != 'All' and student.branch != current_user.branch:
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited'] and student.branch not in allowed['names']:
              return jsonify({"error": "Unauthorized"}), 403
              
         # Check if already exists
@@ -913,7 +939,8 @@ def nullify_student_fees(current_user, student_id):
         if not student:
             return jsonify({"error": "Student not found"}), 404
 
-        if current_user.role != 'Admin' and current_user.branch != 'All' and student.branch != current_user.branch:
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited'] and student.branch not in allowed['names']:
             return jsonify({"error": "Unauthorized"}), 403
 
         # Fetch all active, unpaid installments for this student in this academic year
@@ -956,7 +983,8 @@ def assign_standard_fees(current_user, student_id):
         if not student:
             return jsonify({"error": "Student not found"}), 404
 
-        if current_user.role != 'Admin' and current_user.branch != 'All' and student.branch != current_user.branch:
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited'] and student.branch not in allowed['names']:
             return jsonify({"error": "Unauthorized"}), 403
 
         from helpers import auto_enroll_student_fee

@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, request
 from extensions import db, get_today, get_now, to_local_time
 from models import WeeklyOffRule, HolidayCalendar, Branch, ClassMaster
-from helpers import token_required, require_academic_year, get_default_location
+from helpers import token_required, require_academic_year, get_default_location, get_user_allowed_branches
 from datetime import datetime, date
 from sqlalchemy import and_, or_
 
@@ -79,6 +79,7 @@ def get_weekoffs(current_user):
             return err, code
 
         h_branch = request.headers.get("X-Branch") or "Main"
+        allowed = get_user_allowed_branches(current_user)
 
         query = WeeklyOffRule.query.filter_by(academic_year=h_year, active=True)
 
@@ -86,7 +87,16 @@ def get_weekoffs(current_user):
         if h_branch and h_branch not in ("All", "All Branches"):
             branch = Branch.query.filter_by(branch_name=h_branch).first()
             if branch:
-                query = query.filter_by(branch_id=branch.id)
+                if not allowed['is_unlimited'] and branch.branch_name not in allowed['names']:
+                    query = query.filter(WeeklyOffRule.branch_id.in_(list(allowed['ids'])))
+                else:
+                    query = query.filter_by(branch_id=branch.id)
+            else:
+                if not allowed['is_unlimited']:
+                    query = query.filter(WeeklyOffRule.branch_id.in_(list(allowed['ids'])))
+        else:
+            if not allowed['is_unlimited']:
+                query = query.filter(WeeklyOffRule.branch_id.in_(list(allowed['ids'])))
 
         rules = query.order_by(WeeklyOffRule.weekday).all()
         return jsonify([weekoff_to_dict(r) for r in rules]), 200
@@ -111,6 +121,11 @@ def create_weekoff(current_user):
 
         if weekday is None or branch_id is None:
             return jsonify({"error": "weekday and branch_id are required"}), 400
+
+        # Check permissions
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited'] and branch_id not in allowed['ids']:
+             return jsonify({"error": "Unauthorized branch access"}), 403
 
         if not (0 <= weekday <= 6):
             return jsonify({"error": "weekday must be 0-6"}), 400
@@ -158,6 +173,11 @@ def delete_weekoff(current_user, id):
         if not rule:
             return jsonify({"error": "Rule not found"}), 404
 
+        # Check permissions
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited'] and rule.branch_id not in allowed['ids']:
+             return jsonify({"error": "Unauthorized branch access"}), 403
+
         db.session.delete(rule)
         db.session.commit()
         return jsonify({"message": "Weekoff rule deleted"}), 200
@@ -179,13 +199,23 @@ def get_holidays(current_user):
             return err, code
 
         h_branch = request.headers.get("X-Branch") or "Main"
+        allowed = get_user_allowed_branches(current_user)
 
         query = HolidayCalendar.query.filter_by(academic_year=h_year, active=True)
 
         if h_branch and h_branch not in ("All", "All Branches"):
             branch = Branch.query.filter_by(branch_name=h_branch).first()
             if branch:
-                query = query.filter_by(branch_id=branch.id)
+                if not allowed['is_unlimited'] and branch.branch_name not in allowed['names']:
+                    query = query.filter(HolidayCalendar.branch_id.in_(list(allowed['ids'])))
+                else:
+                    query = query.filter_by(branch_id=branch.id)
+            else:
+                if not allowed['is_unlimited']:
+                    query = query.filter(HolidayCalendar.branch_id.in_(list(allowed['ids'])))
+        else:
+            if not allowed['is_unlimited']:
+                query = query.filter(HolidayCalendar.branch_id.in_(list(allowed['ids'])))
 
         holidays = query.order_by(HolidayCalendar.display_order, HolidayCalendar.start_date).all()
         return jsonify([holiday_to_dict(h) for h in holidays]), 200
@@ -209,6 +239,11 @@ def create_holiday(current_user):
 
         if not all([title, start_date, end_date, branch_id]):
             return jsonify({"error": "title, start_date, end_date, branch_id are required"}), 400
+
+        # Check permissions
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited'] and branch_id not in allowed['ids']:
+             return jsonify({"error": "Unauthorized branch access"}), 403
 
         try:
             s_date = datetime.strptime(start_date, "%Y-%m-%d").date()
@@ -248,6 +283,11 @@ def update_holiday(current_user, id):
         holiday = HolidayCalendar.query.get(id)
         if not holiday:
             return jsonify({"error": "Holiday not found"}), 404
+
+        # Check permissions
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited'] and holiday.branch_id not in allowed['ids']:
+             return jsonify({"error": "Unauthorized branch access"}), 403
 
         data = request.json
 
@@ -295,6 +335,11 @@ def delete_holiday(current_user, id):
         holiday = HolidayCalendar.query.get(id)
         if not holiday:
             return jsonify({"error": "Holiday not found"}), 404
+
+        # Check permissions
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited'] and holiday.branch_id not in allowed['ids']:
+             return jsonify({"error": "Unauthorized branch access"}), 403
 
         db.session.delete(holiday)
         db.session.commit()
@@ -348,6 +393,11 @@ def check_date(current_user):
             if branch_name in ("All", "All Branches") or request.headers.get("X-Branch") in ("All", "All Branches"):
                 return jsonify({"is_weekoff": False, "is_holiday": False, "reason": ""}), 200
             return jsonify({"error": "branch_id or branch_name is required"}), 400
+
+        # Check permissions
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited'] and branch_id not in allowed['ids']:
+             return jsonify({"error": "Unauthorized branch access"}), 403
 
         # Resolve class
         class_id = None
@@ -406,6 +456,11 @@ def check_month(current_user):
             if branch_name in ("All", "All Branches") or request.headers.get("X-Branch") in ("All", "All Branches"):
                 return jsonify({"blocked_dates": {}}), 200
             return jsonify({"error": "branch_name is required"}), 400
+
+        # Check permissions
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited'] and branch_id not in allowed['ids']:
+             return jsonify({"error": "Unauthorized branch access"}), 403
 
         # Resolve class
         class_id = None

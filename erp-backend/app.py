@@ -1,3 +1,5 @@
+
+# pyrefly: ignore [missing-import]  
 from flask import Flask, request, jsonify, send_from_directory # Force Reload
 from flask_cors import CORS
 from dotenv import load_dotenv
@@ -215,14 +217,6 @@ if __name__ == "__main__":
     with app.app_context():
         upgrade()
         print("[OK] Database upgraded.")
-        
-        # Run role/permission migrations automatically on local dev startup
-        try:
-            from scripts.migrate_roles_permissions import run_migration
-            run_migration()
-            print("[OK] Roles & permissions migrations synced.")
-        except Exception as e:
-            print(f"[Error] Automatic seeding failed: {e}")
 
     port = int(os.getenv("PORT", 5001))
     debug = os.getenv("FLASK_DEBUG", "false").lower() == "true"

@@ -4,7 +4,7 @@ import mysql.connector
 from mysql.connector import Error 
 import os
 import logging
-from helpers import token_required
+from helpers import token_required, get_user_allowed_branches
 from models import Branch, UserBranchAccess
 
 report_bp = Blueprint('report', __name__)
@@ -12,48 +12,33 @@ logger = logging.getLogger(__name__)
 
 
 def resolve_branch_scope(current_user, requested_branch=None):
-    if current_user.role == "Admin" or current_user.branch == "All":
-        return requested_branch
-
-    if requested_branch and requested_branch not in ["All", "All Branches", current_user.branch]:
-        branch_obj = Branch.query.filter(
-            (Branch.branch_code == requested_branch) | (Branch.branch_name == requested_branch)
-        ).first()
-        if branch_obj:
-            access = UserBranchAccess.query.filter_by(
-                user_id=current_user.user_id,
-                branch_id=branch_obj.id,
-                is_active=True
-            ).first()
-            if access:
-                return branch_obj.branch_name
-
-    return current_user.branch
+    """
+    Returns (branch_filter, is_list)
+    """
+    allowed = get_user_allowed_branches(current_user)
+    if allowed['is_unlimited']:
+        if requested_branch in ("All", "All Branches", None):
+            return None, False
+        return requested_branch, False
+    else:
+        if requested_branch and requested_branch not in ("All", "All Branches") and requested_branch in allowed['names']:
+            return requested_branch, False
+        return list(allowed['names']), True
 
 
 def ensure_student_branch_access(current_user, student_branch):
-    if current_user.role == "Admin" or current_user.branch == "All":
-        return True
     if not student_branch:
         return False
-    if student_branch == current_user.branch:
+    allowed = get_user_allowed_branches(current_user)
+    if allowed['is_unlimited']:
         return True
 
     branch_obj = Branch.query.filter(
         (Branch.branch_code == student_branch) | (Branch.branch_name == student_branch)
     ).first()
-    if not branch_obj:
-        return False
-
-    if current_user.branch in [branch_obj.branch_code, branch_obj.branch_name]:
-        return True
-
-    access = UserBranchAccess.query.filter_by(
-        user_id=current_user.user_id,
-        branch_id=branch_obj.id,
-        is_active=True
-    ).first()
-    return access is not None
+    if branch_obj:
+        return branch_obj.branch_name in allowed['names']
+    return student_branch in allowed['names']
 
 def get_db_connection():
     """Create database connection"""
@@ -69,7 +54,7 @@ def get_db_connection():
 @token_required
 def get_students(current_user):
     """Get students by branch, class, section for dropdown"""
-    branch = resolve_branch_scope(current_user, request.args.get('branch'))
+    branch_filter, is_list = resolve_branch_scope(current_user, request.args.get('branch'))
     class_name = request.args.get('class')
     section = request.args.get('section')
     academic_year = request.args.get('academic_year')
@@ -97,9 +82,14 @@ def get_students(current_user):
         """
         params = [academic_year]
         
-        if branch and branch != 'All':
-            query += " AND s.branch = %s"
-            params.append(branch)
+        if branch_filter is not None:
+            if is_list:
+                placeholders = ", ".join(["%s"] * len(branch_filter))
+                query += f" AND s.branch IN ({placeholders})"
+                params.extend(branch_filter)
+            else:
+                query += " AND s.branch = %s"
+                params.append(branch_filter)
         
         if class_name:
             query += " AND (sar.class = %s OR s.class = %s)"
