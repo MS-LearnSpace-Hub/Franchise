@@ -972,3 +972,5 @@ def assign_standard_fees(current_user, student_id):
         db.session.rollback()
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
+
+

@@ -26,6 +26,10 @@ def get_fee_types(current_user):
     if err:
         return err, code
 
+    # STRICT BRANCH ENFORCEMENT
+    if current_user.role != 'Admin':
+        h_branch = current_user.branch
+
     query = FeeType.query.filter_by(academic_year=h_year)
     
     if h_branch and h_branch != "All":
@@ -48,7 +52,11 @@ def create_fee_type(current_user):
     description = data.get("description")
     
     # 1. Branch Handling
-    branch = data.get("branch", "All")
+    if current_user.role == 'Admin':
+        branch = data.get("branch", "All")
+    else:
+        branch = current_user.branch # Force User's Branch
+        
     academic_year = data.get("academic_year", "2025-2026")
 
     if not feetype_name:
@@ -92,6 +100,13 @@ def update_fee_type(current_user, id):
     if not ft:
         return jsonify({"error": "Fee Type not found"}), 404
         
+    # Validation: Only Admin or Owner Branch can edit
+    if current_user.role != 'Admin':
+         if ft.branch not in ("All", current_user.branch):
+             return jsonify({"error": "Unauthorized"}), 403
+         if ft.branch == "All":
+             return jsonify({"error": "Only Admin can edit Global Fee Types"}), 403
+
     ft.feetype = data.get("feetype", ft.feetype)
     ft.type = data.get("type", ft.type)
     ft.isrefundable = data.get("is_refundable", ft.isrefundable)
@@ -164,8 +179,11 @@ def get_class_fee_structure(current_user):
     branch_arg = request.args.get('branch')
     location_param = request.args.get('location') # New param
     
-    target_branch = branch_arg or h_branch or "All"
-    
+    if current_user.role != 'Admin':
+        target_branch = current_user.branch
+    else:
+        target_branch = branch_arg or h_branch or "All"
+        
     if target_branch and target_branch != "All":
         query = query.filter_by(branch=target_branch)
     elif target_branch == "All":
@@ -202,6 +220,9 @@ def migrate_class_fee_structures(current_user):
     """
     Migration Tool: Backfill academic_year from academicyear
     """
+    if current_user.role != 'Admin':
+        return jsonify({"error": "Admin required"}), 403
+        
     try:
         structs = ClassFeeStructure.query.filter(
             ClassFeeStructure.academic_year.is_(None) | (ClassFeeStructure.academic_year == "")
@@ -360,10 +381,17 @@ def get_concessions(current_user):
 
     query = Concession.query.filter_by(academic_year=academic_year)
     
-    h_branch = request.headers.get("X-Branch", "All")
-    if h_branch and h_branch not in ["All", "AllBranches"]:
+    if current_user.role == 'Admin':
+        h_branch = request.headers.get("X-Branch", "All")
+        if h_branch and h_branch not in ["All", "AllBranches"]:
+            from sqlalchemy import or_
+            query = query.filter(or_(Concession.branch == h_branch, Concession.branch == "All"))
+    else:
+        target_branch = current_user.branch
+        if not target_branch:
+             return jsonify({"concessions": []}), 200
         from sqlalchemy import or_
-        query = query.filter(or_(Concession.branch == h_branch, Concession.branch == "All"))
+        query = query.filter(or_(Concession.branch == target_branch, Concession.branch == "All"))
 
     concessions = query.all()
     
@@ -399,7 +427,13 @@ def create_concession(current_user):
     description = data.get("description")
     academic_year = data.get("academic_year")
     
-    branch = data.get("branch") or "All"
+    if current_user.role == 'Admin':
+        branch = data.get("branch") or "All"
+    else:
+        branch = current_user.branch
+        if not branch:
+             return jsonify({"error": "User has no branch assigned"}), 403
+
     is_percentage = data.get("is_percentage", True)
     show_in_payment = data.get("show_in_payment", False)
     items = data.get("items", []) 
@@ -439,6 +473,12 @@ def create_concession(current_user):
 def delete_concession(current_user, title, year):
     try:
         query = Concession.query.filter_by(title=title, academic_year=year)
+        
+        if current_user.role != 'Admin':
+             if not current_user.branch:
+                  return jsonify({"error": "Unauthorized"}), 403
+             query = query.filter_by(branch=current_user.branch)
+             
         deleted = query.delete()
         db.session.commit()
         
@@ -461,7 +501,13 @@ def update_concession(current_user, original_title, original_year):
     description = data.get("description")
     new_year = data.get("academic_year")
     
-    new_branch = data.get("branch") or "All"
+    if current_user.role == 'Admin':
+        new_branch = data.get("branch") or "All"
+    else:
+        new_branch = current_user.branch
+        if not new_branch:
+             return jsonify({"error": "Unauthorized"}), 403
+
     is_percentage = data.get("is_percentage", True)
     show_in_payment = data.get("show_in_payment", False)
     items = data.get("items", []) 
@@ -471,9 +517,13 @@ def update_concession(current_user, original_title, original_year):
         
     try:
         query = Concession.query.filter_by(title=original_title, academic_year=original_year)
+        
+        if current_user.role != 'Admin':
+             query = query.filter_by(branch=new_branch)
+
         deleted = query.delete()
-        if deleted == 0:
-             return jsonify({"error": "Concession not found"}), 404
+        if deleted == 0 and current_user.role != 'Admin':
+             return jsonify({"error": "Concession not found or unauthorized to edit global concession"}), 403
             
         created_ids = []
         for item in items:
@@ -1197,48 +1247,5 @@ def copy_concessions(current_user):
         db.session.rollback()
         print(f"[ERROR] Copy Concessions: {e}")
         return jsonify({"error": str(e)}), 500
-@bp.route("/api/update-rebate-date", methods=["PUT"])
-@token_required
-def update_rebate_date(current_user):
-    data = request.json or {}
-    try:
-        installment_title = data.get("installment_title")
-        academic_year = data.get("academic_year")
-        branch = data.get("branch")
-        new_due_date_str = data.get("new_due_date")
-        
-        if not all([installment_title, academic_year, branch, new_due_date_str]):
-            return jsonify({"error": "Missing required fields (installment_title, academic_year, branch, new_due_date)"}), 400
-            
-        from datetime import datetime
-        new_due_date = datetime.strptime(new_due_date_str, "%Y-%m-%d").date()
-        
-        # We need to update StudentFee.due_date for all students in the branch, matching academic_year and month
-        from models import StudentFee, Student, db
-        
-        query = db.session.query(StudentFee).join(Student).filter(
-            StudentFee.month == installment_title,
-            StudentFee.academic_year == academic_year,
-            StudentFee.is_active == True
-        )
-        
-        if branch != "All":
-            query = query.filter(Student.branch == branch)
-            
-        student_fees = query.all()
-        updated_count = 0
-        for sf in student_fees:
-            sf.due_date = new_due_date
-            updated_count += 1
-            
-        db.session.commit()
-        return jsonify({
-            "message": f"Successfully updated rebate date for {updated_count} student fee records.",
-            "updated_count": updated_count
-        }), 200
-        
-    except Exception as e:
-        db.session.rollback()
-        import traceback
-        traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+
+

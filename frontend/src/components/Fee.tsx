@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ChevronDownIcon } from './icons';
 import { Page } from '../App';
+import { useAuth } from '../contexts/AuthContext';
 
 interface FeeProps {
     navigateTo: (page: Page) => void;
@@ -30,8 +31,6 @@ const Fee: React.FC<FeeProps> = ({ navigateTo }) => {
             navigateTo('concession-master');
         } else if (item === 'Update Student Fee Structure') {
             navigateTo('update-student-fee-structure');
-        } else if (item === 'Update Rebate Date') {
-            navigateTo('update-rebate-date');
         }
         setOpenDropdown(null);
     };
@@ -44,7 +43,7 @@ const Fee: React.FC<FeeProps> = ({ navigateTo }) => {
     }
 
     const dropdownItems: { [key: string]: (string | DropdownItem)[] } = {
-        feeMasters: ['Fee Type', 'Fee Installments', 'Assign Special Fee Type', 'Create Class Fee Structure', 'Update Student Fee Structure', 'Update Rebate Date'/*'Fee Category', 'Fee Type group',  'Special Fee Type',  'Remove Special Fee Type', 'Manage Bank Account', 'Assign Fee Group To Students', 'Transfer Fee Due', 'Fee Setting', 'Update Student Fee Group', 'Import Fee Group'*/],
+        feeMasters: ['Fee Type', 'Fee Installments', 'Assign Special Fee Type', 'Create Class Fee Structure', 'Update Student Fee Structure'/*'Fee Category', 'Fee Type group',  'Special Fee Type',  'Remove Special Fee Type', 'Manage Bank Account', 'Assign Fee Group To Students', 'Transfer Fee Due', 'Fee Setting', 'Update Student Fee Group', 'Import Fee Group'*/],
         /*cheque: ['Manage Cheques', 'Fee PDC', 'Fee All PDC', 'Bounced Cheque Report', 'Cheque Date Report', 'Cheque Clearance Report'],*/
         concession: [
             { name: 'Concession Template', action: () => navigateTo('concession-master') },
@@ -89,8 +88,31 @@ const Fee: React.FC<FeeProps> = ({ navigateTo }) => {
         </div>
     );
 
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
-    const isAdmin = user.role === 'Admin';
+    const { hasPermission } = useAuth();
+
+    const canTakeFee = hasPermission('fees.fee.take-fee', 'read');
+    const canFeeReports = hasPermission('fees.fee.fee-reports', 'read');
+    const canFeeType = hasPermission('fees.fee.fee-type', 'read');
+    const canFeeInstallments = hasPermission('fees.fee.fee-installments', 'read');
+    const canAssignSpecialFee = hasPermission('fees.fee.assign-special-fee', 'read');
+    const canClassFeeStructure = hasPermission('fees.fee.class-fee-structure', 'read');
+    const canUpdateStudentFee = hasPermission('fees.fee.update-student-fee-structure', 'read');
+    const canConcession = hasPermission('fees.fee.concession-master', 'read');
+
+    const feeMasterItems: (string | DropdownItem)[] = [
+        ...(canFeeType ? ['Fee Type' as string] : []),
+        ...(canFeeInstallments ? ['Fee Installments' as string] : []),
+        ...(canAssignSpecialFee ? ['Assign Special Fee Type' as string] : []),
+        ...(canClassFeeStructure ? ['Create Class Fee Structure' as string] : []),
+        ...(canUpdateStudentFee ? ['Update Student Fee Structure' as string] : []),
+    ];
+
+    const concessionItems: (string | DropdownItem)[] = canConcession ? [
+        { name: 'Concession Template', action: () => navigateTo('concession-master') },
+        { name: 'Set Student Concession', action: () => navigateTo('student-concession') },
+        { name: 'Paid Concession Report', action: () => console.log('Paid Concession Report') },
+        { name: 'Expected Concession Report', action: () => console.log('Expected Concession Report') },
+    ] : [];
 
     return (
         <div>
@@ -101,27 +123,24 @@ const Fee: React.FC<FeeProps> = ({ navigateTo }) => {
                         <span className="text-blue-600 mr-2">₹</span> Fee Management
                     </h2>
                     <div className="flex gap-2 flex-wrap">
-                        {isAdmin && renderDropdown('feeMasters', dropdownItems.feeMasters)}
-                        {/*{renderDropdown('cheque', dropdownItems.cheque)}*/}
-                        <button
-                            className="px-4 py-2 text-sm border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
-                            onClick={() => navigateTo('fee-reports')}
-                        >
-                            Fee Reports
-                        </button>
-                        <button
-                            className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors shadow-sm"
-                            onClick={() => {
-                                console.log('Fee Payment button clicked, navigating to take-fee');
-                                navigateTo('take-fee');
-                            }}
-                        >
-                            Collect Fee {/* Nothing but Take Fee - user reqeust to change the name */}
-                        </button>
-                        {isAdmin && renderDropdown('concession', dropdownItems.concession)}
-                        {isAdmin && renderDropdown('refund', dropdownItems.refund)}
-                        {/*{renderDropdown('voucher', dropdownItems.voucher)}*/}
-                        {/*<button className={buttonStyle}>Bulk Fee Payment</button>*/}
+                        {feeMasterItems.length > 0 && renderDropdown('feeMasters', feeMasterItems)}
+                        {canFeeReports && (
+                            <button
+                                className="px-4 py-2 text-sm border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                                onClick={() => navigateTo('fee-reports')}
+                            >
+                                Fee Reports
+                            </button>
+                        )}
+                        {canTakeFee && (
+                            <button
+                                className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors shadow-sm"
+                                onClick={() => navigateTo('take-fee')}
+                            >
+                                Take Fee
+                            </button>
+                        )}
+                        {concessionItems.length > 0 && renderDropdown('concession', concessionItems)}
                     </div>
                 </div>
             </div>
@@ -142,7 +161,7 @@ const Fee: React.FC<FeeProps> = ({ navigateTo }) => {
                         onClick={() => navigateTo('take-fee')}
                         className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors shadow-sm font-medium"
                     >
-                        Collect Fees
+                        Collect Due Fees
                     </button>
                 </div>
             </div>
