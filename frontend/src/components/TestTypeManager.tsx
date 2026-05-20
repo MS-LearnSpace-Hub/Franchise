@@ -34,9 +34,6 @@ const TestTypeManager: React.FC = () => {
     useEffect(() => {
         // Handle User Role / Context initialization similar to ClassFeeStructure if needed
         const user = JSON.parse(localStorage.getItem('user') || '{}');
-        if (user.role !== 'Admin' && user.branch) {
-            setBranch(user.branch);
-        }
         if (user.location) {
             setLocation(user.location);
         }

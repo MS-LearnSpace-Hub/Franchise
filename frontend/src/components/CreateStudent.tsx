@@ -506,10 +506,9 @@ const CreateStudent: React.FC<CreateStudentProps> = ({
 
           let targetBranch = "";
           const isAllBranch = savedBranch === "All" || savedBranch === "All Branches";
-          if (userRole === 'Admin') {
-            if (savedBranch && !isAllBranch) {
-              targetBranch = savedBranch;
-            }
+          
+          if (savedBranch && !isAllBranch) {
+            targetBranch = savedBranch;
           } else if (userBranch) {
             targetBranch = userBranch;
           }

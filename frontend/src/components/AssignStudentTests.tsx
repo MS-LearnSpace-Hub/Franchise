@@ -25,17 +25,7 @@ export default function AssignStudentTests() {
     // Get initial values safely
     const getInitialBranch = () => {
         const storedBranch = localStorage.getItem("currentBranch");
-        if (storedBranch && storedBranch !== "undefined") return storedBranch;
-
-        const storedUser = localStorage.getItem("user");
-        if (storedUser) {
-            try {
-                const user = JSON.parse(storedUser);
-                if (user.branch && user.branch !== "All") return user.branch;
-            } catch (e) {
-                console.error("Error parsing user from localStorage", e);
-            }
-        }
+        if (storedBranch && storedBranch !== "undefined" && storedBranch !== "All Locations") return storedBranch;
         return "";
     };
 

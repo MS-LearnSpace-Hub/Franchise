@@ -187,14 +187,9 @@ const StudentReportCard: React.FC = () => {
 
     if (userStr) {
       try {
-        const user = JSON.parse(userStr);
-        if (user.role === 'Admin' || user.branch === 'All' || user.branch === 'AllBranches') {
-          const selected = localStorage.getItem("currentBranch");
-          if (selected && selected !== "All" && selected !== "All Locations") {
+        const selected = localStorage.getItem("currentBranch");
+        if (selected && selected !== "All Locations") {
             storedBranch = selected;
-          }
-        } else {
-          storedBranch = user.branch || "All";
         }
       } catch (e) {
         console.error("Error parsing user", e);

@@ -110,7 +110,7 @@ def create_app():
         r"/*": {
             "origins": allowed_origins,
             "supports_credentials": True,
-            "allow_headers": ["Content-Type", "Authorization", "X-Branch", "X-Location", "X-Academic-Year", "X-Requested-With"],
+            "allow_headers": ["Content-Type", "Authorization", "X-Branch", "X-Location", "X-Academic-Year", "X-Requested-With", "X-School-ID", "X-Branch-ID"],
             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
         }
     })

@@ -51,19 +51,8 @@ const AssignSpecialFee: React.FC = () => {
 
         setIsAdmin(user.role === 'Admin');
 
-        if (user.role === 'Admin') {
-            if (globalBranch && globalBranch !== 'All') {
-                setSelectedBranch(globalBranch);
-                setIsBranchLocked(true);
-            } else {
-                setSelectedBranch('All');
-                setIsBranchLocked(false);
-            }
-        } else {
-            if (user.branch) {
-                setSelectedBranch(user.branch);
-                setIsBranchLocked(true);
-            }
+        if (globalBranch && globalBranch !== 'All Locations') {
+            setSelectedBranch(globalBranch);
         }
 
         fetchClasses();

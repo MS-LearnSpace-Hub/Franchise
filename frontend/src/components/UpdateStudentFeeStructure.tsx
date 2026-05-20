@@ -62,10 +62,7 @@ const UpdateStudentFeeStructure: React.FC = () => {
     }, []);
 
     const computeGlobalBranch = (): string => {
-        let user: Record<string, any> = {};
-        try { user = JSON.parse(localStorage.getItem('user') || '{}'); } catch { user = {}; }
         const storedBranch = localStorage.getItem('currentBranch') || 'All';
-        if (user.role !== 'Admin' && user.branch) return user.branch;
         return storedBranch;
     };
 

@@ -1,3 +1,4 @@
+# pyrefly: ignore [missing-import]
 from flask import Blueprint, jsonify, request
 from extensions import db, get_now, get_today
 from models import Student, StudentFee, FeePayment, Branch, FeeInstallment, Concession, ClassFeeStructure, StudentAcademicRecord, FeeType

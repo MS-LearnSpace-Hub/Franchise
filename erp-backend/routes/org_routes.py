@@ -513,6 +513,7 @@ def get_classes(current_user):
         branch_specific_cond = or_(ClassMaster.branch == str(branch_obj.id), ClassMaster.branch == branch_obj.branch_name)
         
         query = query.filter(or_(
+            ClassSection.branch_id == branch_obj.id,
             branch_specific_cond,
             and_(ClassMaster.branch == 'All', ClassMaster.location == location_filter),
             and_(ClassMaster.branch == 'All', ClassMaster.location == 'All')
@@ -530,6 +531,7 @@ def get_classes(current_user):
             allowed_branch_ids_str = {str(bid) for bid in allowed['ids']}
             
             branch_cond = or_(
+                ClassSection.branch_id.in_(allowed['ids']),
                 ClassMaster.branch.in_(list(allowed_branch_names)),
                 ClassMaster.branch.in_(list(allowed_branch_ids_str)),
                 and_(ClassMaster.branch == 'All', ClassMaster.location.in_(list(loc_names))),

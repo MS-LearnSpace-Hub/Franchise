@@ -175,9 +175,6 @@ const FeeInstallments: React.FC = () => {
         const isAdminUser = user.role === 'Admin';
 
         let globalBranch = localStorage.getItem('currentBranch') || 'All';
-        if (!isAdminUser && user.branch && user.branch !== 'All' && user.branch !== 'All Branches') {
-            globalBranch = user.branch;
-        }
 
         const storedLocation = localStorage.getItem('currentLocation');
         const initialLocation = user.location || 'Hyderabad';
@@ -260,11 +257,7 @@ const FeeInstallments: React.FC = () => {
 
     const fetchInstallments = async () => {
         try {
-            const user = JSON.parse(localStorage.getItem('user') || '{}');
             let globalBranch = localStorage.getItem('currentBranch') || 'All';
-            if (user.role !== 'Admin' && user.branch && user.branch !== 'All' && user.branch !== 'All Branches') {
-                globalBranch = user.branch;
-            }
             const branchParam = globalBranch === 'All Branches' || globalBranch === 'All' ? 'All' : globalBranch;
             const response = await api.get('/installment-schedule', {
                 params: { branch: branchParam, location: selectedLocation }

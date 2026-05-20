@@ -1,4 +1,5 @@
 import React, { createContext, useState, useContext, ReactNode, useCallback } from "react";
+import api from "../api";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -46,6 +47,7 @@ interface AuthContextType {
   setUser: (user: AuthUser) => void;
   clearUser: () => void;
   hasPermission: (code: string, action?: "read" | "write" | "append" | "delete") => boolean;
+  switchContext: (schoolId: number | null, branchId: number | null) => Promise<void>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -77,6 +79,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const setUser = useCallback((newUser: AuthUser) => {
     localStorage.setItem("user", JSON.stringify(newUser));
+    if (newUser.school_id) {
+      localStorage.setItem("currentSchoolId", String(newUser.school_id));
+    }
+    if (newUser.school_name) {
+      localStorage.setItem("currentSchool", newUser.school_name);
+    }
+    if (newUser.branch_id) {
+      localStorage.setItem("currentBranchId", String(newUser.branch_id));
+    }
+    if (newUser.branch_name) {
+      localStorage.setItem("currentBranch", newUser.branch_name);
+    }
     setUserState(newUser);
   }, []);
 
@@ -84,6 +98,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     localStorage.removeItem("user");
     localStorage.removeItem("token");
     localStorage.removeItem("currentBranch");
+    localStorage.removeItem("currentBranchId");
+    localStorage.removeItem("currentSchoolId");
+    localStorage.removeItem("currentSchool");
     localStorage.removeItem("currentLocation");
     localStorage.removeItem("academicYear");
     setUserState(null);
@@ -100,6 +117,27 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     [user]
   );
 
+  const switchContext = useCallback(async (schoolId: number | null, branchId: number | null) => {
+    try {
+      const response = await api.post("/users/switch-context", {
+        school_id: schoolId,
+        branch_id: branchId,
+      });
+
+      const { token: newToken, user: updatedUser } = response.data;
+      if (newToken && updatedUser) {
+        localStorage.setItem("token", newToken);
+        sessionStorage.setItem("token", newToken);
+        api.defaults.headers.common["Authorization"] = `Bearer ${newToken}`;
+        localStorage.setItem("user", JSON.stringify(updatedUser));
+        setUser(updatedUser);
+      }
+    } catch (error: any) {
+      const errorMsg = error.response?.data?.error || error.message || "Failed to switch context";
+      throw new Error(errorMsg);
+    }
+  }, [setUser]);
+
   return (
     <AuthContext.Provider
       value={{
@@ -108,6 +146,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setUser,
         clearUser,
         hasPermission,
+        switchContext,
       }}
     >
       {children}

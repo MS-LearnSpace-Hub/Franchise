@@ -141,9 +141,7 @@ def save_student_photo(student, photo_data):
 @bp.route("/api/students", methods=["GET"])
 @token_required
 def get_students(current_user):
-    if not (has_permission(current_user, "administration.student.student-administration", "read") or
-            has_permission(current_user, "administration.student.search-student", "read")):
-        return jsonify({"error": "Forbidden: missing permission"}), 403
+    # Allowed for any authenticated user; results are securely scoped via scope_query
     try:
         class_name = request.args.get("class")
         section = request.args.get("section")
@@ -497,6 +495,12 @@ def update_student(current_user, student_id):
             student.inactivate_reason = None
             student.inactivated_by = None
 
+        # -------- BRANCH & TENANT MAPPING RESOLUTION --------
+        if 'branch' in data and data['branch']:
+            b_obj = Branch.query.filter_by(branch_name=data['branch'], is_active=True).first()
+            if b_obj:
+                student.branch_id = b_obj.id
+                student.school_id = b_obj.school_id
 
         # -------- PHOTO HANDLING --------
         photos = data.get("photos")
@@ -620,6 +624,8 @@ def create_student(current_user):
         s.branch = data.get("branch")
         s.location = data.get("location")
         s.academic_year = h_year
+        s.branch_id = branch_id
+        s.school_id = b_obj.school_id
         
         s.BloodGroup = data.get("BloodGroup")
         s.Adharcardno = data.get("Adharcardno")

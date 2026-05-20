@@ -16,78 +16,94 @@ def run_migration():
 
     # 2. Ensure Standard Roles Exist
     print("\n2. Ensuring standard roles exist...")
+    roles_config = {
+        "SuperAdmin": {"desc": "Super Administrator Role", "is_system": True},
+        "Admin": {"desc": "Administrator Role", "is_system": True},
+        "User": {"desc": "Standard User Role", "is_system": True},
+        "Accountant": {"desc": "Accountant Role", "is_system": False},
+        "Finance": {"desc": "Finance Role", "is_system": False},
+        "Franchise Admin": {"desc": "Franchise Admin Role", "is_system": False},
+        "BranchAdmin": {"desc": "Branch Admin Role", "is_system": False},
+    }
     
-    superadmin_role = Role.query.filter_by(name="SuperAdmin").first()
-    if not superadmin_role:
-        superadmin_role = Role(name="SuperAdmin", description="Super Administrator Role", is_system=True, is_active=True)
-        db.session.add(superadmin_role)
-        print("   + Created SuperAdmin role")
-    else:
-        print("   [OK] SuperAdmin role already exists")
-        
-    admin_role = Role.query.filter_by(name="Admin").first()
-    if not admin_role:
-        admin_role = Role(name="Admin", description="Administrator Role", is_system=True, is_active=True)
-        db.session.add(admin_role)
-        print("   + Created Admin role")
-    else:
-        print("   [OK] Admin role already exists")
-
-    user_role = Role.query.filter_by(name="User").first()
-    if not user_role:
-        user_role = Role(name="User", description="Standard User Role", is_system=True, is_active=True)
-        db.session.add(user_role)
-        print("   + Created User role")
-    else:
-        print("   [OK] User role already exists")
+    role_objs = {}
+    for r_name, cfg in roles_config.items():
+        role_obj = Role.query.filter_by(name=r_name).first()
+        if not role_obj:
+            role_obj = Role(name=r_name, description=cfg["desc"], is_system=cfg["is_system"], is_active=True)
+            db.session.add(role_obj)
+            print(f"   + Created {r_name} role")
+        else:
+            print(f"   [OK] {r_name} role already exists")
+        role_objs[r_name] = role_obj
 
     db.session.flush()
-
-    # Get the latest IDs
-    superadmin_id = superadmin_role.id
-    admin_id = admin_role.id
-    user_id_role = user_role.id
     
-    print(f"   Roles in DB: SuperAdmin(ID={superadmin_id}), Admin(ID={admin_id}), User(ID={user_id_role})")
+    superadmin_id = role_objs["SuperAdmin"].id
+    admin_id = role_objs["Admin"].id
+    user_id_role = role_objs["User"].id
 
-    # 3. Seed Default Role Permissions for "User" Role
-    print("\n3. Seeding default permissions for User role...")
+    # 3. Seed Default Role Permissions
+    print("\n3. Seeding default permissions for all roles...")
     permissions = Permission.query.filter_by(is_active=True).all()
-    existing_user_permissions = {rp.permission_id: rp for rp in user_role.permissions.all()}
-
-    for p in permissions:
-        # Determine if this permission is restricted
-        is_restricted = (
-            p.code.startswith("fees.")
-            or p.code.startswith("system.")
-            or p.code.startswith("setup.")
-        )
-
-        rp = existing_user_permissions.get(p.id)
-
-        # Only create defaults if permission does not already exist
-        if not rp:
-            rp = RolePermission(
-                role_id=user_id_role,
-                permission_id=p.id
-            )
-
-            if is_restricted:
-                # Restricted: No access
-                rp.can_read = False
-                rp.can_write = False
-                rp.can_append = False
-                rp.can_delete = False
-            else:
-                # Default user access
+    
+    for r_name, r_obj in role_objs.items():
+        print(f"   Seeding permissions for role: {r_name}...")
+        # Clear existing to ensure fresh default sync
+        RolePermission.query.filter_by(role_id=r_obj.id).delete()
+        
+        for p in permissions:
+            rp = RolePermission(role_id=r_obj.id, permission_id=p.id)
+            
+            if r_name in ("SuperAdmin", "Admin", "Franchise Admin", "BranchAdmin"):
+                # Admins have full access to everything
                 rp.can_read = True
                 rp.can_write = True
                 rp.can_append = True
-                rp.can_delete = False
-
+                rp.can_delete = True
+            elif r_name == "User":
+                is_restricted = (
+                    p.code.startswith("fees.")
+                    or p.code.startswith("system.")
+                    or p.code.startswith("setup.")
+                )
+                if is_restricted:
+                    rp.can_read = False
+                    rp.can_write = False
+                    rp.can_append = False
+                    rp.can_delete = False
+                else:
+                    rp.can_read = True
+                    rp.can_write = True
+                    rp.can_append = True
+                    rp.can_delete = False
+            elif r_name in ("Accountant", "Finance"):
+                # Accountants/Finance have write/append access to fees, read access to everything else except system/setup
+                if p.code.startswith("fees."):
+                    rp.can_read = True
+                    rp.can_write = True
+                    rp.can_append = True
+                    rp.can_delete = False
+                elif p.code.startswith("home.dashboard."):
+                    rp.can_read = True
+                    rp.can_write = True
+                    rp.can_append = True
+                    rp.can_delete = False
+                elif p.code.startswith("system.") or p.code.startswith("setup."):
+                    rp.can_read = False
+                    rp.can_write = False
+                    rp.can_append = False
+                    rp.can_delete = False
+                else:
+                    # Academics, administration, documents, attendance: Read-only
+                    rp.can_read = True
+                    rp.can_write = False
+                    rp.can_append = False
+                    rp.can_delete = False
+            
             db.session.add(rp)
 
-    print("   [OK] Seeding user permissions completed.")
+    print("   [OK] Seeding role permissions completed.")
 
     # 4. Migrate Users
     print("\n4. Migrating existing users to database roles...")

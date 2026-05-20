@@ -114,11 +114,17 @@ def list_subjects(current_user):
             allowed_branch_ids = allowed['ids'] or set()
             
             if current_user.school_id:
-                branch_cond = SubjectMaster.branch_id.in_(list(allowed_branch_ids)) if allowed_branch_ids else False
-                query = query.filter(
-                    (SubjectMaster.school_id.is_(None) & SubjectMaster.branch_id.is_(None)) |
-                    ((SubjectMaster.school_id == current_user.school_id) & (SubjectMaster.branch_id.is_(None) | branch_cond))
-                )
+                if allowed_branch_ids:
+                    branch_cond = SubjectMaster.branch_id.in_(list(allowed_branch_ids))
+                    query = query.filter(
+                        (SubjectMaster.school_id.is_(None) & SubjectMaster.branch_id.is_(None)) |
+                        ((SubjectMaster.school_id == current_user.school_id) & (SubjectMaster.branch_id.is_(None) | branch_cond))
+                    )
+                else:
+                    query = query.filter(
+                        (SubjectMaster.school_id.is_(None) & SubjectMaster.branch_id.is_(None)) |
+                        ((SubjectMaster.school_id == current_user.school_id) & SubjectMaster.branch_id.is_(None))
+                    )
             else:
                 query = query.filter(SubjectMaster.school_id.is_(None) & SubjectMaster.branch_id.is_(None))
                 
@@ -298,7 +304,7 @@ def assign_subjects(current_user):
                     subject_id=subject_id,
                     academic_year=academic_year_name,
                     location_name=location_name,
-                    branch_name=b_name,
+                    branch=b_name,
                     branch_id=br_obj.id
                 )
                 db.session.add(new_assign)
@@ -354,12 +360,12 @@ def get_assigned_subjects(current_user):
                   if branch_name not in allowed['names']:
                        branch_name = None
              if branch_name:
-                  query = query.filter(ClassSubjectAssignment.branch_name == branch_name)
+                  query = query.filter(ClassSubjectAssignment.branch == branch_name)
              else:
-                  query = query.filter(ClassSubjectAssignment.branch_name.in_(list(allowed['names'])))
+                  query = query.filter(ClassSubjectAssignment.branch.in_(list(allowed['names'])))
         else:
              if branch_name:
-                  query = query.filter(ClassSubjectAssignment.branch_name == branch_name)
+                  query = query.filter(ClassSubjectAssignment.branch == branch_name)
 
         results = query.all()
         
@@ -370,7 +376,7 @@ def get_assigned_subjects(current_user):
                 "class_id": assign.class_id,
                 "subject_name": subject.subject_name,
                 "subject_type": subject.subject_type,
-                "branch_name": assign.branch_name,
+                "branch_name": assign.branch,
                 "created_at": to_local_time(assign.created_at).isoformat() if assign.created_at else None,
                 "updated_at": to_local_time(assign.updated_at).isoformat() if assign.updated_at else None,
                 "created_by": assign.created_by,
@@ -392,7 +398,7 @@ def delete_assignment(current_user, id):
             return jsonify({"error": "Assignment not found"}), 404
 
         allowed = get_user_allowed_branches(current_user)
-        if not allowed['is_unlimited'] and record.branch_name not in allowed['names']:
+        if not allowed['is_unlimited'] and record.branch not in allowed['names']:
             return jsonify({"error": "Unauthorized"}), 403
 
         # 🔒 ERP LOCK:
@@ -507,7 +513,7 @@ def manage_subject_assignment_bulk(current_user):
                     class_id=class_id,
                     subject_id=subject_id,
                     academic_year=academic_year_name,
-                    branch_name=b_name
+                    branch=b_name
                 ).first()
 
                 if action == "assign":
@@ -517,7 +523,7 @@ def manage_subject_assignment_bulk(current_user):
                             subject_id=subject_id,
                             academic_year=academic_year_name,
                             location_name=location_name,
-                            branch_name=b_name
+                            branch=b_name
                         )
                         db.session.add(new_assign)
                         processed_count += 1
@@ -607,14 +613,14 @@ def manage_subject_assignment(current_user):
                 class_id=class_id,
                 subject_id=subject_id,
                 academic_year=academic_year_name,
-                branch_name=b_name
+                branch=b_name
             ).first()
             
             if action == "assign":
                 if not existing:
                     db.session.add(ClassSubjectAssignment(
                          class_id=class_id, subject_id=subject_id, 
-                         academic_year=academic_year_name, branch_name=b_name, location_name=location_name
+                         academic_year=academic_year_name, branch=b_name, location_name=location_name
                     ))
                     processed += 1
             elif action == "remove":
@@ -855,7 +861,7 @@ def get_assignment_data(current_user):
         for assign, subj in class_subjects:
             # Check context matches
             if (assign.academic_year == academic_year and 
-                assign.branch_name == branch):
+                assign.branch == branch):
                 subject_list.append({
                     "subject_id": subj.id,
                     "subject_name": subj.subject_name,
@@ -1002,16 +1008,16 @@ def save_student_subjects(current_user):
 def copy_subject_assignments(current_user):
     try:
         data = request.json
-        source_branch_id = data.get("source_branch_id")
-        target_branch_ids = data.get("target_branch_ids", [])
+        source_branch_id = int(data.get("source_branch_id")) if data.get("source_branch_id") is not None else None
+        target_branch_ids = [int(x) for x in data.get("target_branch_ids", []) if x is not None]
         academic_year_id = data.get("academic_year_id") # Usually ID
         
         if not all([source_branch_id, target_branch_ids, academic_year_id]):
             return jsonify({"error": "Missing required fields"}), 400
             
         if source_branch_id in target_branch_ids:
-             # Just in case details slip through
-             target_branch_ids = [t for t in target_branch_ids if t != source_branch_id]
+            # Just in case details slip through
+            target_branch_ids = [t for t in target_branch_ids if t != source_branch_id]
 
         # 1. Resolve Names (ID -> Name)
         # Academic Year
@@ -1053,7 +1059,7 @@ def copy_subject_assignments(current_user):
         # 2. Fetch Source Assignments
         source_assignments = ClassSubjectAssignment.query.filter_by(
             academic_year=academic_year_name,
-            branch_name=source_branch_name
+            branch=source_branch_name
         ).all()
         
         if not source_assignments:
@@ -1070,7 +1076,7 @@ def copy_subject_assignments(current_user):
             # Fetch existing assignments for this target (to check duplicates)
             existing_target_assigns = ClassSubjectAssignment.query.filter_by(
                 academic_year=academic_year_name,
-                branch_name=t_branch_name
+                branch=t_branch_name
             ).all()
             
             # Create a set of existing keys: (class_id, subject_id)
@@ -1087,8 +1093,10 @@ def copy_subject_assignments(current_user):
                      class_id=src_assign.class_id,
                      subject_id=src_assign.subject_id,
                      academic_year=academic_year_name,
-                     branch_name=t_branch_name,
-                     location_name=t_location_name
+                     branch=t_branch_name,
+                     location_name=t_location_name,
+                     branch_id=t_br.id,
+                     school_id=t_br.school_id or src_assign.school_id
                  )
                  db.session.add(new_assign)
                  copied_count += 1

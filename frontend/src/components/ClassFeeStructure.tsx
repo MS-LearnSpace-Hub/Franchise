@@ -96,9 +96,6 @@ const ClassFeeStructure: React.FC = () => {
         // Auto-set location based on current branch
         let globalBranch = localStorage.getItem('currentBranch') || 'All';
 
-        if (user.role !== 'Admin' && user.branch && user.branch !== 'All' && user.branch !== 'All Branches') {
-            globalBranch = user.branch;
-        }
         setEffectiveBranch(globalBranch);
 
         const allMode = globalBranch === 'All' || globalBranch === 'All Branches';

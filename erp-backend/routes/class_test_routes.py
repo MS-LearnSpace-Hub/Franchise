@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify, current_app
 from extensions import db
-from models import ClassTest, ClassMaster, TestType, OrgMaster, Branch, User, ClassTestSubject, SubjectMaster
+from models import ClassTest, ClassMaster, ClassSection, TestType, OrgMaster, Branch, User, ClassTestSubject, SubjectMaster
 import sqlalchemy
 from datetime import datetime
 from helpers import token_required
@@ -21,8 +21,21 @@ def get_matrix():
         if not academic_year or not branch:
              return jsonify({'error': 'Missing academic_year or branch'}), 400
 
-        # Get Classes 
-        classes = ClassMaster.query.all()
+        # Resolve branch to get branch_id
+        branch_obj = Branch.query.filter_by(branch_name=branch).first()
+        if not branch_obj:
+            branch_obj = Branch.query.filter_by(branch_code=branch).first()
+
+        if not branch_obj:
+            return jsonify({'error': f'Branch not found: {branch}'}), 404
+
+        # Get Classes having sections in this branch and academic year
+        classes = db.session.query(ClassMaster).join(
+            ClassSection, ClassSection.class_id == ClassMaster.id
+        ).filter(
+            ClassSection.branch_id == branch_obj.id,
+            ClassSection.academic_year == academic_year
+        ).distinct().order_by(ClassMaster.id).all()
         
         # Get Test Types for this academic year
         # Note: TestType uses 'academic_year' string column too.
@@ -137,6 +150,14 @@ def copy_assignments(current_user):
 
 
 
+        # Resolve target branch object
+        to_br_obj = Branch.query.filter_by(branch_name=to_branch).first()
+        if not to_br_obj:
+            to_br_obj = Branch.query.filter_by(branch_code=to_branch).first()
+        
+        to_branch_id = to_br_obj.id if to_br_obj else None
+        to_school_id = to_br_obj.school_id if to_br_obj else None
+
         # Fetch source assignments
         source_assignments = ClassTest.query.filter_by(
             academic_year=academic_year,
@@ -165,7 +186,9 @@ def copy_assignments(current_user):
                     class_id=src.class_id,
                     test_id=src.test_id,
                     test_order=src.test_order,
-                    status=src.status
+                    status=src.status,
+                    branch_id=to_branch_id,
+                    school_id=to_school_id or src.school_id
                 )
                 db.session.add(new_entry)
                 count += 1

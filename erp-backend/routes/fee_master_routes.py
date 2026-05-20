@@ -43,6 +43,15 @@ def get_fee_types(current_user):
             query = query.filter(or_(FeeType.branch == h_branch, FeeType.branch == "All"))
         
     fee_types = query.all()
+    
+    from flask import g
+    print(f"DEBUG get_fee_types:")
+    print(f"h_branch: {h_branch}")
+    print(f"h_year: {h_year}")
+    print(f"g.branch_id: {getattr(g, 'branch_id', 'NOT SET')}")
+    print(f"allowed names: {allowed['names']}")
+    print(f"results count: {len(fee_types)}")
+    
     return jsonify({
     "fee_types": [fee_type_to_dict(ft) for ft in fee_types]
 }), 200
@@ -69,6 +78,22 @@ def create_fee_type(current_user):
 
     if not feetype_name:
         return jsonify({"error": "Fee Type Name is required"}), 400
+
+    # Resolve branch_id and school_id
+    branch_id = None
+    school_id = None
+    if branch and branch != "All":
+        branch_obj = Branch.query.filter_by(branch_name=branch, is_active=True).first()
+        if branch_obj:
+            branch_id = branch_obj.id
+            school_id = branch_obj.school_id
+        else:
+            from flask import g
+            branch_id = getattr(g, 'branch_id', None)
+            school_id = getattr(g, 'school_id', None)
+    else:
+        from flask import g
+        school_id = getattr(g, 'school_id', None)
         
     try:
         # Check for duplicates (Name + Branch + Year)
@@ -80,15 +105,17 @@ def create_fee_type(current_user):
             return jsonify({"error": f"Fee Type '{feetype_name}' already exists for {branch} ({academic_year})"}), 400
 
         new_ft = FeeType(
-        feetype=data.get("fee_type"),
-        category=data.get("category"),              # ✅ ADD THIS
-        feetypegroup=data.get("fee_type_group"),    # ✅ ADD THIS
-        type=type_,
-        displayname=data.get("display_name"),       # ✅ ADD THIS
-        description=description,
-        isrefundable=data.get("is_refundable", False),
-        branch=branch,
-        academic_year=academic_year
+            feetype=data.get("fee_type"),
+            category=data.get("category"),              # ✅ ADD THIS
+            feetypegroup=data.get("fee_type_group"),    # ✅ ADD THIS
+            type=type_,
+            displayname=data.get("display_name"),       # ✅ ADD THIS
+            description=description,
+            isrefundable=data.get("is_refundable", False),
+            branch=branch,
+            academic_year=academic_year,
+            branch_id=branch_id,
+            school_id=school_id
         )
 
     
@@ -304,6 +331,22 @@ def create_class_fee_structure(current_user):
                 return jsonify({"error": "Unauthorized: Only SuperAdmin can create Global/All branch fee structures"}), 403
             if branch not in allowed['names']:
                 return jsonify({"error": f"Unauthorized: branch '{branch}' is not allowed"}), 403
+
+        # Resolve branch_id and school_id
+        branch_id = None
+        school_id = None
+        if branch and branch != "All":
+            branch_obj = Branch.query.filter_by(branch_name=branch, is_active=True).first()
+            if branch_obj:
+                branch_id = branch_obj.id
+                school_id = branch_obj.school_id
+            else:
+                from flask import g
+                branch_id = getattr(g, 'branch_id', None)
+                school_id = getattr(g, 'school_id', None)
+        else:
+            from flask import g
+            school_id = getattr(g, 'school_id', None)
         
         for fee_item in data["fees"]:
             fee_id = fee_item.get("id")
@@ -343,6 +386,10 @@ def create_class_fee_structure(current_user):
                 fs.branch = branch 
                 fs.location = fee_item.get("location", fs.location)
                 fs.academic_year = academic_year 
+                if branch_id is not None:
+                    fs.branch_id = branch_id
+                if school_id is not None:
+                    fs.school_id = school_id
             else:
                 # CREATE new record
                 fs = ClassFeeStructure(
@@ -356,7 +403,9 @@ def create_class_fee_structure(current_user):
                     isnewadmission=is_new_admission,
                     feegroup=fee_group,
                     branch=branch,
-                    location=fee_item.get("location", get_default_location())
+                    location=fee_item.get("location", get_default_location()),
+                    branch_id=branch_id,
+                    school_id=school_id
                 )
                 db.session.add(fs)
             
@@ -620,8 +669,6 @@ def get_installments(current_user):
             query = query.filter_by(fee_type_id=fee_type_id)
             
         if target_branch and target_branch != "All":
-             from sqlalchemy import or_, and_
-             
              branch_loc_name = get_default_location() 
              if branch_obj := Branch.query.filter_by(branch_name=target_branch).first():
                  if loc_master := OrgMaster.query.filter_by(code=branch_obj.location_code, master_type='LOCATION').first():
@@ -873,8 +920,8 @@ def delete_installment(current_user, id):
 def copy_class_fee_structure(current_user):
     try:
         data = request.json or {}
-        source_branch_id = data.get("source_branch_id")
-        target_branch_ids = data.get("target_branch_ids", [])
+        source_branch_id = int(data.get("source_branch_id")) if data.get("source_branch_id") is not None else None
+        target_branch_ids = [int(x) for x in data.get("target_branch_ids", []) if x is not None]
         academic_year = data.get("academic_year")
         class_name = data.get("class")
         
@@ -999,7 +1046,9 @@ def copy_class_fee_structure(current_user):
                     isnewadmission=src_fee.isnewadmission,
                     feegroup=src_fee.feegroup,
                     branch=t_branch_name,
-                    location=t_location_name
+                    location=t_location_name,
+                    branch_id=t_br.id,
+                    school_id=t_br.school_id or src_fee.school_id
                 )
                 db.session.add(new_fee)
                 copied_count += 1
@@ -1026,8 +1075,8 @@ def copy_class_fee_structure(current_user):
 def copy_fee_types(current_user):
     try:
         data = request.json or {}
-        source_branch_id = data.get("source_branch_id")
-        target_branch_ids = data.get("target_branch_ids", [])
+        source_branch_id = int(data.get("source_branch_id")) if data.get("source_branch_id") is not None else None
+        target_branch_ids = [int(x) for x in data.get("target_branch_ids", []) if x is not None]
         academic_year = data.get("academic_year")
         
         if not all([source_branch_id, target_branch_ids, academic_year]):
@@ -1093,7 +1142,9 @@ def copy_fee_types(current_user):
                     isrefundable=src_ft.isrefundable,
                     description=src_ft.description,
                     branch=t_branch_name,
-                    academic_year=academic_year
+                    academic_year=academic_year,
+                    branch_id=t_br.id,
+                    school_id=t_br.school_id or src_ft.school_id
                 )
                 db.session.add(new_ft)
                 copied_count += 1
@@ -1115,8 +1166,8 @@ def copy_fee_types(current_user):
 def copy_installments(current_user):
     try:
         data = request.json or {}
-        source_branch_id = data.get("source_branch_id")
-        target_branch_ids = data.get("target_branch_ids", [])
+        source_branch_id = int(data.get("source_branch_id")) if data.get("source_branch_id") is not None else None
+        target_branch_ids = [int(x) for x in data.get("target_branch_ids", []) if x is not None]
         source_fee_type_id = data.get("source_fee_type_id")
         academic_year = data.get("academic_year")
         
@@ -1207,7 +1258,9 @@ def copy_installments(current_user):
                     fee_type_id=target_ft.id, # Link to TARGET fee type
                     branch=t_branch_name,
                     location=t_location,
-                    academic_year=academic_year
+                    academic_year=academic_year,
+                    branch_id=t_br.id,
+                    school_id=t_br.school_id or inst.school_id
                 )
                 db.session.add(new_inst)
             
@@ -1233,8 +1286,8 @@ def copy_installments(current_user):
 def copy_concessions(current_user):
     try:
         data = request.json or {}
-        source_branch_id = data.get("source_branch_id")
-        target_branch_ids = data.get("target_branch_ids", [])
+        source_branch_id = int(data.get("source_branch_id")) if data.get("source_branch_id") is not None else None
+        target_branch_ids = [int(x) for x in data.get("target_branch_ids", []) if x is not None]
         academic_year = data.get("academic_year")
         
         if not all([source_branch_id, target_branch_ids, academic_year]):
@@ -1341,7 +1394,9 @@ def copy_concessions(current_user):
                         fee_type_id=target_ft.id,
                         percentage=src_row.percentage,
                         is_percentage=src_row.is_percentage,
-                        show_in_payment=src_row.show_in_payment
+                        show_in_payment=src_row.show_in_payment,
+                        branch_id=t_br.id,
+                        school_id=t_br.school_id or src_row.school_id
                     )
                     db.session.add(new_c)
                     rows_inserted += 1

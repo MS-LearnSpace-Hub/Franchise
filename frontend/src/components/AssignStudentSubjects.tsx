@@ -43,17 +43,9 @@ const AssignStudentSubjects: React.FC = () => {
 
         if (userStr) {
             try {
-                const user = JSON.parse(userStr);
-                // Fix: If user is Admin or has 'All' access, prioritize the SELECTED branch from localStorage
-                // Otherwise use their assigned branch.
-                if (user.role === 'Admin' || user.branch === 'All' || user.branch === 'AllBranches') {
-                    const selected = localStorage.getItem("currentBranch");
-                    if (selected && selected !== "All" && selected !== "All Locations") {
-                        storedBranch = selected;
-                    }
-                } else {
-                    // Specific Branch User
-                    storedBranch = user.branch || "All";
+                const selected = localStorage.getItem("currentBranch");
+                if (selected && selected !== "All Locations") {
+                    storedBranch = selected;
                 }
             } catch (e) {
                 console.error("Error parsing user", e);

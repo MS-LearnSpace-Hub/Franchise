@@ -2,7 +2,7 @@
 from flask import Blueprint, jsonify, request, current_app
 from extensions import db
 from extensions import limiter
-from models import User, Branch, School, UserBranchAccess, PasswordResetOTP, Role
+from models import User, Branch, School, UserBranchAccess, UserSchoolAccess, PasswordResetOTP, Role
 from datetime import date, datetime, timedelta
 # pyrefly: ignore [missing-import]
 import jwt
@@ -17,6 +17,7 @@ from helpers import (
     get_user_permissions,
     has_permission,
     get_user_allowed_branches,
+    get_user_allowed_schools,
 )
  
 bp = Blueprint('auth_routes', __name__)
@@ -37,28 +38,22 @@ def _build_user_context(user):
     school_name = None
     school_logo = None
     school_theme = None
-    school_id = None
+    school_id = getattr(user, 'default_school_id', None) or getattr(user, 'school_id', None)
     branch_name = None
-    branch_id = None
+    branch_id = getattr(user, 'default_branch_id', None) or getattr(user, 'branch_id', None)
 
-    # Prefer the new FK-based approach
-    if user.branch_id:
-        branch_obj = Branch.query.get(user.branch_id)
+    # Prefer resolving branch name/details from branch_id
+    if branch_id:
+        branch_obj = Branch.query.get(branch_id)
         if branch_obj:
             branch_id = branch_obj.id
             branch_name = branch_obj.branch_name
-            # Resolve school from branch's school_id
-            if branch_obj.school_id:
-                school_obj = School.query.get(branch_obj.school_id)
-                if school_obj:
-                    school_id = school_obj.id
-                    school_name = school_obj.school_name
-                    school_logo = school_obj.logo_url
-                    school_theme = school_obj.theme_color
+            # Resolve school from branch's school_id if not already set
+            if not school_id and branch_obj.school_id:
+                school_id = branch_obj.school_id
 
-    # Fall back to user.school_id if branch didn't give us school info
-    if not school_id and user.school_id:
-        school_obj = School.query.get(user.school_id)
+    if school_id:
+        school_obj = School.query.get(school_id)
         if school_obj:
             school_id = school_obj.id
             school_name = school_obj.school_name
@@ -149,10 +144,30 @@ def login_user():
                 "branch_id": b.id,
                 "branch_code": b.branch_code,
                 "branch_name": b.branch_name,
-                "location_code": b.location_code
+                "location_code": b.location_code,
+                "school_id": b.school_id
             })
     except Exception as e:
         current_app.logger.warning("Error fetching branches for user %s: %s", username, e)
+
+    # Fetch Valid Schools
+    valid_schools = []
+    try:
+        allowed_s = get_user_allowed_schools(user)
+        if allowed_s['is_unlimited']:
+            schools = School.query.filter_by(is_active=True).all()
+        else:
+            schools = School.query.filter(School.id.in_(allowed_s['ids']), School.is_active == True).all()
+            
+        for s in schools:
+            valid_schools.append({
+                "school_id": s.id,
+                "school_code": s.school_code,
+                "school_name": s.school_name,
+                "logo_url": s.logo_url
+            })
+    except Exception as e:
+        current_app.logger.warning("Error fetching schools for user %s: %s", username, e)
 
     # Build school/branch context
     ctx = _build_user_context(user)
@@ -163,6 +178,8 @@ def login_user():
         'role': get_effective_role_name(user),
         'branch': user.branch, 
         'location': user.location,
+        'school_id': ctx["school_id"],
+        'branch_id': ctx["branch_id"],
         'exp': datetime.utcnow() + timedelta(hours=24)
     }
     
@@ -181,7 +198,126 @@ def login_user():
             "location": user.location,
             "permissions": get_user_permissions(user),
             "allowed_branches": valid_branches,
+            "allowed_schools": valid_schools,
             # New school + branch context
+            "school_id": ctx["school_id"],
+            "school_name": ctx["school_name"],
+            "school_logo": ctx["school_logo"],
+            "school_theme": ctx["school_theme"],
+            "branch_id": ctx["branch_id"],
+            "branch_name": ctx["branch_name"],
+        }
+    }), 200
+
+
+@bp.route("/api/users/switch-context", methods=["POST"])
+@token_required
+def switch_context(current_user):
+    data = request.json or {}
+    
+    if "school_id" not in data and "branch_id" not in data:
+        return jsonify({"error": "school_id or branch_id required"}), 400
+        
+    try:
+        if "school_id" in data:
+            new_school_id = data["school_id"]
+            if new_school_id is None:
+                current_user.default_school_id = None
+                current_user.default_branch_id = None  # Reset branch if school reset
+            else:
+                allowed_schools = get_user_allowed_schools(current_user)
+                if not allowed_schools['is_unlimited'] and new_school_id not in allowed_schools['ids']:
+                    return jsonify({"error": "Unauthorized school access"}), 403
+                current_user.default_school_id = new_school_id
+
+        if "branch_id" in data:
+            new_branch_id = data["branch_id"]
+            if new_branch_id is None:
+                current_user.default_branch_id = None
+            else:
+                allowed_branches = get_user_allowed_branches(current_user)
+                if not allowed_branches['is_unlimited'] and new_branch_id not in allowed_branches['ids']:
+                    return jsonify({"error": "Unauthorized branch access"}), 403
+                
+                branch_obj = Branch.query.get(new_branch_id)
+                if branch_obj:
+                    current_user.default_branch_id = new_branch_id
+                    # Auto-align school context if not explicitly set/reset
+                    if ("school_id" not in data or data["school_id"] is None) and branch_obj.school_id:
+                        current_user.default_school_id = branch_obj.school_id
+                        
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.exception("Context switch database error")
+        return jsonify({"error": str(e)}), 500
+        
+    # Re-build user context and token
+    ctx = _build_user_context(current_user)
+    
+    # Fetch dynamic list of allowed branches & schools
+    valid_branches = []
+    try:
+        allowed_b = get_user_allowed_branches(current_user)
+        if allowed_b['is_unlimited']:
+            branches = Branch.query.filter_by(is_active=True).all()
+        else:
+            branches = Branch.query.filter(Branch.id.in_(allowed_b['ids']), Branch.is_active == True).all()
+        for b in branches:
+            valid_branches.append({
+                "branch_id": b.id,
+                "branch_code": b.branch_code,
+                "branch_name": b.branch_name,
+                "location_code": b.location_code,
+                "school_id": b.school_id
+            })
+    except Exception as e:
+        current_app.logger.warning("Error fetching branches: %s", e)
+
+    valid_schools = []
+    try:
+        allowed_s = get_user_allowed_schools(current_user)
+        if allowed_s['is_unlimited']:
+            schools = School.query.filter_by(is_active=True).all()
+        else:
+            schools = School.query.filter(School.id.in_(allowed_s['ids']), School.is_active == True).all()
+        for s in schools:
+            valid_schools.append({
+                "school_id": s.id,
+                "school_code": s.school_code,
+                "school_name": s.school_name,
+                "logo_url": s.logo_url
+            })
+    except Exception as e:
+        current_app.logger.warning("Error fetching schools: %s", e)
+
+    token_payload = {
+        'user_id': current_user.user_id,
+        'username': current_user.username,
+        'role': get_effective_role_name(current_user),
+        'branch': current_user.branch, 
+        'location': current_user.location,
+        'school_id': ctx["school_id"],
+        'branch_id': ctx["branch_id"],
+        'exp': datetime.utcnow() + timedelta(hours=24)
+    }
+    
+    token = jwt.encode(token_payload, current_app.config['SECRET_KEY'], algorithm="HS256")
+    if isinstance(token, bytes):
+        token = token.decode('utf-8')
+        
+    return jsonify({
+        "message": "Context switched successfully",
+        "token": token,
+        "user": {
+            "user_id": current_user.user_id,
+            "username": current_user.username,
+            **_role_payload(current_user),
+            "branch": current_user.branch,
+            "location": current_user.location,
+            "permissions": get_user_permissions(current_user),
+            "allowed_branches": valid_branches,
+            "allowed_schools": valid_schools,
             "school_id": ctx["school_id"],
             "school_name": ctx["school_name"],
             "school_logo": ctx["school_logo"],
@@ -252,6 +388,8 @@ def list_users(current_user):
         ctx = _build_user_context(u)
         access_records = UserBranchAccess.query.filter_by(user_id=u.user_id, is_active=True).all()
         branch_ids = [r.branch_id for r in access_records]
+        school_access_records = UserSchoolAccess.query.filter_by(user_id=u.user_id, is_active=True).all()
+        school_ids = [r.school_id for r in school_access_records]
         result.append({
             "user_id": u.user_id,
             "username": u.username,
@@ -264,6 +402,7 @@ def list_users(current_user):
             "branch_name": ctx["branch_name"],
             "legacy_branch": u.branch,
             "branch_ids": branch_ids,
+            "school_ids": school_ids,
         })
 
     return jsonify({"users": result}), 200
@@ -337,6 +476,12 @@ def create_user(current_user):
                 if not new_school_id and branch_obj.school_id:
                     new_school_id = branch_obj.school_id
 
+        # Auto-assign context based on creator's context if not provided
+        if not new_school_id and current_user.school_id:
+            new_school_id = current_user.school_id
+        if not new_branch_id and current_user.branch_id:
+            new_branch_id = current_user.branch_id
+
         new_user = User(
             username=username,
             password=hash_user_password(password),
@@ -347,6 +492,8 @@ def create_user(current_user):
             branch=final_branch_name,
             school_id=new_school_id,
             branch_id=new_branch_id,
+            default_school_id=new_school_id,
+            default_branch_id=new_branch_id,
             is_active=True,
             created_by=current_user.user_id,
             updated_by=current_user.user_id
@@ -354,13 +501,37 @@ def create_user(current_user):
         db.session.add(new_user)
         db.session.flush()
 
+        # Handle School Access (UserSchoolAccess table)
+        school_ids = data.get("school_ids", [])
+        if school_ids:
+            for sid in school_ids:
+                db.session.add(UserSchoolAccess(
+                    user_id=new_user.user_id,
+                    school_id=sid,
+                    start_date=date.today(),
+                    is_active=True
+                ))
+            if not new_user.default_school_id:
+                new_user.default_school_id = school_ids[0]
+                new_user.school_id = school_ids[0]
+        elif new_school_id:
+            db.session.add(UserSchoolAccess(
+                user_id=new_user.user_id,
+                school_id=new_school_id,
+                start_date=date.today(),
+                is_active=True
+            ))
+
         # Handle Branch Access (UserBranchAccess table)
         branch_ids = data.get("branch_ids", [])
         if branch_ids:
             for bid in branch_ids:
+                br_obj = Branch.query.get(bid)
+                sch_id = br_obj.school_id if br_obj else None
                 access = UserBranchAccess(
                     user_id=new_user.user_id,
                     branch_id=bid,
+                    school_id=sch_id,
                     start_date=date.today(),
                     is_active=True
                 )
@@ -370,12 +541,17 @@ def create_user(current_user):
             first_br = Branch.query.get(branch_ids[0])
             if first_br:
                 new_user.branch_id = first_br.id
+                new_user.default_branch_id = first_br.id
                 new_user.branch = first_br.branch_name
                 new_user.school_id = first_br.school_id
+                new_user.default_school_id = first_br.school_id
         elif new_branch_id:
+            br_obj = Branch.query.get(new_branch_id)
+            sch_id = br_obj.school_id if br_obj else None
             access = UserBranchAccess(
                 user_id=new_user.user_id,
                 branch_id=new_branch_id,
+                school_id=sch_id,
                 start_date=date.today(),
                 is_active=True
             )
@@ -387,6 +563,7 @@ def create_user(current_user):
                     access = UserBranchAccess(
                         user_id=new_user.user_id,
                         branch_id=b.id,
+                        school_id=b.school_id,
                         start_date=date.today(),
                         is_active=True
                     )
@@ -400,6 +577,7 @@ def create_user(current_user):
                         access = UserBranchAccess(
                             user_id=new_user.user_id,
                             branch_id=branch_obj.id,
+                            school_id=branch_obj.school_id,
                             start_date=date.today(),
                             is_active=True
                         )
@@ -452,6 +630,20 @@ def update_user(current_user, user_id):
             user.role = new_role
             user.role_id = role_obj.id if role_obj else None
 
+    if 'school_ids' in data and current_user.role == 'SuperAdmin':
+        school_ids = data['school_ids'] or []
+        UserSchoolAccess.query.filter_by(user_id=user.user_id).delete()
+        for sid in school_ids:
+            db.session.add(UserSchoolAccess(
+                user_id=user.user_id,
+                school_id=sid,
+                start_date=date.today(),
+                is_active=True
+            ))
+        if school_ids and user.default_school_id not in school_ids:
+            user.default_school_id = school_ids[0]
+            user.school_id = school_ids[0]
+
     if 'branch_ids' in data:
         branch_ids = data['branch_ids'] or []
         # Clear existing branch access
@@ -459,20 +651,27 @@ def update_user(current_user, user_id):
 
         if branch_ids:
             for bid in branch_ids:
+                br_obj = Branch.query.get(bid)
+                sch_id = br_obj.school_id if br_obj else None
                 db.session.add(UserBranchAccess(
                     user_id=user.user_id,
                     branch_id=bid,
+                    school_id=sch_id,
                     start_date=date.today(),
                     is_active=True
                 ))
 
-            # Set primary branch to first assigned branch
+            # Set default branch to first assigned branch
             first_br = Branch.query.get(branch_ids[0])
             if first_br:
+                user.default_branch_id = first_br.id
                 user.branch_id = first_br.id
                 user.branch = first_br.branch_name
-                user.school_id = first_br.school_id
+                if first_br.school_id:
+                    user.default_school_id = first_br.school_id
+                    user.school_id = first_br.school_id
         else:
+            user.default_branch_id = None
             user.branch_id = None
             user.branch = None
 
@@ -484,9 +683,11 @@ def update_user(current_user, user_id):
                 return jsonify({"error": "Branch not found"}), 404
             if current_user.role == 'Admin' and branch_obj.school_id != current_user.school_id:
                 return jsonify({"error": "Admins can only assign branches from their own school"}), 403
+            user.default_branch_id = new_branch_id
             user.branch_id = new_branch_id
             user.branch = branch_obj.branch_name
             if branch_obj.school_id:
+                user.default_school_id = branch_obj.school_id
                 user.school_id = branch_obj.school_id
 
             # Upsert UserBranchAccess
@@ -497,14 +698,27 @@ def update_user(current_user, user_id):
                 db.session.add(UserBranchAccess(
                     user_id=user.user_id,
                     branch_id=new_branch_id,
+                    school_id=branch_obj.school_id,
                     start_date=date.today(),
                     is_active=True
                 ))
         else:
+            user.default_branch_id = None
             user.branch_id = None
+            user.branch = None
 
     if 'school_id' in data and current_user.role == 'SuperAdmin':
+        user.default_school_id = data['school_id']
         user.school_id = data['school_id']
+        if data['school_id']:
+            existing = UserSchoolAccess.query.filter_by(user_id=user.user_id, school_id=data['school_id']).first()
+            if not existing:
+                db.session.add(UserSchoolAccess(
+                    user_id=user.user_id,
+                    school_id=data['school_id'],
+                    start_date=date.today(),
+                    is_active=True
+                ))
 
     if 'useremail' in data:
         new_email = data['useremail']

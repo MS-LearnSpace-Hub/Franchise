@@ -63,27 +63,22 @@ const SetExamAttendance: React.FC = () => {
             setUserRole(user.role);
             setUserBranch(user.branch);
 
-            if (user.role === 'Admin' || user.branch === 'All' || user.branch === 'AllBranches') {
-                fetchBranches().then((fetchedBranches) => {
-                    // Auto-select current branch from localStorage if available and valid
-                    const current = localStorage.getItem('currentBranch');
+            fetchBranches().then((fetchedBranches) => {
+                // Auto-select current branch from localStorage if available and valid
+                const current = localStorage.getItem('currentBranch');
 
-                    if (current && current !== 'All' && current !== 'All Locations' && fetchedBranches) {
-                        // Check if 'current' matches a branch_code OR branch_name
-                        const matched = fetchedBranches.find((b: Branch) => b.branch_code === current || b.branch_name === current);
-                        if (matched) {
-                            setSelectedBranch(matched.branch_code);
-                        } else if (fetchedBranches.length > 0) {
-                            setSelectedBranch(fetchedBranches[0].branch_code);
-                        }
-                    } else if (fetchedBranches && fetchedBranches.length > 0) {
+                if (current && current !== 'All' && current !== 'All Locations' && fetchedBranches) {
+                    // Check if 'current' matches a branch_code OR branch_name
+                    const matched = fetchedBranches.find((b: Branch) => b.branch_code === current || b.branch_name === current);
+                    if (matched) {
+                        setSelectedBranch(matched.branch_code);
+                    } else if (fetchedBranches.length > 0) {
                         setSelectedBranch(fetchedBranches[0].branch_code);
                     }
-                });
-            } else {
-                setSelectedBranch(user.branch);
-                setBranches([{ branch_code: user.branch, branch_name: user.branch }]);
-            }
+                } else if (fetchedBranches && fetchedBranches.length > 0) {
+                    setSelectedBranch(fetchedBranches[0].branch_code);
+                }
+            });
         }
     }, []);
 

@@ -86,7 +86,7 @@ def get_matrix():
             .filter(
                 ClassSubjectAssignment.academic_year == academic_year_name,
                 ClassSubjectAssignment.class_id == class_id,
-                ClassSubjectAssignment.branch_name == branch_name,
+                ClassSubjectAssignment.branch == branch_name,
                 SubjectMaster.is_active == True
             ))                
         if academic_year_id:
@@ -336,7 +336,9 @@ def copy_assignments(current_user):
                     class_test_id=target_ct.id,
                     subject_id=item['subject_id'],
                     max_marks=item['max_marks'],
-                    subject_order=item['subject_order']
+                    subject_order=item['subject_order'],
+                    branch_id=target_ct.branch_id,
+                    school_id=target_ct.school_id
                 ))
             
             success_count += 1

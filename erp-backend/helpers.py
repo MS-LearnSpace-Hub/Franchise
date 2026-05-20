@@ -159,8 +159,22 @@ def token_required(f):
             if not current_user:
                  return jsonify({'error': 'User invalid!'}), 401
                  
-            # Store user_id in global context for AuditMixin event listener
+            # Store user_id and tenant context in global context
             g.user_id = current_user.user_id
+            
+            # Support header overrides for active switching, fallback to token data or user default
+            header_school_id = request.headers.get('X-School-ID')
+            header_branch_id = request.headers.get('X-Branch-ID')
+            
+            if header_school_id and header_school_id.lower() == 'all':
+                g.school_id = None
+            else:
+                g.school_id = int(header_school_id) if header_school_id else (data.get('school_id') or getattr(current_user, 'default_school_id', None))
+                
+            if header_branch_id and header_branch_id.lower() == 'all':
+                g.branch_id = None
+            else:
+                g.branch_id = int(header_branch_id) if header_branch_id else (data.get('branch_id') or getattr(current_user, 'default_branch_id', None))
         except jwt.ExpiredSignatureError:
             return jsonify({'error': 'Token has expired!'}), 401
         except Exception as e:
@@ -172,6 +186,48 @@ def token_required(f):
     return decorated
 
 
+def scope_query(query, model):
+    """
+    Applies multi-tenant filtering on the query based on the model's attributes
+    and the current user context (g.school_id, g.branch_id).
+    """
+    if not g or not getattr(g, 'user_id', None):
+        return query
+        
+    # Lazy import to avoid circular dependency
+    from models import User
+    user = User.query.get(g.user_id)
+    if not user:
+        return query
+        
+    role = get_effective_role_name(user)
+    if role == 'SuperAdmin':
+        # SuperAdmin has global platform access, no query scoping required
+        return query
+        
+    # Apply school_id scoping if model has school_id column
+    if hasattr(model, 'school_id'):
+        s_id = getattr(g, 'school_id', None)
+        if s_id is not None:
+            query = query.filter((model.school_id == s_id) | (model.school_id.is_(None)))
+        else:
+            allowed_schools = get_user_allowed_schools(user)
+            if not allowed_schools['is_unlimited'] and allowed_schools['ids']:
+                query = query.filter((model.school_id.in_(allowed_schools['ids'])) | (model.school_id.is_(None)))
+                
+    # Apply branch_id scoping if model has branch_id column
+    if hasattr(model, 'branch_id'):
+        b_id = getattr(g, 'branch_id', None)
+        if b_id is not None:
+            query = query.filter((model.branch_id == b_id) | (model.branch_id.is_(None)))
+        else:
+            allowed_branches = get_user_allowed_branches(user)
+            if not allowed_branches['is_unlimited'] and allowed_branches['ids']:
+                query = query.filter((model.branch_id.in_(allowed_branches['ids'])) | (model.branch_id.is_(None)))
+                
+    return query
+
+
 def is_admin_level(user):
     """Returns True for Admin and SuperAdmin — both have cross-branch data access."""
     return get_effective_role_name(user) in ('Admin', 'SuperAdmin')
@@ -181,6 +237,60 @@ def get_effective_role_name(user):
     if role_obj and getattr(role_obj, "is_active", True):
         return role_obj.name
     return getattr(user, "role", None)
+
+
+def get_user_allowed_schools(user):
+    """
+    Returns a dictionary with:
+      - 'names': set of school names the user can access
+      - 'ids': set of school IDs the user can access
+      - 'is_unlimited': True if SuperAdmin (no restriction)
+    """
+    from models import School, UserSchoolAccess
+    from datetime import date
+    
+    role = get_effective_role_name(user)
+    if role == 'SuperAdmin':
+        return {
+            'names': None,
+            'ids': None,
+            'is_unlimited': True
+        }
+        
+    # Check if there are explicit UserSchoolAccess assignments first
+    today = date.today()
+    access_records = UserSchoolAccess.query.join(School).filter(
+        UserSchoolAccess.user_id == user.user_id,
+        UserSchoolAccess.is_active == True,
+        UserSchoolAccess.start_date <= today,
+        (UserSchoolAccess.end_date.is_(None)) | (UserSchoolAccess.end_date >= today),
+        School.is_active == True
+    ).all()
+    
+    if access_records:
+        names = {r.school.school_name for r in access_records if r.school}
+        ids = {r.school_id for r in access_records}
+        return {
+            'names': names,
+            'ids': ids,
+            'is_unlimited': False
+        }
+        
+    # Fallback to user.default_school_id or user.school_id
+    names = set()
+    ids = set()
+    s_id = getattr(user, 'default_school_id', getattr(user, 'school_id', None))
+    if s_id:
+        school_obj = School.query.get(s_id)
+        if school_obj and school_obj.is_active:
+            ids.add(s_id)
+            names.add(school_obj.school_name)
+            
+    return {
+        'names': names,
+        'ids': ids,
+        'is_unlimited': False
+    }
 
 
 def get_user_allowed_branches(user):
@@ -201,7 +311,7 @@ def get_user_allowed_branches(user):
             'is_unlimited': True
         }
         
-    # Check if there are explicit UserBranchAccess assignments first
+    # 1. Explicit UserBranchAccess assignments
     today = date.today()
     access_records = UserBranchAccess.query.join(Branch).filter(
         UserBranchAccess.user_id == user.user_id,
@@ -220,28 +330,41 @@ def get_user_allowed_branches(user):
             'is_unlimited': False
         }
         
-    # Fallback: if role == 'Admin' and user has a school_id, give access to all branches of that school
-    if role == 'Admin' and user.school_id:
-        branches = Branch.query.filter_by(school_id=user.school_id, is_active=True).all()
+    # 2. Check if user has explicit UserSchoolAccess. If so, they can access all branches of those schools!
+    allowed_schools = get_user_allowed_schools(user)
+    if allowed_schools['ids']:
+        branches = Branch.query.filter(Branch.school_id.in_(allowed_schools['ids']), Branch.is_active == True).all()
+        if branches:
+            return {
+                'names': {b.branch_name for b in branches},
+                'ids': {b.id for b in branches},
+                'is_unlimited': False
+            }
+            
+    # 3. Fallback: if role == 'Admin' and user has a school_id / default_school_id, give access to all branches of that school
+    s_id = getattr(user, 'default_school_id', getattr(user, 'school_id', None))
+    if role == 'Admin' and s_id:
+        branches = Branch.query.filter_by(school_id=s_id, is_active=True).all()
         return {
             'names': {b.branch_name for b in branches},
             'ids': {b.id for b in branches},
             'is_unlimited': False
         }
         
-    # Final fallback to user's single branch / branch_id fields
+    # 4. Final fallback to user's single default branch / branch_id fields
     names = set()
     ids = set()
-    if user.branch and user.branch != 'All':
+    b_id = getattr(user, 'default_branch_id', getattr(user, 'branch_id', None))
+    if b_id:
+        b_by_id = Branch.query.filter_by(id=b_id, is_active=True).first()
+        if b_by_id:
+            ids.add(b_id)
+            names.add(b_by_id.branch_name)
+    elif user.branch and user.branch != 'All':
         b_by_name = Branch.query.filter_by(branch_name=user.branch, is_active=True).first()
         if b_by_name:
             names.add(user.branch)
             ids.add(b_by_name.id)
-    if user.branch_id:
-        b_by_id = Branch.query.filter_by(id=user.branch_id, is_active=True).first()
-        if b_by_id:
-            ids.add(user.branch_id)
-            names.add(b_by_id.branch_name)
         
     return {
         'names': names,

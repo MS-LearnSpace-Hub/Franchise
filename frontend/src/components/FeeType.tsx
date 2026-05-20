@@ -62,11 +62,6 @@ const FeeTypeManagement: React.FC = () => {
         const user = JSON.parse(localStorage.getItem('user') || '{}');
         let globalBranch = localStorage.getItem('currentBranch') || 'All';
 
-        // HARDEN: If not admin, force user branch logic
-        if (user.role !== 'Admin' && user.branch && user.branch !== 'All' && user.branch !== 'All Branches') {
-            globalBranch = user.branch;
-        }
-
         setFormData(prev => ({ ...prev, branch: globalBranch }));
         fetchFeeTypes();
 
@@ -97,12 +92,7 @@ const FeeTypeManagement: React.FC = () => {
             const data = response.data;
             const allTypes = Array.isArray(data) ? data : data.fee_types || [];
 
-            const user = JSON.parse(localStorage.getItem('user') || '{}');
             let globalBranch = localStorage.getItem('currentBranch') || 'All';
-
-            if (user.role !== 'Admin' && user.branch && user.branch !== 'All' && user.branch !== 'All Branches') {
-                globalBranch = user.branch;
-            }
 
             const filtered = globalBranch === 'All' || globalBranch === 'All Branches'
                 ? allTypes
@@ -129,12 +119,7 @@ const FeeTypeManagement: React.FC = () => {
         e.preventDefault();
 
         try {
-            const user = JSON.parse(localStorage.getItem('user') || '{}');
             let globalBranch = localStorage.getItem('currentBranch') || 'All';
-
-            if (user.role !== 'Admin' && user.branch && user.branch !== 'All' && user.branch !== 'All Branches') {
-                globalBranch = user.branch;
-            }
 
             const payload = { ...formData, branch: formData.branch || globalBranch || 'All' };
 

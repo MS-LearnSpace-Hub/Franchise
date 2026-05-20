@@ -203,7 +203,7 @@ def copy_class_structure(current_user):
     data = request.json
     try:
         class_name_raw = data.get("class_name")
-        target_branch_ids = data.get("target_branch_ids", [])
+        target_branch_ids = [int(x) for x in data.get("target_branch_ids", []) if x is not None]
         academic_year = data.get("academic_year")
         sections = data.get("sections", [])  # List of {name, strength}
 
@@ -272,6 +272,7 @@ def copy_class_structure(current_user):
                     new_sec = ClassSection(
                         class_id=class_obj.id,
                         branch_id=branch_id,
+                        school_id=branch.school_id,
                         academic_year=academic_year,
                         section_name=sec_name,
                         student_strength=strength
@@ -298,8 +299,8 @@ def copy_branch_structure(current_user):
     """
     data = request.json
     try:
-        source_branch_id = data.get("source_branch_id")
-        target_branch_ids = data.get("target_branch_ids", [])
+        source_branch_id = int(data.get("source_branch_id")) if data.get("source_branch_id") is not None else None
+        target_branch_ids = [int(x) for x in data.get("target_branch_ids", []) if x is not None]
         academic_year = data.get("academic_year")
 
         if not all([source_branch_id, target_branch_ids, academic_year]):
@@ -316,6 +317,8 @@ def copy_branch_structure(current_user):
         missing_ids = set(target_branch_ids) - retrieved_ids
         if missing_ids:
              return jsonify({"error": f"Invalid or non-existent target branch IDs: {list(missing_ids)}"}), 400
+
+        target_br_map = {tb.id: tb.school_id for tb in target_branches}
 
         # Enforce allowed branch boundaries
         allowed = get_user_allowed_branches(current_user)
@@ -364,6 +367,7 @@ def copy_branch_structure(current_user):
                     new_sec = ClassSection(
                         class_id=section.class_id,
                         branch_id=target_id,
+                        school_id=target_br_map.get(target_id) or section.school_id,
                         academic_year=academic_year,
                         section_name=section.section_name,
                         student_strength=section.student_strength

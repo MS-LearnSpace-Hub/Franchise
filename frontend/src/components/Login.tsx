@@ -45,6 +45,9 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
       localStorage.removeItem("token");
       sessionStorage.removeItem("token");
       localStorage.removeItem("currentBranch");
+      localStorage.removeItem("currentBranchId");
+      localStorage.removeItem("currentSchool");
+      localStorage.removeItem("currentSchoolId");
       localStorage.removeItem("currentLocation");
 
       const response = await axios.post(`${API_URL}/users/login`, {
