@@ -1,3 +1,4 @@
+# pyrefly: ignore [missing-import]
 from flask import Blueprint, jsonify, request
 from extensions import db, to_local_time
 from models import FeePayment, Student, StudentFee
@@ -125,7 +126,6 @@ def report_fee_today(current_user):
 
 @bp.route("/api/reports/fees/daily", methods=["GET"])
 @token_required
-def report_fee_daily(current_user):@token_required
 def report_fee_daily(current_user):
     """Get fee collection for specific date or date range"""
     h_year, err, code = require_academic_year()

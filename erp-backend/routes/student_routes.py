@@ -782,6 +782,10 @@ def upload_students_csv(current_user):
         return jsonify({"error": "Forbidden: missing permission"}), 403
     """Bulk upload students from CSV file"""
     try:
+        academic_year, err, code = require_academic_year()
+        if err:
+            return err, code
+
         if 'file' not in request.files:
             return jsonify({"error": "No file provided"}), 400
         
@@ -867,7 +871,10 @@ def upload_students_csv(current_user):
         for row_num, row in enumerate(data, start=2):
             try:
                 # Create student from CSV row
+                s_branch = row.get('branch')
                 student = Student(
+                    branch=s_branch,
+                    academic_year=academic_year,
                     admission_no=row.get('admission_no'),
                     first_name=row.get('first_name'),
                     StudentMiddleName=row.get('StudentMiddleName'),
@@ -962,7 +969,7 @@ def upload_students_csv(current_user):
                 
                 # Auto-enroll in fee structures
                 if student.clazz:
-                    auto_enroll_student_fee(student.student_id, student.clazz)
+                    auto_enroll_student_fee(student.student_id, student.clazz, year=academic_year)
                     db.session.commit() # Commit fees for this student
                 
                 students_created += 1

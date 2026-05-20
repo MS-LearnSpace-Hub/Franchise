@@ -74,6 +74,18 @@ def create_class_with_sections(current_user):
             sections_to_delete = existing_section_names - payload_section_names
             
             if sections_to_delete:
+                for del_sec in sections_to_delete:
+                    # Count active students in this section before allowing deletion
+                    occupancy = db.session.query(func.count(Student.student_id)).filter(
+                        Student.clazz == class_name,
+                        Student.section == del_sec,
+                        Student.branch == branch_obj.branch_name,
+                        Student.academic_year == academic_year,
+                        Student.status == "Active"
+                    ).scalar()
+                    if occupancy > 0:
+                        raise ValueError(f"Cannot delete section '{del_sec}' as it has {occupancy} active students.")
+
                 ClassSection.query.filter(
                     ClassSection.class_id == class_obj.id,
                     ClassSection.branch_id == branch_id,
@@ -293,13 +305,23 @@ def copy_branch_structure(current_user):
         if not all([source_branch_id, target_branch_ids, academic_year]):
             return jsonify({"error": "Missing required fields"}), 400
 
+        # Fetch and validate source branch
+        src_branch = Branch.query.get(source_branch_id)
+        if not src_branch:
+             return jsonify({"error": f"Source branch with ID {source_branch_id} not found"}), 400
+
+        # Fetch and validate target branches
+        target_branches = Branch.query.filter(Branch.id.in_(target_branch_ids)).all()
+        retrieved_ids = {tb.id for tb in target_branches}
+        missing_ids = set(target_branch_ids) - retrieved_ids
+        if missing_ids:
+             return jsonify({"error": f"Invalid or non-existent target branch IDs: {list(missing_ids)}"}), 400
+
         # Enforce allowed branch boundaries
         allowed = get_user_allowed_branches(current_user)
         if not allowed['is_unlimited']:
-             src_branch = Branch.query.get(source_branch_id)
-             if src_branch and src_branch.branch_name not in allowed['names']:
+             if src_branch.branch_name not in allowed['names']:
                  return jsonify({"error": f"Unauthorized branch access for source branch {src_branch.branch_name}"}), 403
-             target_branches = Branch.query.filter(Branch.id.in_(target_branch_ids)).all()
              for tb in target_branches:
                  if tb.branch_name not in allowed['names']:
                      return jsonify({"error": f"Unauthorized branch access for target branch {tb.branch_name}"}), 403

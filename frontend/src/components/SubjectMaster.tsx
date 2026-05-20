@@ -10,11 +10,7 @@ interface Subject {
 }
 
 const SubjectMaster: React.FC = () => {
-    // Access Control
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
-    if (user.role !== 'Admin') {
-        return <div className="p-4 text-red-500">Access Denied: Only Admins can manage subjects.</div>;
-    }
+    
 
     // Context from Storage (Shared Header State)
     const academicYear = localStorage.getItem("academicYear") || "2024-2025";

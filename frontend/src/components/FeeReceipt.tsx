@@ -251,13 +251,21 @@ const FeeReceipt: React.FC<FeeReceiptProps> = ({ onClose, receiptData }) => {
   const [branches, setBranches] = useState<any[]>([]);
 
   useEffect(() => {
+    let isMounted = true;
     api.get('/branches')
       .then(res => {
-        if (res.data.branches) {
+        if (isMounted && res.data.branches) {
           setBranches(res.data.branches);
         }
       })
-      .catch(err => console.error("Error fetching branches in receipt:", err));
+      .catch(err => {
+        if (isMounted) {
+          console.error("Error fetching branches in receipt:", err);
+        }
+      });
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const matchingBranch = branches.find(b => b.branch_name === receiptData.branch);

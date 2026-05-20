@@ -211,19 +211,26 @@ def get_user_allowed_branches(user):
         
     # Non-admin / Admin without school_id (fallback to UserBranchAccess)
     today = date.today()
-    access_records = UserBranchAccess.query.filter(
+    access_records = UserBranchAccess.query.join(Branch).filter(
         UserBranchAccess.user_id == user.user_id,
         UserBranchAccess.is_active == True,
         UserBranchAccess.start_date <= today,
-        (UserBranchAccess.end_date.is_(None)) | (UserBranchAccess.end_date >= today)
-    ).join(Branch).all()
+        (UserBranchAccess.end_date.is_(None)) | (UserBranchAccess.end_date >= today),
+        Branch.is_active == True
+    ).all()
     
     names = {r.branch.branch_name for r in access_records if r.branch}
     ids = {r.branch_id for r in access_records}
     if user.branch and user.branch != 'All':
-        names.add(user.branch)
+        b_by_name = Branch.query.filter_by(branch_name=user.branch, is_active=True).first()
+        if b_by_name:
+            names.add(user.branch)
+            ids.add(b_by_name.id)
     if user.branch_id:
-        ids.add(user.branch_id)
+        b_by_id = Branch.query.filter_by(id=user.branch_id, is_active=True).first()
+        if b_by_id:
+            ids.add(user.branch_id)
+            names.add(b_by_id.branch_name)
         
     return {
         'names': names,

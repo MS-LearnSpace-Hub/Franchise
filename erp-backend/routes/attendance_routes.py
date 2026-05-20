@@ -2,7 +2,7 @@
 from flask import Blueprint, jsonify, request
 from extensions import db, get_today, get_now, to_local_time
 from models import Student, Attendance, Branch, UserBranchAccess, StudentAcademicRecord
-from helpers import token_required, require_academic_year, student_to_dict, get_default_location, ensure_student_editable, get_user_allowed_branches
+from helpers import token_required, require_academic_year, student_to_dict, get_default_location, ensure_student_editable, get_user_allowed_branches, StudentRecordLockedError
 from datetime import datetime, date
 from sqlalchemy import or_
 from routes.config_routes import is_weekoff_or_holiday
@@ -502,6 +502,15 @@ def upload_attendance(current_user):
 
         # 1. Collect IDs and Dates
         student_ids = set([x['student_id'] for x in attendance_list])
+
+        # Validate student record editability
+        try:
+            for s_id in student_ids:
+                ensure_student_editable(s_id, h_year)
+        except StudentRecordLockedError as e:
+            return jsonify({"error": str(e)}), 403
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
         dates = set([datetime.strptime(x['date'], '%Y-%m-%d').date() for x in attendance_list])
 
         # Enforce allowed branch boundaries

@@ -269,12 +269,6 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
     }, [showCancelled]);
 
     const handleDeleteReceipt = async (receiptNo: string) => {
-        // Guard: only admins can cancel receipts
-        if (!isAdmin) {
-            alert("Access Denied: Only administrators are allowed to cancel receipts.");
-            return;
-        }
-
         if (
             !window.confirm(
                 "Are you sure you want to cancel this ENTIRE RECEIPT? This will revert all associated fee payments."
@@ -1153,25 +1147,6 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
                                 </button>
                             </div>
                         </div>
-
-                        {/* ── Admin-only notice banner ─────────────────────────────── */}
-                        {!isAdmin && (
-                            <div className="mb-3 flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-800">
-                                <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    className="h-4 w-4 shrink-0"
-                                    viewBox="0 0 20 20"
-                                    fill="currentColor"
-                                >
-                                    <path
-                                        fillRule="evenodd"
-                                        d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
-                                        clipRule="evenodd"
-                                    />
-                                </svg>
-                                Receipt cancellation is restricted to <strong className="mx-1">Administrators</strong> only.
-                            </div>
-                        )}
                         {/* ────────────────────────────────────────────────────────── */}
 
                         <table className="w-full text-sm text-left">
@@ -1263,9 +1238,6 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
                                                     </button>
 
                                                     {/* ── Cancel – ADMIN ONLY ─────────────────────────── */}
-                                                    {!isCancelled && (
-                                                        isAdmin ? (
-                                                            // Admin: active red trash button
                                                             <button
                                                                 onClick={() => handleDeleteReceipt(first.receipt_no)}
                                                                 title="Cancel Receipt"
@@ -1273,16 +1245,6 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
                                                             >
                                                                 <TrashIcon className="w-5 h-5" />
                                                             </button>
-                                                        ) : (
-                                                            // Non-admin: greyed-out, non-interactive icon with tooltip
-                                                            <span
-                                                                title="Only administrators can cancel receipts"
-                                                                className="text-gray-300 cursor-not-allowed"
-                                                            >
-                                                                <TrashIcon className="w-5 h-5" />
-                                                            </span>
-                                                        )
-                                                    )}
                                                     {/* ────────────────────────────────────────────────── */}
                                                 </div>
                                             </td>

@@ -4,7 +4,7 @@ from extensions import db, to_local_time
 from models import SubjectMaster, Branch, OrgMaster, ClassSubjectAssignment
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.sql import exists
-from helpers import token_required, ensure_student_editable, get_user_allowed_branches
+from helpers import token_required, ensure_student_editable, get_user_allowed_branches, StudentRecordLockedError
 
 bp = Blueprint("academic", __name__)
 @bp.route("/api/academic/subjects", methods=["POST"])
@@ -505,6 +505,9 @@ def manage_subject_assignment(current_user):
         class_id = data.get("class_id")
         subject_id = data.get("subject_id")
         
+        class_obj = ClassMaster.query.get(class_id)
+        current_class_name = class_obj.class_name if class_obj else None
+        
         academic_year_id = data.get("academic_year_id")
         branch_id_input = data.get("branch_id")
         
@@ -515,7 +518,7 @@ def manage_subject_assignment(current_user):
              ay = OrgMaster.query.filter_by(id=academic_year_id, master_type='ACADEMIC_YEAR').first()
              if ay:
                  academic_year_name = ay.display_name
-        
+         
         target_branches = []
         if branch_id_input == "All" or branch_id_input == -1:
              branches_objs = Branch.query.filter_by(is_active=True).all()
@@ -533,7 +536,7 @@ def manage_subject_assignment(current_user):
             for b_name in target_branches:
                 if b_name not in allowed['names']:
                     return jsonify({"error": f"Unauthorized branch: '{b_name}'"}), 403
-                 
+                  
         location_name = "Hyderabad"
 
         processed = 0
@@ -554,6 +557,22 @@ def manage_subject_assignment(current_user):
                     processed += 1
             elif action == "remove":
                  if existing:
+                     used = (
+                         db.session.query(StudentSubjectAssignment.id)
+                         .join(
+                             StudentAcademicRecord,
+                             StudentAcademicRecord.student_id == StudentSubjectAssignment.student_id
+                         )
+                         .filter(
+                             StudentSubjectAssignment.subject_id == subject_id,
+                             StudentAcademicRecord.class_name == current_class_name,
+                             StudentAcademicRecord.academic_year == academic_year_name,
+                             StudentSubjectAssignment.branch == b_name
+                         )
+                         .first()
+                     )
+                     if used:
+                          return jsonify({"error": f"Subject '{subject_id}' (Class: '{current_class_name}', Branch: '{b_name}') is assigned to students and cannot be unassigned."}), 409
                      db.session.delete(existing)
                      processed += 1
         
@@ -846,6 +865,12 @@ def save_student_subjects(current_user):
         for item in student_data:
             s_id = item.get("student_id")
             try:
+                s_obj = Student.query.get(s_id)
+                if not s_obj:
+                    return jsonify({"error": f"Student {s_id} not found"}), 404
+                if not allowed['is_unlimited'] and s_obj.branch not in allowed['names']:
+                    return jsonify({"error": f"Unauthorized branch access for student {s_id} in branch {s_obj.branch}"}), 403
+
                 # 1. Basic Editability Check (Lock/Record existence)
                 ensure_student_editable(s_id, academic_year)
                 
@@ -861,16 +886,17 @@ def save_student_subjects(current_user):
                         valid_student = True
                 else: 
                     # Check current profile if no history record for this year
-                    s_obj = Student.query.get(s_id)
-                    if s_obj and s_obj.clazz == class_id and s_obj.academic_year == academic_year:
+                    if s_obj.clazz == class_id and s_obj.academic_year == academic_year:
                         valid_student = True
                 
                 if not valid_student:
                     print(f"[WARN] Save blocked: Student {s_id} does not match context year={academic_year}, class={class_id}")
                     return jsonify({"error": f"Student {s_id} does not belong to class {class_id} in {academic_year}"}), 400
 
-            except Exception as e:
+            except StudentRecordLockedError as e:
                 return jsonify({"error": str(e)}), 403
+            except ValueError as e:
+                return jsonify({"error": str(e)}), 400
 
         count = 0
         for item in student_data:

@@ -1,6 +1,9 @@
+# pyrefly: ignore [missing-import]
 from flask import Blueprint, request, jsonify
 from datetime import datetime
+# pyrefly: ignore [missing-import]
 import mysql.connector
+# pyrefly: ignore [missing-import]
 from mysql.connector import Error 
 import os
 import logging
@@ -418,7 +421,7 @@ def get_student_report(current_user):
         cursor.execute(mapping_query, (test_id, academic_year, mapping_branch, class_id))
         mapped_months = cursor.fetchall()
         if not mapped_months:  
-    # Return empty attendance data when no months are mapped  
+            # Return empty attendance data when no months are mapped  
             monthly_attendance = []  
             total_present = 0  
             total_absent = 0  
@@ -435,35 +438,35 @@ def get_student_report(current_user):
             FROM attendance  
             WHERE student_id = %s AND academic_year = %s  
             """  
-        att_params = [student_id, academic_year]  
+            att_params = [student_id, academic_year]  
+          
+            conditions = []  
+            for m in mapped_months:  
+                conditions.append(f"(MONTH(date) = {m['month']} AND YEAR(date) = {m['year']})")  
+          
+            if conditions:  
+                attendance_query += " AND (" + " OR ".join(conditions) + ")"  
       
-        conditions = []  
-        for m in mapped_months:  
-            conditions.append(f"(MONTH(date) = {m['month']} AND YEAR(date) = {m['year']})")  
-      
-        if conditions:  
-            attendance_query += " AND (" + " OR ".join(conditions) + ")"  
-  
-        attendance_query += " GROUP BY YEAR(date), MONTH(date), MONTHNAME(date) ORDER BY YEAR(date), MONTH(date)"  
-      
-        cursor.execute(attendance_query, tuple(att_params))  
-        attendance_rows = cursor.fetchall()  
-      
-        monthly_attendance = []  
-        total_present = 0  
-        total_absent = 0  
-        total_days = 0  
-      
-        for row in attendance_rows:  
-            monthly_attendance.append({  
-                'month': row['month_name'][:3],  
-                'total': int(row['total']),  
-                'present': int(row['present']),  
-                'absent': int(row['absent'])  
-            })  
-            total_present += int(row['present'])  
-            total_absent += int(row['absent'])  
-            total_days += int(row['total'])
+            attendance_query += " GROUP BY YEAR(date), MONTH(date), MONTHNAME(date) ORDER BY YEAR(date), MONTH(date)"  
+          
+            cursor.execute(attendance_query, tuple(att_params))  
+            attendance_rows = cursor.fetchall()  
+          
+            monthly_attendance = []  
+            total_present = 0  
+            total_absent = 0  
+            total_days = 0  
+          
+            for row in attendance_rows:  
+                monthly_attendance.append({  
+                    'month': row['month_name'][:3],  
+                    'total': int(row['total']),  
+                    'present': int(row['present']),  
+                    'absent': int(row['absent'])  
+                })  
+                total_present += int(row['present'])  
+                total_absent += int(row['absent'])  
+                total_days += int(row['total'])
         
         # ========== 6. Get Student's Academic History ==========
         history_query = """

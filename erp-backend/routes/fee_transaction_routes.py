@@ -234,6 +234,15 @@ def _process_fee_allocation(alloc, student, receipt_no, payment_mode, payment_da
     if not sf or not sf.is_active:
         return Decimal(0)
 
+    # Verify student fee record matches requested student
+    if sf.student_id != student.student_id:
+        raise ValueError(f"Student fee record does not belong to student {student.student_id}")
+
+    # Enforce allowed branch boundaries
+    allowed = get_user_allowed_branches(current_user)
+    if not allowed['is_unlimited'] and student.branch not in allowed['names']:
+        raise PermissionError("Unauthorized branch access for this student fee record")
+
     sf.paid_amount = (sf.paid_amount or Decimal(0)) + amount
     sf.concession = (sf.concession or Decimal(0)) + concession_val
     
@@ -373,6 +382,12 @@ def record_fee_payment(current_user):
             "transaction_detials":transaction_details
         }), 201
     
+    except PermissionError as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 403
+    except ValueError as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 400
     except Exception as e:
         db.session.rollback()
         traceback.print_exc()
