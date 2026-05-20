@@ -28,36 +28,50 @@ def _allowed_logo(filename):
 @bp.route("/api/schools", methods=["GET"])
 @token_required
 def get_all_schools(current_user):
-    """List all schools with their branches. Admins see only their own school."""
+    """List all schools with their branches. Filters dynamically based on allowed branches."""
     try:
-        if current_user.role == 'SuperAdmin':
+        allowed = get_user_allowed_branches(current_user)
+
+        if allowed['is_unlimited']:
             schools = School.query.filter_by(is_active=True).order_by(School.id).all()
-        elif current_user.role == 'Admin' and current_user.school_id:
-            schools = School.query.filter_by(id=current_user.school_id, is_active=True).all()
         else:
-            schools = []
+            allowed_branch_ids = allowed['ids'] or set()
+            if not allowed_branch_ids:
+                schools = []
+            else:
+                schools = School.query.join(Branch).filter(
+                    School.is_active == True,
+                    Branch.id.in_(list(allowed_branch_ids)),
+                    Branch.is_active == True
+                ).distinct().order_by(School.id).all()
 
         result = []
         for s in schools:
-            branches = Branch.query.filter_by(school_id=s.id, is_active=True).all()
-            result.append({
-                "id": s.id,
-                "school_name": s.school_name,
-                "school_code": s.school_code,
-                "logo_url": s.logo_url,
-                "address": s.address,
-                "phone": s.phone,
-                "email": s.email,
-                "theme_color": s.theme_color,
-                "domain_name": s.domain_name,
-                "subscription_plan": s.subscription_plan,
-                "is_active": s.is_active,
-                "branch_count": len(branches),
-                "branches": [
-                    {"id": b.id, "branch_name": b.branch_name, "branch_code": b.branch_code}
-                    for b in branches
-                ]
-            })
+            branches_query = Branch.query.filter_by(school_id=s.id, is_active=True)
+            if not allowed['is_unlimited']:
+                allowed_branch_ids = allowed['ids'] or set()
+                branches_query = branches_query.filter(Branch.id.in_(list(allowed_branch_ids)))
+            branches = branches_query.all()
+
+            if branches or allowed['is_unlimited']:
+                result.append({
+                    "id": s.id,
+                    "school_name": s.school_name,
+                    "school_code": s.school_code,
+                    "logo_url": s.logo_url,
+                    "address": s.address,
+                    "phone": s.phone,
+                    "email": s.email,
+                    "theme_color": s.theme_color,
+                    "domain_name": s.domain_name,
+                    "subscription_plan": s.subscription_plan,
+                    "is_active": s.is_active,
+                    "branch_count": len(branches),
+                    "branches": [
+                        {"id": b.id, "branch_name": b.branch_name, "branch_code": b.branch_code}
+                        for b in branches
+                    ]
+                })
 
         return jsonify({"schools": result}), 200
     except Exception as e:

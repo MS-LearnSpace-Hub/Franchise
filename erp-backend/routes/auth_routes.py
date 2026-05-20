@@ -250,6 +250,8 @@ def list_users(current_user):
     result = []
     for u in users:
         ctx = _build_user_context(u)
+        access_records = UserBranchAccess.query.filter_by(user_id=u.user_id, is_active=True).all()
+        branch_ids = [r.branch_id for r in access_records]
         result.append({
             "user_id": u.user_id,
             "username": u.username,
@@ -261,6 +263,7 @@ def list_users(current_user):
             "branch_id": ctx["branch_id"],
             "branch_name": ctx["branch_name"],
             "legacy_branch": u.branch,
+            "branch_ids": branch_ids,
         })
 
     return jsonify({"users": result}), 200
@@ -352,7 +355,24 @@ def create_user(current_user):
         db.session.flush()
 
         # Handle Branch Access (UserBranchAccess table)
-        if new_branch_id:
+        branch_ids = data.get("branch_ids", [])
+        if branch_ids:
+            for bid in branch_ids:
+                access = UserBranchAccess(
+                    user_id=new_user.user_id,
+                    branch_id=bid,
+                    start_date=date.today(),
+                    is_active=True
+                )
+                db.session.add(access)
+
+            # Set user primary branch and school context from first branch
+            first_br = Branch.query.get(branch_ids[0])
+            if first_br:
+                new_user.branch_id = first_br.id
+                new_user.branch = first_br.branch_name
+                new_user.school_id = first_br.school_id
+        elif new_branch_id:
             access = UserBranchAccess(
                 user_id=new_user.user_id,
                 branch_id=new_branch_id,
@@ -432,7 +452,31 @@ def update_user(current_user, user_id):
             user.role = new_role
             user.role_id = role_obj.id if role_obj else None
 
-    if 'branch_id' in data:
+    if 'branch_ids' in data:
+        branch_ids = data['branch_ids'] or []
+        # Clear existing branch access
+        UserBranchAccess.query.filter_by(user_id=user.user_id).delete()
+
+        if branch_ids:
+            for bid in branch_ids:
+                db.session.add(UserBranchAccess(
+                    user_id=user.user_id,
+                    branch_id=bid,
+                    start_date=date.today(),
+                    is_active=True
+                ))
+
+            # Set primary branch to first assigned branch
+            first_br = Branch.query.get(branch_ids[0])
+            if first_br:
+                user.branch_id = first_br.id
+                user.branch = first_br.branch_name
+                user.school_id = first_br.school_id
+        else:
+            user.branch_id = None
+            user.branch = None
+
+    elif 'branch_id' in data:
         new_branch_id = data['branch_id']
         if new_branch_id:
             branch_obj = Branch.query.get(new_branch_id)

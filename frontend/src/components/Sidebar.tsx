@@ -54,7 +54,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar, navigateTo, cu
 
         <div className={`pt-4 mt-4 border-t border-gray-200 ${!isOpen && 'md:hidden'}`}>
           {/* Control Panel – Admin & SuperAdmin */}
-          {(hasPermission('system.users.management', 'read') || hasPermission('system.roles.permissions', 'read') || hasPermission('system.franchise.management', 'read')) && (
+          {(hasPermission('system.users.management', 'read') || hasPermission('system.roles.permissions', 'read') || hasPermission('system.franchise.management', 'read') || hasPermission('system.school.school-management', 'read')) && (
             <a href="#"
               onClick={(e) => { e.preventDefault(); navigateTo('control-panel'); }}
               className={`flex items-center p-2 text-sm font-medium rounded-md hover:bg-gray-100 hover:text-gray-900 ${currentPage === 'control-panel' ? 'bg-indigo-100 text-indigo-800' : 'text-gray-600'

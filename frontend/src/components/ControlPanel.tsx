@@ -52,6 +52,15 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ navigateTo }) => {
             iconColor: 'text-purple-600',
             page: 'franchise-management',
             permission: 'system.franchise.management',
+        },
+        {
+            id: 'school-management',
+            name: 'School Mgmt',
+            icon: <BuildingOfficeIcon className="w-8 h-8" />,
+            iconBg: 'bg-emerald-50',
+            iconColor: 'text-emerald-600',
+            page: 'school-management',
+            permission: 'system.school.school-management',
         }
     ];
 

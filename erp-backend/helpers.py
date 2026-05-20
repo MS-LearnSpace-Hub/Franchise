@@ -201,15 +201,7 @@ def get_user_allowed_branches(user):
             'is_unlimited': True
         }
         
-    if role == 'Admin' and user.school_id:
-        branches = Branch.query.filter_by(school_id=user.school_id, is_active=True).all()
-        return {
-            'names': {b.branch_name for b in branches},
-            'ids': {b.id for b in branches},
-            'is_unlimited': False
-        }
-        
-    # Non-admin / Admin without school_id (fallback to UserBranchAccess)
+    # Check if there are explicit UserBranchAccess assignments first
     today = date.today()
     access_records = UserBranchAccess.query.join(Branch).filter(
         UserBranchAccess.user_id == user.user_id,
@@ -219,8 +211,27 @@ def get_user_allowed_branches(user):
         Branch.is_active == True
     ).all()
     
-    names = {r.branch.branch_name for r in access_records if r.branch}
-    ids = {r.branch_id for r in access_records}
+    if access_records:
+        names = {r.branch.branch_name for r in access_records if r.branch}
+        ids = {r.branch_id for r in access_records}
+        return {
+            'names': names,
+            'ids': ids,
+            'is_unlimited': False
+        }
+        
+    # Fallback: if role == 'Admin' and user has a school_id, give access to all branches of that school
+    if role == 'Admin' and user.school_id:
+        branches = Branch.query.filter_by(school_id=user.school_id, is_active=True).all()
+        return {
+            'names': {b.branch_name for b in branches},
+            'ids': {b.id for b in branches},
+            'is_unlimited': False
+        }
+        
+    # Final fallback to user's single branch / branch_id fields
+    names = set()
+    ids = set()
     if user.branch and user.branch != 'All':
         b_by_name = Branch.query.filter_by(branch_name=user.branch, is_active=True).first()
         if b_by_name:

@@ -34,6 +34,7 @@ export type Page =
   | "user-management"
   | "role-permissions"
   | "franchise-management"
+  | "school-management"
   | "control-panel";
 
 // Inner component that can access AuthContext

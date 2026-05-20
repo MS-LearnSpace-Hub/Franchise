@@ -686,6 +686,9 @@ class SubjectMaster(db.Model, AuditMixin):
     academic_year = db.Column(db.String(20)) # New: Scope to year
     is_active = db.Column(db.Boolean, default=True) # New: Active Status
 
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
+    branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
+
 class ClassSubjectAssignment(db.Model, AuditMixin):
     __tablename__ = "classsubjectassignment"
     __audit_module__ = "ACADEMICS"

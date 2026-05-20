@@ -83,9 +83,11 @@ PERMISSION_CATALOG = [
     permission("System", "Users", "User Management", "system.users.user-management"),
     permission("System", "Roles", "Role Permissions", "system.roles.role-permissions"),
     permission("System", "Franchise", "Franchise Management", "system.franchise.franchise-management"),
+    permission("System", "School", "School Management", "system.school.school-management"),
 ]
 
 LEGACY_PERMISSION_ALIASES = {
+    "system.school.management": "system.school.school-management",
     "home.dashboard.main": "home.dashboard.dashboard",
     "academics.academic.management": "academics.academic.academic-management",
     "academics.attendance.student": "attendance.attendance.student-attendance",

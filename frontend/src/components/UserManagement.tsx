@@ -16,6 +16,7 @@ interface UserRow {
   school_name: string | null;
   branch_id: number | null;
   branch_name: string | null;
+  branch_ids?: number[];
 }
 interface RoleOption { id: number; name: string; is_active: boolean; }
 
@@ -42,7 +43,16 @@ const UserManagement: React.FC = () => {
   // Form state
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<{
+    username: string;
+    password: string;
+    useremail: string;
+    role: string;
+    role_id: string;
+    school_id: string;
+    branch_id: string;
+    branch_ids: number[];
+  }>({
     username: '',
     password: '',
     useremail: '',
@@ -50,6 +60,7 @@ const UserManagement: React.FC = () => {
     role_id: '',
     school_id: '',
     branch_id: '',
+    branch_ids: [],
   });
 
   // Filter state
@@ -115,7 +126,7 @@ const UserManagement: React.FC = () => {
 
   const resetForm = () => {
     const userRole = roles.find(r => r.name === 'User');
-    setForm({ username: '', password: '', useremail: '', role: 'User', role_id: userRole ? String(userRole.id) : '', school_id: '', branch_id: '' });
+    setForm({ username: '', password: '', useremail: '', role: 'User', role_id: userRole ? String(userRole.id) : '', school_id: '', branch_id: '', branch_ids: [] });
     setEditingId(null);
     setShowForm(false);
     setMessage(null);
@@ -135,6 +146,7 @@ const UserManagement: React.FC = () => {
       role_id: u.role_id ? String(u.role_id) : '',
       school_id: u.school_id ? String(u.school_id) : '',
       branch_id: u.branch_id ? String(u.branch_id) : '',
+      branch_ids: u.branch_ids || [],
     });
     setEditingId(u.user_id);
     setShowForm(true);
@@ -157,6 +169,7 @@ const UserManagement: React.FC = () => {
           role_id: form.role_id ? Number(form.role_id) : null,
           useremail: form.useremail,
           branch_id: form.branch_id ? Number(form.branch_id) : null,
+          branch_ids: form.branch_ids,
         };
         if (isSuperAdmin) payload.school_id = form.school_id ? Number(form.school_id) : null;
         await api.put(`/users/${editingId}`, payload);
@@ -171,13 +184,14 @@ const UserManagement: React.FC = () => {
           role_id: form.role_id ? Number(form.role_id) : undefined,
           branch_id: form.branch_id ? Number(form.branch_id) : undefined,
           school_id: form.school_id ? Number(form.school_id) : undefined,
+          branch_ids: form.branch_ids,
         };
         await api.post('/users/add', payload);
         setMessage({ type: 'success', text: 'User created successfully' });
       }
       fetchUsers();
       const userRole = roles.find(r => r.name === 'User');
-      setForm({ username: '', password: '', useremail: '', role: 'User', role_id: userRole ? String(userRole.id) : '', school_id: '', branch_id: '' });
+      setForm({ username: '', password: '', useremail: '', role: 'User', role_id: userRole ? String(userRole.id) : '', school_id: '', branch_id: '', branch_ids: [] });
       setEditingId(null);
       setShowForm(false);
       // Don't clear message here so success banner shows
@@ -364,20 +378,43 @@ const UserManagement: React.FC = () => {
                 </div>
               )}
 
-              {/* Branch */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Branch</label>
-                <select
-                  value={form.branch_id}
-                  onChange={e => setForm(f => ({ ...f, branch_id: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  id="um-branch"
-                >
-                  <option value="">-- Select Branch --</option>
-                  {filteredBranches.map(b => (
-                    <option key={b.id} value={b.id}>{b.branch_name}</option>
-                  ))}
-                </select>
+              {/* Branches (Multi-select via Checkboxes) */}
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2 font-semibold">Assigned Branches</label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 bg-slate-50 border border-gray-200 rounded-lg max-h-48 overflow-y-auto">
+                  {filteredBranches.length === 0 ? (
+                    <span className="text-gray-400 text-xs col-span-2">No branches available for the selected school</span>
+                  ) : (
+                    filteredBranches.map(b => {
+                      const isChecked = form.branch_ids.includes(b.id);
+                      return (
+                        <label key={b.id} className="flex items-center space-x-3 text-sm text-gray-700 hover:bg-slate-100 p-2 rounded cursor-pointer transition-colors">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => {
+                              setForm(f => {
+                                const newBranchIds = f.branch_ids.includes(b.id)
+                                  ? f.branch_ids.filter(id => id !== b.id)
+                                  : [...f.branch_ids, b.id];
+                                return {
+                                  ...f,
+                                  branch_ids: newBranchIds,
+                                  branch_id: newBranchIds.length > 0 ? String(newBranchIds[0]) : '',
+                                };
+                              });
+                            }}
+                            className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                          />
+                          <div className="flex flex-col">
+                            <span className="font-medium text-gray-900">{b.branch_name}</span>
+                            <span className="text-gray-400 text-xs">({b.branch_code})</span>
+                          </div>
+                        </label>
+                      );
+                    })
+                  )}
+                </div>
               </div>
             </div>
 

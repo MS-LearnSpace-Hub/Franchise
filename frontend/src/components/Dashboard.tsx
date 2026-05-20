@@ -27,6 +27,7 @@ import UserManagement from './UserManagement';
 import FranchiseManagement from './FranchiseManagement';
 import RolePermissions from './RolePermissions';
 import ControlPanel from './ControlPanel';
+import SchoolManagement from './SchoolManagement';
 import { useNavigationHistory } from '../hooks/useNavigationHistory';
 
 
@@ -90,6 +91,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
           {currentPage === 'user-management' && <UserManagement />}
           {currentPage === 'role-permissions' && <RolePermissions />}
           {currentPage === 'franchise-management' && <FranchiseManagement />}
+          {currentPage === 'school-management' && <SchoolManagement />}
           {currentPage === 'control-panel' && <ControlPanel navigateTo={navigateTo} />}
         </main>
       </div>

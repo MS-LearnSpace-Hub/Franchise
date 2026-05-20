@@ -26,11 +26,33 @@ def create_subject(current_user):
         if not academic_year:
              return jsonify({"error": "Academic Year is required"}), 400
 
-        # ✅ DUPLICATE CHECK (Scoped to Year and Type)
+        # Resolve school_id and branch_id from current_user & request headers
+        school_id = None
+        branch_id = None
+        if current_user.role != 'SuperAdmin':
+            hdr_school = request.headers.get("X-School-Id")
+            hdr_branch = request.headers.get("X-Branch")
+            
+            if hdr_school and hdr_school.isdigit():
+                school_id = int(hdr_school)
+            else:
+                school_id = current_user.school_id
+                
+            if hdr_branch and hdr_branch.isdigit():
+                branch_id = int(hdr_branch)
+            else:
+                branch_id = current_user.branch_id
+        else:
+            school_id = data.get("school_id")
+            branch_id = data.get("branch_id")
+
+        # ✅ DUPLICATE CHECK (Scoped to Year, Type, School, and Branch)
         existing = SubjectMaster.query.filter_by(
             subject_name=subject_name,
             subject_type=subject_type,
-            academic_year=academic_year
+            academic_year=academic_year,
+            school_id=school_id,
+            branch_id=branch_id
         ).first()
 
         if existing:
@@ -43,7 +65,9 @@ def create_subject(current_user):
             subject_name=subject_name,
             subject_type=subject_type,
             academic_year=academic_year,
-            is_active=is_active
+            is_active=is_active,
+            school_id=school_id,
+            branch_id=branch_id
         )
 
         db.session.add(subject)
@@ -69,7 +93,8 @@ def create_subject(current_user):
 
 
 @bp.route("/api/academic/subjects", methods=["GET"])
-def list_subjects():
+@token_required
+def list_subjects(current_user):
     try:
         academic_year = request.args.get("academic_year")
         if academic_year:
@@ -80,9 +105,23 @@ def list_subjects():
         if academic_year:
             query = query.filter(
                 (SubjectMaster.academic_year == academic_year) | 
-                (SubjectMaster.academic_year == None) # Optional: include globals if intended
+                (SubjectMaster.academic_year.is_(None))
             )
             
+        # Scope filtering
+        if current_user.role != 'SuperAdmin':
+            allowed = get_user_allowed_branches(current_user)
+            allowed_branch_ids = allowed['ids'] or set()
+            
+            if current_user.school_id:
+                branch_cond = SubjectMaster.branch_id.in_(list(allowed_branch_ids)) if allowed_branch_ids else False
+                query = query.filter(
+                    (SubjectMaster.school_id.is_(None) & SubjectMaster.branch_id.is_(None)) |
+                    ((SubjectMaster.school_id == current_user.school_id) & (SubjectMaster.branch_id.is_(None) | branch_cond))
+                )
+            else:
+                query = query.filter(SubjectMaster.school_id.is_(None) & SubjectMaster.branch_id.is_(None))
+                
         subjects = query.all()
         return jsonify([
             {
@@ -91,6 +130,8 @@ def list_subjects():
                 "subject_type": s.subject_type,
                 "academic_year": s.academic_year,
                 "is_active": s.is_active,
+                "school_id": s.school_id,
+                "branch_id": s.branch_id,
                 "created_at": to_local_time(s.created_at).isoformat() if s.created_at else None,
                 "updated_at": to_local_time(s.updated_at).isoformat() if s.updated_at else None,
                 "created_by": s.created_by,
@@ -112,6 +153,16 @@ def update_subject(current_user, subject_id):
         subject = SubjectMaster.query.get(subject_id)
         if not subject:
             return jsonify({"error": "Subject not found"}), 404
+
+        # Scope check
+        if current_user.role != 'SuperAdmin':
+            if subject.school_id is None:
+                return jsonify({"error": "Cannot modify global subjects"}), 403
+            if subject.school_id != current_user.school_id:
+                return jsonify({"error": "Unauthorized"}), 403
+            allowed = get_user_allowed_branches(current_user)
+            if subject.branch_id and subject.branch_id not in allowed['ids']:
+                return jsonify({"error": "Unauthorized"}), 403
 
         if "subject_name" in data:
             subject.subject_name = data["subject_name"].strip()
@@ -137,6 +188,16 @@ def delete_subject(current_user, subject_id):
         subject = SubjectMaster.query.get(subject_id)
         if not subject:
             return jsonify({"error": "Subject not found"}), 404
+
+        # Scope check
+        if current_user.role != 'SuperAdmin':
+            if subject.school_id is None:
+                return jsonify({"error": "Cannot delete global subjects"}), 403
+            if subject.school_id != current_user.school_id:
+                return jsonify({"error": "Unauthorized"}), 403
+            allowed = get_user_allowed_branches(current_user)
+            if subject.branch_id and subject.branch_id not in allowed['ids']:
+                return jsonify({"error": "Unauthorized"}), 403
 
         # 🔒 Check if subject is assigned to ANY class
         assigned = (
@@ -222,13 +283,13 @@ def assign_subjects(current_user):
         
         for br_obj in target_branches:
             b_name = br_obj.branch_name
-            # Check if exists (Using Names)
+            # Check if exists (Using Names & IDs)
             exists = ClassSubjectAssignment.query.filter_by(
                 class_id=class_id,
                 subject_id=subject_id,
                 academic_year=academic_year_name,
                 location_name=location_name,
-                branch_name=b_name
+                branch_id=br_obj.id
             ).first()
 
             if not exists:
@@ -237,7 +298,8 @@ def assign_subjects(current_user):
                     subject_id=subject_id,
                     academic_year=academic_year_name,
                     location_name=location_name,
-                    branch_name=b_name
+                    branch_name=b_name,
+                    branch_id=br_obj.id
                 )
                 db.session.add(new_assign)
                 assignments_created += 1
