@@ -346,7 +346,7 @@ def verify_current_password(current_user):
 @bp.route("/api/debug-user/<string:username>", methods=["GET"])
 @token_required
 def debug_user(current_user, username):
-    if current_user.role not in ('Admin', 'SuperAdmin'):
+    if get_effective_role_name(current_user) not in ('Admin', 'SuperAdmin'):
         return jsonify({"error": "Unauthorized"}), 403
     user = User.query.filter_by(username=username).first()
     if not user:
@@ -371,9 +371,10 @@ def list_users(current_user):
     if not _can_manage_users(current_user, "read"):
         return jsonify({"error": "Unauthorized"}), 403
 
+    current_role = get_effective_role_name(current_user)
     query = User.query
 
-    if current_user.role == 'Admin':
+    if current_role == 'Admin':
         # Admin can only see users in their own school
         if current_user.school_id:
             query = query.filter_by(school_id=current_user.school_id)
@@ -415,6 +416,7 @@ def create_user(current_user):
         return jsonify({"error": "Unauthorized"}), 403
 
     try:
+        current_role = get_effective_role_name(current_user)
         data = request.json
         if not data:
             return jsonify({"error": "No input data provided"}), 400
@@ -438,13 +440,18 @@ def create_user(current_user):
         if role_error:
             return jsonify({"error": role_error}), 400
         role_name = role_obj.name if role_obj else role
+        can_manage_school_assignments = has_permission(current_user, "system.school.school-management", "write")
 
         # Admins can only create non-SuperAdmin users in their own school
-        if current_user.role == 'Admin':
+        if current_role == 'Admin':
             if role_name == 'SuperAdmin':
                 return jsonify({"error": "Admins cannot create SuperAdmin users"}), 403
             if new_school_id and new_school_id != current_user.school_id:
                 return jsonify({"error": "Admins can only create users in their own school"}), 403
+            new_school_id = current_user.school_id
+        elif not can_manage_school_assignments:
+            if current_user.school_id and new_school_id and new_school_id != current_user.school_id:
+                return jsonify({"error": "Unauthorized school assignment"}), 403
             new_school_id = current_user.school_id
 
         password_error = _validate_password_strength(password)
@@ -472,6 +479,9 @@ def create_user(current_user):
         if new_branch_id:
             branch_obj = Branch.query.get(new_branch_id)
             if branch_obj:
+                allowed_branches = get_user_allowed_branches(current_user)
+                if not allowed_branches['is_unlimited'] and branch_obj.id not in (allowed_branches['ids'] or set()):
+                    return jsonify({"error": "Unauthorized branch assignment"}), 403
                 final_branch_name = branch_obj.branch_name
                 if not new_school_id and branch_obj.school_id:
                     new_school_id = branch_obj.school_id
@@ -503,6 +513,10 @@ def create_user(current_user):
 
         # Handle School Access (UserSchoolAccess table)
         school_ids = data.get("school_ids", [])
+        if school_ids and not can_manage_school_assignments:
+            if current_user.school_id and any(sid != current_user.school_id for sid in school_ids):
+                return jsonify({"error": "Unauthorized school assignment"}), 403
+            school_ids = [current_user.school_id] if current_user.school_id else []
         if school_ids:
             for sid in school_ids:
                 db.session.add(UserSchoolAccess(
@@ -524,6 +538,11 @@ def create_user(current_user):
 
         # Handle Branch Access (UserBranchAccess table)
         branch_ids = data.get("branch_ids", [])
+        allowed_branches = get_user_allowed_branches(current_user)
+        if branch_ids and not allowed_branches['is_unlimited']:
+            unauthorized = [bid for bid in branch_ids if bid not in (allowed_branches['ids'] or set())]
+            if unauthorized:
+                return jsonify({"error": "Unauthorized branch assignment"}), 403
         if branch_ids:
             for bid in branch_ids:
                 br_obj = Branch.query.get(bid)
@@ -603,7 +622,9 @@ def update_user(current_user, user_id):
         return jsonify({"error": "User not found"}), 404
 
     # Admins can only manage users within their own school
-    if current_user.role == 'Admin':
+    current_role = get_effective_role_name(current_user)
+
+    if current_role == 'Admin':
         # Admins must have a school_id to manage other users
         if not current_user.school_id:
             if user.user_id != current_user.user_id:
@@ -625,12 +646,14 @@ def update_user(current_user, user_id):
             if role_error:
                 return jsonify({"error": role_error}), 400
             new_role = role_obj.name if role_obj else new_role_name
-            if current_user.role == 'Admin' and new_role == 'SuperAdmin':
+            if current_role == 'Admin' and new_role == 'SuperAdmin':
                 return jsonify({"error": "Admins cannot assign SuperAdmin role"}), 403
             user.role = new_role
             user.role_id = role_obj.id if role_obj else None
 
-    if 'school_ids' in data and current_user.role == 'SuperAdmin':
+    can_manage_school_assignments = has_permission(current_user, "system.school.school-management", "write")
+
+    if 'school_ids' in data and can_manage_school_assignments:
         school_ids = data['school_ids'] or []
         UserSchoolAccess.query.filter_by(user_id=user.user_id).delete()
         for sid in school_ids:
@@ -646,6 +669,11 @@ def update_user(current_user, user_id):
 
     if 'branch_ids' in data:
         branch_ids = data['branch_ids'] or []
+        allowed_branches = get_user_allowed_branches(current_user)
+        if branch_ids and not allowed_branches['is_unlimited']:
+            unauthorized = [bid for bid in branch_ids if bid not in (allowed_branches['ids'] or set())]
+            if unauthorized:
+                return jsonify({"error": "Unauthorized branch assignment"}), 403
         # Clear existing branch access
         UserBranchAccess.query.filter_by(user_id=user.user_id).delete()
 
@@ -681,8 +709,11 @@ def update_user(current_user, user_id):
             branch_obj = Branch.query.get(new_branch_id)
             if not branch_obj:
                 return jsonify({"error": "Branch not found"}), 404
-            if current_user.role == 'Admin' and branch_obj.school_id != current_user.school_id:
+            if current_role == 'Admin' and branch_obj.school_id != current_user.school_id:
                 return jsonify({"error": "Admins can only assign branches from their own school"}), 403
+            allowed_branches = get_user_allowed_branches(current_user)
+            if not allowed_branches['is_unlimited'] and branch_obj.id not in (allowed_branches['ids'] or set()):
+                return jsonify({"error": "Unauthorized branch assignment"}), 403
             user.default_branch_id = new_branch_id
             user.branch_id = new_branch_id
             user.branch = branch_obj.branch_name
@@ -707,7 +738,7 @@ def update_user(current_user, user_id):
             user.branch_id = None
             user.branch = None
 
-    if 'school_id' in data and current_user.role == 'SuperAdmin':
+    if 'school_id' in data and can_manage_school_assignments:
         user.default_school_id = data['school_id']
         user.school_id = data['school_id']
         if data['school_id']:
@@ -754,7 +785,9 @@ def delete_user(current_user, user_id):
     if not user:
         return jsonify({"error": "User not found"}), 404
 
-    if current_user.role == 'Admin':
+    current_role = get_effective_role_name(current_user)
+
+    if current_role == 'Admin':
         if not current_user.school_id:
             return jsonify({"error": "Unauthorized: Admin has no school assignment"}), 403
         if user.school_id != current_user.school_id:
@@ -772,7 +805,7 @@ def delete_user(current_user, user_id):
 @bp.route("/api/setup/migrate-users", methods=["POST"])
 @token_required
 def migrate_users_to_new_system(current_user):
-    if current_user.role not in ('Admin', 'SuperAdmin'):
+    if get_effective_role_name(current_user) not in ('Admin', 'SuperAdmin'):
         return jsonify({"error": "Unauthorized"}), 403
     try:
         users = User.query.all()

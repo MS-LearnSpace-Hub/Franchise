@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import api from '../api';
+import { useAuth } from '../contexts/AuthContext';
 
 interface FeeType {
     id?: number;
@@ -21,6 +22,7 @@ interface BranchOption {
 }
 
 const FeeTypeManagement: React.FC = () => {
+    const { hasPermission } = useAuth();
     const [feeTypes, setFeeTypes] = useState<FeeType[]>([]);
     const [showForm, setShowForm] = useState(false);
     const [formData, setFormData] = useState<FeeType>({
@@ -183,6 +185,11 @@ const FeeTypeManagement: React.FC = () => {
     };
 
     const handleCopy = async () => {
+        if (!hasPermission('fees.fee.fee-type', 'write')) {
+            alert("You don't have permission to copy fee types.");
+            return;
+        }
+
         if (copyTargets.size === 0) {
             alert("Please select at least one branch to copy to.");
             return;
@@ -222,6 +229,7 @@ const FeeTypeManagement: React.FC = () => {
 
     const currentBranch = localStorage.getItem('currentBranch');
     const isSpecificBranch = currentBranch && currentBranch !== 'All' && currentBranch !== 'All Branches';
+    const canCopyFeeTypes = hasPermission('fees.fee.fee-type', 'write');
 
     return (
         <div className="container mx-auto p-6">
@@ -231,7 +239,7 @@ const FeeTypeManagement: React.FC = () => {
                     <h2 className="text-2xl font-bold text-gray-800">Fee Types</h2>
                     <div className="flex gap-2">
                         {/* Copy Button */}
-                        {isSpecificBranch && (
+                        {isSpecificBranch && canCopyFeeTypes && (
                             <div className="relative" ref={copyDropdownRef}>
                                 <button
                                     className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 flex items-center gap-2 shadow-sm"

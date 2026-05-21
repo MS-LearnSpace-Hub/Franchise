@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import api from "../api";
 import { AlertTriangle } from "lucide-react";
+import { useAuth } from "../contexts/AuthContext";
 
 interface ClassItem {
     id: number;
@@ -30,6 +31,7 @@ interface AcademicYearOption {
     name: string;
 }
 const ClassTestAssignment: React.FC = () => {
+    const { hasPermission } = useAuth();
     // --- Metadata State ---
     const [academicYears, setAcademicYears] = useState<AcademicYearOption[]>([]);
     const [branches, setBranches] = useState<BranchOption[]>([]); // Primarily to map names if needed, or unused if strictly readonly
@@ -360,6 +362,11 @@ const ClassTestAssignment: React.FC = () => {
     });
 
     const handleCopy = async () => {
+        if (!hasPermission('academics.academic.class-test-assignment', 'write')) {
+            alert("You don't have permission to copy test assignments.");
+            return;
+        }
+
         if (copyTargets.size === 0) return alert("Select target branches");
         if (!confirm(`Copy assignments to ${copyTargets.size} branches?`)) return;
 
@@ -500,6 +507,7 @@ const ClassTestAssignment: React.FC = () => {
 
             <div className="flex justify-between items-center">
                 {/* Copy Button */}
+                {hasPermission('academics.academic.class-test-assignment', 'write') && (
                 <div className="relative" ref={copyDropdownRef}>
                     <button
                         onClick={() => setIsCopyDropdownOpen(!isCopyDropdownOpen)}
@@ -545,6 +553,7 @@ const ClassTestAssignment: React.FC = () => {
                         </div>
                     )}
                 </div>
+                )}
                 <div className="flex gap-4 justify-end">
                     <button
                         onClick={() => fetchMatrix()}

@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, request
 import threading
 from extensions import db
-from helpers import token_required, get_user_permissions, has_permission
+from helpers import token_required, get_user_permissions, has_permission, get_effective_role_name
 from models import Permission, Role, RolePermission
 from permission_catalog import ACTION_KEYS, PERMISSION_CATALOG
 
@@ -11,8 +11,9 @@ _sync_lock = threading.Lock()
 
 
 def _require_admin(current_user):
+    role = get_effective_role_name(current_user)
     if (
-        current_user.role not in ("SuperAdmin", "Admin")
+        role not in ("SuperAdmin", "Admin")
         and not has_permission(current_user, "system.roles.permissions", "read")
     ):
         return jsonify({"error": "Unauthorized"}), 403
@@ -20,8 +21,9 @@ def _require_admin(current_user):
 
 
 def _require_role_listing_access(current_user):
+    role = get_effective_role_name(current_user)
     if (
-        current_user.role not in ("SuperAdmin", "Admin")
+        role not in ("SuperAdmin", "Admin")
         and not has_permission(current_user, "system.roles.permissions", "read")
         and not has_permission(current_user, "system.users.management", "read")
     ):
@@ -30,7 +32,7 @@ def _require_role_listing_access(current_user):
 
 
 def _require_superadmin(current_user):
-    if current_user.role != "SuperAdmin":
+    if get_effective_role_name(current_user) != "SuperAdmin":
         return jsonify({"error": "Unauthorized. SuperAdmin only."}), 403
     return None
 
@@ -153,7 +155,7 @@ def list_roles(current_user):
         return error
 
     query = Role.query.order_by(Role.name.asc())
-    if current_user.role != "SuperAdmin":
+    if get_effective_role_name(current_user) != "SuperAdmin":
         query = query.filter(Role.name != "SuperAdmin", Role.is_active == True)
     roles = query.all()
     return jsonify({"roles": [_role_to_dict(role) for role in roles]}), 200
@@ -202,7 +204,7 @@ def get_role(current_user, role_id):
     role = Role.query.get(role_id)
     if not role:
         return jsonify({"error": "Role not found"}), 404
-    if current_user.role != "SuperAdmin" and role.name == "SuperAdmin":
+    if get_effective_role_name(current_user) != "SuperAdmin" and role.name == "SuperAdmin":
         return jsonify({"error": "Unauthorized"}), 403
     return jsonify({"role": _role_to_dict(role, True)}), 200
 

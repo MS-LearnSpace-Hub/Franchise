@@ -187,6 +187,17 @@ def token_required(f):
                         abort(400, description="Invalid X-Branch-ID header. Must be an integer or 'all'.")
             else:
                 g.branch_id = data.get('branch_id') or getattr(current_user, 'default_branch_id', None)
+
+            role = get_effective_role_name(current_user)
+            if role != 'SuperAdmin':
+                allowed_schools = get_user_allowed_schools(current_user)
+                allowed_branches = get_user_allowed_branches(current_user)
+
+                if g.school_id is not None and g.school_id not in (allowed_schools['ids'] or set()):
+                    return jsonify({'error': 'Unauthorized school access'}), 403
+
+                if g.branch_id is not None and g.branch_id not in (allowed_branches['ids'] or set()):
+                    return jsonify({'error': 'Unauthorized branch access'}), 403
         except jwt.ExpiredSignatureError:
             return jsonify({'error': 'Token has expired!'}), 401
         except Exception as e:

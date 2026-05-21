@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import api from "../api";
+import { useAuth } from "../contexts/AuthContext";
 
 interface Option {
     id: number | string;
@@ -22,6 +23,7 @@ interface ClassItem {
 }
 
 const ClassSubjectAssignment: React.FC = () => {
+    const { hasPermission } = useAuth();
     // Dropdown Data
     const [classes, setClasses] = useState<ClassItem[]>([]);
     const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -390,6 +392,11 @@ const ClassSubjectAssignment: React.FC = () => {
     const [copying, setCopying] = useState(false);
 
     const handleCopy = async () => {
+        if (!hasPermission('academics.academic.class-subject-assignment', 'write')) {
+            alert("You don't have permission to copy class subject assignments.");
+            return;
+        }
+
         if (copyTargets.size === 0) {
             alert("Please select at least one branch to copy to.");
             return;
@@ -533,7 +540,7 @@ const ClassSubjectAssignment: React.FC = () => {
                 <div className="mt-4 flex justify-between items-center">
                     {/* Copy Section Button */}
                     <div>
-                        {selectedBranch && selectedBranch !== "All" && (
+                        {selectedBranch && selectedBranch !== "All" && hasPermission('academics.academic.class-subject-assignment', 'write') && (
                             <div className="relative" ref={copyDropdownRef}>
                                 <button
                                     className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 flex items-center gap-2"

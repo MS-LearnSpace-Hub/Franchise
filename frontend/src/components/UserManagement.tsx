@@ -29,8 +29,9 @@ const ROLE_COLORS: Record<string, string> = {
 };
 
 const UserManagement: React.FC = () => {
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, hasPermission } = useAuth();
   const isSuperAdmin = currentUser?.role === 'SuperAdmin';
+  const canManageSchools = hasPermission('system.school.school-management', 'write');
 
   // Data
   const [users, setUsers] = useState<UserRow[]>([]);
@@ -179,7 +180,7 @@ const UserManagement: React.FC = () => {
           branch_id: form.branch_id ? Number(form.branch_id) : null,
           branch_ids: form.branch_ids,
         };
-        if (isSuperAdmin) {
+        if (canManageSchools) {
           payload.school_id = form.school_id ? Number(form.school_id) : null;
           payload.school_ids = form.school_ids;
         }
@@ -250,7 +251,7 @@ const UserManagement: React.FC = () => {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">User Management</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            {isSuperAdmin ? 'Manage all users across all schools' : 'Manage users in your school'}
+            {canManageSchools ? 'Manage users across assigned schools' : 'Manage users in your school'}
           </p>
         </div>
         <button
@@ -312,7 +313,7 @@ const UserManagement: React.FC = () => {
               >
                 Roles
               </button>
-              {isSuperAdmin && (
+              {canManageSchools && (
                 <button
                   type="button"
                   onClick={() => setActiveTab('schools')}
@@ -441,7 +442,7 @@ const UserManagement: React.FC = () => {
               )}
 
               {/* TAB 3: SCHOOL ACCESS */}
-              {activeTab === 'schools' && isSuperAdmin && (
+              {activeTab === 'schools' && canManageSchools && (
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Primary School</label>
@@ -569,7 +570,7 @@ const UserManagement: React.FC = () => {
           className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           id="um-search"
         />
-        {isSuperAdmin && (
+        {canManageSchools && (
           <select
             value={filterSchool}
             onChange={e => setFilterSchool(e.target.value)}
@@ -616,7 +617,7 @@ const UserManagement: React.FC = () => {
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">#</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">User</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Role</th>
-                  {isSuperAdmin && (
+                  {canManageSchools && (
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">School</th>
                   )}
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Branch</th>
@@ -637,7 +638,7 @@ const UserManagement: React.FC = () => {
                         {u.role}
                       </span>
                     </td>
-                    {isSuperAdmin && (
+                    {canManageSchools && (
                       <td className="px-4 py-3 text-gray-600 text-xs">{u.school_name || '—'}</td>
                     )}
                     <td className="px-4 py-3 text-gray-600 text-xs">{u.branch_name || '—'}</td>

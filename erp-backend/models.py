@@ -406,7 +406,7 @@ class Concession(db.Model, AuditMixin):
     __tablename__ = "concessions"
     __audit_module__ = "FEES"
     __table_args__ = (
-        db.UniqueConstraint('title', 'branch', 'academic_year', 'fee_type_id', name='uq_concession_title_branch_year_feetype'),
+        db.UniqueConstraint('title', 'branch', 'academic_year', 'fee_type_id', 'school_id',name='uq_concession_title_branch_year_feetype'),
     )
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(100)) # e.g., "Sibling Discount"

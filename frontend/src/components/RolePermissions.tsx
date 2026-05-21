@@ -23,6 +23,12 @@ interface RolePermission {
   can_delete: boolean;
 }
 const NEW_ROLE_VALUE = 'new';
+const ACTIONS: Array<{ key: keyof Omit<RolePermission, 'permission_id'>; label: string }> = [
+  { key: 'can_read', label: 'Read' },
+  { key: 'can_write', label: 'Write' },
+  { key: 'can_append', label: 'Append' },
+  { key: 'can_delete', label: 'Delete' },
+];
 const emptyPermission = (permissionId: number): RolePermission => ({
   permission_id: permissionId,
   can_read: false,
@@ -137,6 +143,16 @@ const RolePermissions: React.FC = () => {
       }
     }));
   };
+  const togglePermissionAction = (permissionId: number, action: keyof Omit<RolePermission, 'permission_id'>, checked: boolean) => {
+    setMatrix(prev => ({
+      ...prev,
+      [permissionId]: {
+        ...(prev[permissionId] || emptyPermission(permissionId)),
+        permission_id: permissionId,
+        [action]: checked,
+      },
+    }));
+  };
   const toggleGroup = (rows: Permission[], checked: boolean) => {
     setMatrix(prev => {
       const next = { ...prev };
@@ -171,13 +187,13 @@ const RolePermissions: React.FC = () => {
       const payload = {
         ...roleForm,
         permissions: permissions.map(permission => {
-          const isChecked = isPermissionChecked(permission.id);
+          const row = matrix[permission.id] || emptyPermission(permission.id);
           return {
             permission_id: permission.id,
-            can_read: isChecked,
-            can_write: isChecked,
-            can_append: isChecked,
-            can_delete: isChecked,
+            can_read: Boolean(row.can_read),
+            can_write: Boolean(row.can_write),
+            can_append: Boolean(row.can_append),
+            can_delete: Boolean(row.can_delete),
           };
         }),
       };
@@ -282,18 +298,45 @@ const RolePermissions: React.FC = () => {
                       {group.dashboard}
                     </span>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-y-3 gap-x-6 ml-6">
+                  <div className="overflow-x-auto ml-6">
+                    <table className="min-w-full text-sm">
+                      <thead>
+                        <tr className="text-xs text-gray-500 uppercase">
+                          <th className="text-left font-semibold py-2 pr-4">Component</th>
+                          {ACTIONS.map(action => (
+                            <th key={action.key} className="text-center font-semibold py-2 px-3">{action.label}</th>
+                          ))}
+                          <th className="text-center font-semibold py-2 pl-3">All</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
                     {group.rows.map(permission => (
-                      <label key={permission.id} className="flex items-start gap-2.5 text-sm text-gray-700 cursor-pointer hover:text-gray-900">
-                        <input
-                          type="checkbox"
-                          className="w-4 h-4 mt-0.5 text-blue-600 rounded border-gray-300 focus:ring-blue-500 focus:ring-2"
-                          checked={isPermissionChecked(permission.id)}
-                          onChange={(e) => togglePermission(permission.id, e.target.checked)}
-                        />
-                        <span className="leading-snug">{permission.component}</span>
-                      </label>
+                      <tr key={permission.id}>
+                        <td className="py-2 pr-4 text-gray-700">{permission.component}</td>
+                        {ACTIONS.map(action => (
+                          <td key={action.key} className="py-2 px-3 text-center">
+                            <input
+                              type="checkbox"
+                              className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 focus:ring-2"
+                              checked={Boolean(matrix[permission.id]?.[action.key])}
+                              onChange={(e) => togglePermissionAction(permission.id, action.key, e.target.checked)}
+                              aria-label={`${permission.component} ${action.label}`}
+                            />
+                          </td>
+                        ))}
+                        <td className="py-2 pl-3 text-center">
+                          <input
+                            type="checkbox"
+                            className="w-4 h-4 text-orange-500 rounded border-gray-300 focus:ring-orange-500 focus:ring-2"
+                            checked={isPermissionChecked(permission.id)}
+                            onChange={(e) => togglePermission(permission.id, e.target.checked)}
+                            aria-label={`${permission.component} all actions`}
+                          />
+                        </td>
+                      </tr>
                     ))}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               ))}

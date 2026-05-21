@@ -4,7 +4,7 @@ from extensions import db, to_local_time
 from models import ClassMaster, ClassSection, Branch, Student, OrgMaster, User
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func
-from helpers import token_required, get_user_allowed_branches, validate_cross_branch_access
+from helpers import token_required, get_user_allowed_branches, validate_cross_branch_access, has_permission
               
 bp = Blueprint("class_routes", __name__)
 
@@ -22,6 +22,9 @@ def create_class_with_sections(current_user):
     # user_role = request.headers.get("X-Role", "Admin") 
     # if user_role != "Admin":
     #    return jsonify({"error": "Unauthorized"}), 403
+
+    if not has_permission(current_user, "setup.school-setup.classes-management", "write"):
+        return jsonify({"error": "Forbidden: missing permission"}), 403
 
     data = request.json
     try:
@@ -200,6 +203,9 @@ def copy_class_structure(current_user):
     Copies a Class structure (Class Name + Sections) to multiple target branches.
     Skips if the ClassSection already exists in the target branch.
     """
+    if not has_permission(current_user, "setup.school-setup.classes-management", "write"):
+        return jsonify({"error": "Forbidden: missing permission"}), 403
+
     data = request.json
     try:
         class_name_raw = data.get("class_name")
@@ -302,6 +308,9 @@ def copy_branch_structure(current_user):
     """
     Copies ALL classes/sections from a Source Branch to multiple Target Branches.
     """
+    if not has_permission(current_user, "setup.school-setup.classes-management", "write"):
+        return jsonify({"error": "Forbidden: missing permission"}), 403
+
     data = request.json
     try:
         source_branch_id = int(data.get("source_branch_id")) if data.get("source_branch_id") is not None else None

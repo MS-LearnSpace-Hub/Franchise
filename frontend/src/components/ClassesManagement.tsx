@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import api from '../api';
+import { useAuth } from '../contexts/AuthContext';
 
 interface Branch {
     id: number;
@@ -36,6 +37,7 @@ interface ClassesManagementProps {
 }
 
 const ClassesManagement: React.FC<ClassesManagementProps> = ({ navigateTo }) => {
+    const { hasPermission } = useAuth();
     const [viewMode, setViewMode] = useState<'list' | 'create'>('list');
     const [selectedClass, setSelectedClass] = useState<string>('all');
     const [selectedSection, setSelectedSection] = useState<string>('all');
@@ -249,6 +251,11 @@ const ClassesManagement: React.FC<ClassesManagementProps> = ({ navigateTo }) => 
     };
 
     const handleCopyBranchStructure = async () => {
+        if (!hasPermission('setup.school-setup.classes-management', 'write')) {
+            alert("You don't have permission to copy class structures.");
+            return;
+        }
+
         if (!selectedBranch || selectedBranch === 'all' || selectedBranch === '') {
             alert("Please select a specific Source Branch first (not 'All').");
             return;
@@ -299,6 +306,7 @@ const ClassesManagement: React.FC<ClassesManagementProps> = ({ navigateTo }) => 
 
     // Check Role Access
     const userRole = JSON.parse(localStorage.getItem('user') || '{}').role;
+    const canManageClasses = hasPermission('setup.school-setup.classes-management', 'write');
        // List View - First screen
     if (viewMode === 'list') {
         return (
@@ -324,15 +332,17 @@ const ClassesManagement: React.FC<ClassesManagementProps> = ({ navigateTo }) => 
                             <button className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium shadow-md">
                                 Assign Display Order
                             </button>
-                            <button
-                                onClick={() => setViewMode('create')}
-                                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium shadow-md flex items-center gap-2"
-                            >
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                                </svg>
-                                Add/Edit Class
-                            </button>
+                            {canManageClasses && (
+                                <button
+                                    onClick={() => setViewMode('create')}
+                                    className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium shadow-md flex items-center gap-2"
+                                >
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                    </svg>
+                                    Add/Edit Class
+                                </button>
+                            )}
                         </div>
                     </div>
 
@@ -470,6 +480,7 @@ const ClassesManagement: React.FC<ClassesManagementProps> = ({ navigateTo }) => 
                             <div className="flex items-center gap-2">
 
                                 {/* Copy Structure Button (Header) */}
+                                {canManageClasses && (
                                 <div className="relative" ref={copyDropdownRef}>
                                     <button
                                         onClick={() => setIsCopyDropdownOpen(!isCopyDropdownOpen)}
@@ -528,6 +539,7 @@ const ClassesManagement: React.FC<ClassesManagementProps> = ({ navigateTo }) => 
                                         </div>
                                     )}
                                 </div>
+                                )}
                             </div>
                         </div>
 

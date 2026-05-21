@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import api from "../api";
 import { Copy, Save } from "lucide-react";
 import CopySubjectTestModal from "./CopySubjectTestModal";
+import { useAuth } from "../contexts/AuthContext";
 
 interface SubjectRow {
     subject_id: number;
@@ -18,6 +19,7 @@ interface DropdownItem {
 }
 
 export default function AssignSubjectTests() {
+    const { hasPermission } = useAuth();
     /* ---------------- STATE ---------------- */
     const [filters, setFilters] = useState({
         academic_year_id: localStorage.getItem("academicYear") || "",
@@ -200,7 +202,7 @@ export default function AssignSubjectTests() {
             {/* HEADER */}
             <div className="flex justify-between items-center mb-6">
                 <h2 className="text-2xl font-bold text-gray-800">Assign Subjects to Test</h2>
-                {classTestId && (
+                {classTestId && hasPermission('academics.academic.assign-subject-tests', 'write') && (
                     <button
                         onClick={() => setIsCopyModalOpen(true)}
                         className="flex items-center space-x-2 bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 transition"

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import api from "../api";
+import { useAuth } from "../contexts/AuthContext";
 
 interface CopySubjectTestModalProps {
     isOpen: boolean;
@@ -25,6 +26,7 @@ export default function CopySubjectTestModal({
     currentClass,
     currentTest
 }: CopySubjectTestModalProps) {
+    const { hasPermission } = useAuth();
     const [copyMode, setCopyMode] = useState<"test_to_test" | "class_to_class" | "branch_to_branch">("test_to_test");
     const [options, setOptions] = useState<Option[]>([]);
     const [selectedTargets, setSelectedTargets] = useState<(string | number)[]>([]);
@@ -95,6 +97,11 @@ export default function CopySubjectTestModal({
     };
 
     const handleCopy = async () => {
+        if (!hasPermission('academics.academic.assign-subject-tests', 'write')) {
+            alert("You don't have permission to copy subject test assignments.");
+            return;
+        }
+
         if (!sourceClassTestId) return;
         if (selectedTargets.length === 0) {
             alert("Please select at least one target.");
@@ -125,7 +132,7 @@ export default function CopySubjectTestModal({
         }
     };
 
-    if (!isOpen) return null;
+    if (!isOpen || !hasPermission('academics.academic.assign-subject-tests', 'write')) return null;
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">

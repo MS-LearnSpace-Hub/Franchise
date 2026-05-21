@@ -1,3 +1,4 @@
+# pyrefly: ignore [missing-import]
 from flask import Blueprint, request, jsonify, current_app
 from extensions import db
 from models import StudentTestAssignment

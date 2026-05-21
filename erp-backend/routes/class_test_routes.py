@@ -4,7 +4,7 @@ from extensions import db
 from models import ClassTest, ClassMaster, ClassSection, TestType, OrgMaster, Branch, User, ClassTestSubject, SubjectMaster
 import sqlalchemy
 from datetime import datetime
-from helpers import token_required, validate_cross_branch_access, get_user_allowed_branches
+from helpers import token_required, validate_cross_branch_access, get_user_allowed_branches, has_permission
  
 class_test_bp = Blueprint('class_test_bp', __name__)
 
@@ -64,6 +64,9 @@ def get_matrix():
 @class_test_bp.route('/assign', methods=['POST'])
 @token_required
 def assign_test(current_user):
+    if not has_permission(current_user, "academics.academic.class-test-assignment", "write"):
+        return jsonify({"error": "Forbidden: missing permission"}), 403
+
     try:
         data = request.json
         academic_year = data.get('academic_year')
@@ -139,6 +142,9 @@ def assign_test(current_user):
 @class_test_bp.route('/copy', methods=['POST'])
 @token_required
 def copy_assignments(current_user):
+    if not has_permission(current_user, "academics.academic.class-test-assignment", "write"):
+        return jsonify({"error": "Forbidden: missing permission"}), 403
+
     try:
         data = request.json
         from_branch = data.get('from_branch')

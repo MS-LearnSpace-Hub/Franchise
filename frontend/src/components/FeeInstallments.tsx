@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import api from '../api';
+import { useAuth } from '../contexts/AuthContext';
 
 interface FeeType {
     id: number;
@@ -108,6 +109,7 @@ const BulkPreview: React.FC<{ bulkConfig: BulkConfig; MONTHS: string[] }> = ({ b
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 const FeeInstallments: React.FC = () => {
+    const { hasPermission } = useAuth();
     const [installments, setInstallments] = useState<Installment[]>([]);
     const [feeTypes, setFeeTypes] = useState<FeeType[]>([]);
     const [academicYearOptions, setAcademicYearOptions] = useState<string[]>([]);
@@ -451,6 +453,10 @@ const FeeInstallments: React.FC = () => {
     };
 
     const handleCopy = async () => {
+        if (!hasPermission('fees.fee.fee-installments', 'write')) {
+            alert("You don't have permission to copy installments.");
+            return;
+        }
         if (copyTargets.size === 0) {
             alert('Please select at least one branch to copy to.');
             return;
@@ -484,6 +490,7 @@ const FeeInstallments: React.FC = () => {
     // ── Derived Values ──────────────────────────────────────────────────────────
     const currentBranch = localStorage.getItem('currentBranch');
     const isSpecificBranch = currentBranch && currentBranch !== 'All' && currentBranch !== 'All Branches';
+    const canCopyInstallments = hasPermission('fees.fee.fee-installments', 'write');
 
     const availableBranches = allBranches.filter(
         b => String(b.id) !== String(sourceBranchId) && b.name !== 'All Branches' && b.name !== 'All'

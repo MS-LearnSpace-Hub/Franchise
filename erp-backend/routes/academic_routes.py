@@ -1009,6 +1009,9 @@ def save_student_subjects(current_user):
 @bp.route("/api/academic/copy-subject-assignments", methods=["POST"])
 @token_required
 def copy_subject_assignments(current_user):
+    if not has_permission(current_user, "academics.academic.class-subject-assignment", "write"):
+        return jsonify({"error": "Forbidden: missing permission"}), 403
+
     try:
         data = request.json
         source_branch_id = int(data.get("source_branch_id")) if data.get("source_branch_id") is not None else None

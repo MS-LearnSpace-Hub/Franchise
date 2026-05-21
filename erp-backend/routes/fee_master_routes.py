@@ -68,7 +68,7 @@ def get_fee_types(current_user):
 )
 
     return jsonify({
-    "fee_types": [fee_type_to_dict(ft) for ft in fee_types]
+    "fee_types": [fee_type_to_dict(ft) for ft in fee_types]  
     }), 200
 
 
@@ -1552,5 +1552,3 @@ def copy_concessions(current_user):
         db.session.rollback()
         print(f"[ERROR] Copy Concessions: {e}")
         return jsonify({"error": str(e)}), 500
-
-

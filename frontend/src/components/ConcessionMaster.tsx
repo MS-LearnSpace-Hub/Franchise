@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import api from '../api';
+import { useAuth } from '../contexts/AuthContext';
 
 interface FeeType {
     id: number;
@@ -31,6 +32,7 @@ interface BranchOption {
 }
 
 const ConcessionMaster: React.FC = () => {
+    const { hasPermission } = useAuth();
     const [feeTypes, setFeeTypes] = useState<FeeType[]>([]);
     const [concessions, setConcessions] = useState<ConcessionGroup[]>([]);
     const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -160,6 +162,20 @@ const ConcessionMaster: React.FC = () => {
     };
 
     const handleCopyConcessions = async () => {
+        if (!hasPermission('fees.fee.concession-master', 'write')) {
+            alert("You don't have permission to copy concessions.");
+            return;
+        }
+
+        const resolvedSourceBranchId = sourceBranchId || allBranches.find(
+            b => b.name.toLowerCase() === branch.toLowerCase()
+        )?.id;
+
+        if (!resolvedSourceBranchId) {
+            alert("Please select a specific source branch before copying.");
+            return;
+        }
+
         if (copyTargets.size === 0) {
             alert("Please select at least one branch to copy to.");
             return;
@@ -172,12 +188,22 @@ const ConcessionMaster: React.FC = () => {
         setCopying(true);
         try {
 
-            await api.post('/fees/copy-concessions', {
-                source_branch_id: sourceBranchId,
+            const response = await api.post('/fees/copy-concessions', {
+                source_branch_id: resolvedSourceBranchId,
                 target_branch_ids: Array.from(copyTargets),
                 academic_year: academicYear
             });
-            alert("Concessions copied successfully!");
+            const details = response.data?.details;
+            if (details) {
+                alert(
+                    `Concession copy completed.\n` +
+                    `Copied titles: ${details.copied_titles}\n` +
+                    `Copied fee types: ${details.copied_fee_types || 0}\n` +
+                    `Skipped existing: ${details.skipped_titles}`
+                );
+            } else {
+                alert("Concessions copied successfully!");
+            }
             setCopyTargets(new Set());
             setIsCopyDropdownOpen(false);
         } catch (error: any) {
@@ -312,7 +338,9 @@ const ConcessionMaster: React.FC = () => {
         setOriginalYear('');
         resetItems(feeTypes);
     };
-
+    const currentBranch = localStorage.getItem('currentBranch');
+    const isSpecificBranch = currentBranch && currentBranch !== 'All' && currentBranch !== 'All Branches';
+    const canCopyInstallments = hasPermission('fees.fee.', 'write');
     return (
         <div className="p-6 bg-gray-50 min-h-screen">
             <div className="max-w-4xl mx-auto space-y-8">
