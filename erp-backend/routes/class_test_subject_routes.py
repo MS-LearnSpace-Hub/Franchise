@@ -12,7 +12,7 @@ from models import (
     Branch,
     OrgMaster
 )
-from helpers import token_required
+from helpers import token_required, validate_cross_branch_access, get_user_allowed_branches
 # -------------------------------------------------
 # Blueprint
 # -------------------------------------------------
@@ -269,6 +269,28 @@ def copy_assignments(current_user):
 
         if not source_class_test_id or not target_ids:
             return jsonify({'error': 'Missing required fields'}), 400
+
+        # Centralized permission check for branch_to_branch copy mode
+        if copy_mode == 'branch_to_branch':
+            # Source: get branch from the source class_test record
+            source_ct = ClassTest.query.get(source_class_test_id)
+            source_branch_id = source_ct.branch_id if source_ct else None
+            
+            # Target: target_ids are branch IDs in this mode
+            is_valid, perm_error = validate_cross_branch_access(
+                current_user,
+                source_branch_id=source_branch_id,
+                target_branch_ids=[int(x) for x in target_ids if x is not None]
+            )
+            if not is_valid:
+                return jsonify({'error': perm_error}), 403
+        else:
+            # For test_to_test and class_to_class, validate the current branch context
+            allowed = get_user_allowed_branches(current_user)
+            if not allowed['is_unlimited'] and current_branch:
+                br_obj = Branch.query.filter_by(branch_name=current_branch).first()
+                if br_obj and br_obj.id not in (allowed['ids'] or set()):
+                    return jsonify({'error': f"Unauthorized: no access to branch '{current_branch}'"}), 403
 
 
 

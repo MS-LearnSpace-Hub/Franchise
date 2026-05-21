@@ -4,7 +4,7 @@ from extensions import db, to_local_time
 from models import ClassMaster, ClassSection, Branch, Student, OrgMaster, User
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func
-from helpers import token_required, get_user_allowed_branches
+from helpers import token_required, get_user_allowed_branches, validate_cross_branch_access
               
 bp = Blueprint("class_routes", __name__)
 
@@ -203,7 +203,7 @@ def copy_class_structure(current_user):
     data = request.json
     try:
         class_name_raw = data.get("class_name")
-        target_branch_ids = [int(x) for x in data.get("target_branch_ids", []) if x is not None]
+        target_branch_ids = list(set([int(x) for x in data.get("target_branch_ids", []) if x is not None]))
         academic_year = data.get("academic_year")
         sections = data.get("sections", [])  # List of {name, strength}
 
@@ -213,13 +213,13 @@ def copy_class_structure(current_user):
         if not sections:
             return jsonify({"error": "At least one section is required to copy"}), 400
 
-        # Enforce allowed branch boundaries
-        allowed = get_user_allowed_branches(current_user)
-        if not allowed['is_unlimited']:
-             target_branches = Branch.query.filter(Branch.id.in_(target_branch_ids)).all()
-             for tb in target_branches:
-                 if tb.branch_name not in allowed['names']:
-                     return jsonify({"error": f"Unauthorized branch access for branch {tb.branch_name}"}), 403
+        # Centralized permission check for target branches
+        is_valid, perm_error = validate_cross_branch_access(
+            current_user,
+            target_branch_ids=target_branch_ids
+        )
+        if not is_valid:
+            return jsonify({"error": perm_error}), 403
 
         class_name = class_name_raw.strip()
         
@@ -256,29 +256,34 @@ def copy_class_structure(current_user):
                     if not sec_name:
                         continue
 
-                    # Check if exists
-                    existing_sec = ClassSection.query.filter_by(
-                        class_id=class_obj.id,
-                        branch_id=branch_id,
-                        academic_year=academic_year,
-                        section_name=sec_name
-                    ).first()
+                    try:
+                        with db.session.begin_nested():
+                            # Check if exists
+                            existing_sec = ClassSection.query.filter_by(
+                                class_id=class_obj.id,
+                                branch_id=branch_id,
+                                academic_year=academic_year,
+                                section_name=sec_name
+                            ).first()
 
-                    if existing_sec:
+                            if existing_sec:
+                                skipped_count += 1
+                                continue # Skip existing
+                            
+                            # Create new section for this branch
+                            new_sec = ClassSection(
+                                class_id=class_obj.id,
+                                branch_id=branch_id,
+                                school_id=branch.school_id,
+                                academic_year=academic_year,
+                                section_name=sec_name,
+                                student_strength=strength
+                            )
+                            db.session.add(new_sec)
+                            db.session.flush()
+                            total_copied += 1
+                    except IntegrityError:
                         skipped_count += 1
-                        continue # Skip existing
-                    
-                    # Create new section for this branch
-                    new_sec = ClassSection(
-                        class_id=class_obj.id,
-                        branch_id=branch_id,
-                        school_id=branch.school_id,
-                        academic_year=academic_year,
-                        section_name=sec_name,
-                        student_strength=strength
-                    )
-                    db.session.add(new_sec)
-                    total_copied += 1
 
         return jsonify({
             "message": "Copy operation completed",
@@ -300,7 +305,7 @@ def copy_branch_structure(current_user):
     data = request.json
     try:
         source_branch_id = int(data.get("source_branch_id")) if data.get("source_branch_id") is not None else None
-        target_branch_ids = [int(x) for x in data.get("target_branch_ids", []) if x is not None]
+        target_branch_ids = list(set([int(x) for x in data.get("target_branch_ids", []) if x is not None]))
         academic_year = data.get("academic_year")
 
         if not all([source_branch_id, target_branch_ids, academic_year]):
@@ -324,14 +329,14 @@ def copy_branch_structure(current_user):
 
         target_br_map = {tb.id: tb.school_id for tb in target_branches}
 
-        # Enforce allowed branch boundaries
-        allowed = get_user_allowed_branches(current_user)
-        if not allowed['is_unlimited']:
-             if src_branch.branch_name not in allowed['names']:
-                 return jsonify({"error": f"Unauthorized branch access for source branch {src_branch.branch_name}"}), 403
-             for tb in target_branches:
-                 if tb.branch_name not in allowed['names']:
-                     return jsonify({"error": f"Unauthorized branch access for target branch {tb.branch_name}"}), 403
+        # Centralized permission check for source + target branches
+        is_valid, perm_error = validate_cross_branch_access(
+            current_user,
+            source_branch_id=source_branch_id,
+            target_branch_ids=target_branch_ids
+        )
+        if not is_valid:
+            return jsonify({"error": perm_error}), 403
 
         # 1. Fetch Source Sections
         # We need ClassMaster info too
@@ -359,29 +364,34 @@ def copy_branch_structure(current_user):
                     return jsonify({"error": f"Target branch {target_id} does not have a valid school_id"}), 400
 
                 for section, class_master in source_sections:
-                    # Check if exists in target
-                    existing = ClassSection.query.filter_by(
-                        class_id=section.class_id, # Same ClassMaster ID (Global)
-                        branch_id=target_id,
-                        academic_year=academic_year,
-                        section_name=section.section_name
-                    ).first()
+                    try:
+                        with db.session.begin_nested():
+                            # Check if exists in target
+                            existing = ClassSection.query.filter_by(
+                                class_id=section.class_id, # Same ClassMaster ID (Global)
+                                branch_id=target_id,
+                                academic_year=academic_year,
+                                section_name=section.section_name
+                            ).first()
 
-                    if existing:
+                            if existing:
+                                skipped_count += 1
+                                continue
+                            
+                            # Create Copy
+                            new_sec = ClassSection(
+                                class_id=section.class_id,
+                                branch_id=target_id,
+                                school_id=target_school_id,
+                                academic_year=academic_year,
+                                section_name=section.section_name,
+                                student_strength=section.student_strength
+                            )
+                            db.session.add(new_sec)
+                            db.session.flush()
+                            total_copied += 1
+                    except IntegrityError:
                         skipped_count += 1
-                        continue
-                    
-                    # Create Copy
-                    new_sec = ClassSection(
-                        class_id=section.class_id,
-                        branch_id=target_id,
-                        school_id=target_school_id,
-                        academic_year=academic_year,
-                        section_name=section.section_name,
-                        student_strength=section.student_strength
-                    )
-                    db.session.add(new_sec)
-                    total_copied += 1
             
             db.session.commit()
 

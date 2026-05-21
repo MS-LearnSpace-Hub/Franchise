@@ -4,7 +4,9 @@ from extensions import db, to_local_time
 from models import SubjectMaster, Branch, OrgMaster, ClassSubjectAssignment
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.sql import exists
-from helpers import token_required, ensure_student_editable, get_user_allowed_branches, StudentRecordLockedError, has_permission
+from helpers import (token_required, ensure_student_editable, get_user_allowed_branches,
+                     StudentRecordLockedError, has_permission, resolve_user_scope,
+                     can_manage_global, validate_cross_branch_access)
 
 bp = Blueprint("academic", __name__)
 @bp.route("/api/academic/subjects", methods=["POST"])
@@ -28,25 +30,17 @@ def create_subject(current_user):
         if not academic_year:
              return jsonify({"error": "Academic Year is required"}), 400
 
-        # Resolve school_id and branch_id from current_user & request headers
-        school_id = None
-        branch_id = None
-        if current_user.role != 'SuperAdmin':
-            hdr_school = request.headers.get("X-School-Id")
-            hdr_branch = request.headers.get("X-Branch")
-            
-            if hdr_school and hdr_school.isdigit():
-                school_id = int(hdr_school)
-            else:
-                school_id = current_user.school_id
-                
-            if hdr_branch and hdr_branch.isdigit():
-                branch_id = int(hdr_branch)
-            else:
-                branch_id = current_user.branch_id
-        else:
-            school_id = data.get("school_id")
-            branch_id = data.get("branch_id")
+        # Resolve school_id and branch_id — works for ALL roles via headers + permissions
+        scope = resolve_user_scope(current_user)
+        school_id = data.get("school_id") or scope['school_id']
+        branch_id = data.get("branch_id") or scope['branch_id']
+
+        # Validate the resolved IDs are within user's allowed scope
+        if not scope['is_unlimited']:
+            if school_id and scope['allowed_school_ids'] and school_id not in scope['allowed_school_ids']:
+                return jsonify({"error": "Unauthorized school access"}), 403
+            if branch_id and scope['allowed_branch_ids'] and branch_id not in scope['allowed_branch_ids']:
+                return jsonify({"error": "Unauthorized branch access"}), 403
 
         # ✅ DUPLICATE CHECK (Scoped to Year, Type, School, and Branch)
         existing = SubjectMaster.query.filter_by(
@@ -112,22 +106,23 @@ def list_subjects(current_user):
                 (SubjectMaster.academic_year.is_(None))
             )
             
-        # Scope filtering
-        if current_user.role != 'SuperAdmin':
-            allowed = get_user_allowed_branches(current_user)
-            allowed_branch_ids = allowed['ids'] or set()
+        # Scope filtering — works for all roles via allowed branches
+        scope = resolve_user_scope(current_user)
+        if not scope['is_unlimited']:
+            allowed_branch_ids = scope['allowed_branch_ids'] or set()
+            effective_school_id = scope['school_id']
             
-            if current_user.school_id:
+            if effective_school_id:
                 if allowed_branch_ids:
                     branch_cond = SubjectMaster.branch_id.in_(list(allowed_branch_ids))
                     query = query.filter(
                         (SubjectMaster.school_id.is_(None) & SubjectMaster.branch_id.is_(None)) |
-                        ((SubjectMaster.school_id == current_user.school_id) & (SubjectMaster.branch_id.is_(None) | branch_cond))
+                        ((SubjectMaster.school_id == effective_school_id) & (SubjectMaster.branch_id.is_(None) | branch_cond))
                     )
                 else:
                     query = query.filter(
                         (SubjectMaster.school_id.is_(None) & SubjectMaster.branch_id.is_(None)) |
-                        ((SubjectMaster.school_id == current_user.school_id) & SubjectMaster.branch_id.is_(None))
+                        ((SubjectMaster.school_id == effective_school_id) & SubjectMaster.branch_id.is_(None))
                     )
             else:
                 query = query.filter(SubjectMaster.school_id.is_(None) & SubjectMaster.branch_id.is_(None))
@@ -166,14 +161,14 @@ def update_subject(current_user, subject_id):
         if not subject:
             return jsonify({"error": "Subject not found"}), 404
 
-        # Scope check
-        if current_user.role != 'SuperAdmin':
-            if subject.school_id is None:
-                return jsonify({"error": "Cannot modify global subjects"}), 403
-            if subject.school_id != current_user.school_id:
+        # Scope check — works for all roles via permissions
+        scope = resolve_user_scope(current_user)
+        if not scope['is_unlimited']:
+            if subject.school_id is None and not can_manage_global(current_user):
+                return jsonify({"error": "Cannot modify global subjects without franchise management permission"}), 403
+            if subject.school_id and scope['allowed_school_ids'] and subject.school_id not in scope['allowed_school_ids']:
                 return jsonify({"error": "Unauthorized"}), 403
-            allowed = get_user_allowed_branches(current_user)
-            if subject.branch_id and subject.branch_id not in allowed['ids']:
+            if subject.branch_id and scope['allowed_branch_ids'] and subject.branch_id not in scope['allowed_branch_ids']:
                 return jsonify({"error": "Unauthorized"}), 403
 
         if "subject_name" in data:
@@ -203,14 +198,14 @@ def delete_subject(current_user, subject_id):
         if not subject:
             return jsonify({"error": "Subject not found"}), 404
 
-        # Scope check
-        if current_user.role != 'SuperAdmin':
-            if subject.school_id is None:
-                return jsonify({"error": "Cannot delete global subjects"}), 403
-            if subject.school_id != current_user.school_id:
+        # Scope check — works for all roles via permissions
+        scope = resolve_user_scope(current_user)
+        if not scope['is_unlimited']:
+            if subject.school_id is None and not can_manage_global(current_user):
+                return jsonify({"error": "Cannot delete global subjects without franchise management permission"}), 403
+            if subject.school_id and scope['allowed_school_ids'] and subject.school_id not in scope['allowed_school_ids']:
                 return jsonify({"error": "Unauthorized"}), 403
-            allowed = get_user_allowed_branches(current_user)
-            if subject.branch_id and subject.branch_id not in allowed['ids']:
+            if subject.branch_id and scope['allowed_branch_ids'] and subject.branch_id not in scope['allowed_branch_ids']:
                 return jsonify({"error": "Unauthorized"}), 403
 
         # 🔒 Check if subject is assigned to ANY class
@@ -1047,14 +1042,14 @@ def copy_subject_assignments(current_user):
         # Target Branches (Fetch all to get names and locations)
         target_branches = Branch.query.filter(Branch.id.in_(target_branch_ids)).all()
 
-        # Check permissions
-        allowed = get_user_allowed_branches(current_user)
-        if not allowed['is_unlimited']:
-            if source_branch_name not in allowed['names']:
-                return jsonify({"error": f"Unauthorized access to source branch: '{source_branch_name}'"}), 403
-            for t_br in target_branches:
-                if t_br.branch_name not in allowed['names']:
-                    return jsonify({"error": f"Unauthorized access to target branch: '{t_br.branch_name}'"}), 403
+        # Centralized permission check for source + target branches
+        is_valid, perm_error = validate_cross_branch_access(
+            current_user,
+            source_branch_id=source_branch_id,
+            target_branch_ids=target_branch_ids
+        )
+        if not is_valid:
+            return jsonify({"error": perm_error}), 403
         
         # Location Helper (if needed, but ClassSubjectAssignment stores location_name)
         # We should use the target branch's location.

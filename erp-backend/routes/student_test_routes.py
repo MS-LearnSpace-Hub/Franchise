@@ -148,10 +148,11 @@ def save_assignments(current_user):
             else:
                 if branch in ("All", "All Locations", "All Branches"):
                     student_obj = Student.query.get(student_id)
-                    actual_branch = student_obj.branch if student_obj else "All"
+                    if not student_obj:
+                        raise ValueError(f"Student {student_id} not found")
+                    actual_branch = student_obj.branch
                 else:
-                    actual_branch = branch
-                    
+                    actual_branch = branch                    
                 new_assign = StudentTestAssignment(
                     student_id=student_id,
                     class_test_id=class_test_id,

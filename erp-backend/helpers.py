@@ -471,6 +471,154 @@ def permission_required(permission_code, action="read"):
         return wrapper
     return decorator
 
+def validate_cross_branch_access(user, source_branch_id=None, target_branch_ids=None,
+                                   source_school_id=None, target_school_ids=None):
+    """
+    Centralized access validation for cross-branch/cross-school operations.
+    Works identically for SuperAdmin and multi-branch users — the permission
+    scope is determined by UserBranchAccess / UserSchoolAccess, NOT by role name.
+
+    Returns: (is_valid: bool, error_message: str | None)
+    """
+    allowed_branches = get_user_allowed_branches(user)
+    allowed_schools = get_user_allowed_schools(user)
+
+    # Unlimited users (SuperAdmin or users with full access) pass automatically
+    if allowed_branches['is_unlimited']:
+        return True, None
+
+    # Validate source branch access
+    if source_branch_id:
+        source_br = Branch.query.get(source_branch_id)
+        if not source_br:
+            return False, f"Source branch ID {source_branch_id} not found"
+        if source_br.id not in (allowed_branches['ids'] or set()):
+            return False, f"Unauthorized: no access to source branch '{source_br.branch_name}'"
+
+    # Validate target branch access
+    if target_branch_ids:
+        for t_id in target_branch_ids:
+            t_br = Branch.query.get(t_id)
+            if not t_br:
+                return False, f"Target branch ID {t_id} not found"
+            if t_br.id not in (allowed_branches['ids'] or set()):
+                return False, f"Unauthorized: no access to target branch '{t_br.branch_name}'"
+
+    # Validate school access (if provided)
+    if not allowed_schools['is_unlimited']:
+        if source_school_id and source_school_id not in (allowed_schools['ids'] or set()):
+            return False, "Unauthorized: no access to source school"
+        if target_school_ids:
+            for s_id in target_school_ids:
+                if s_id not in (allowed_schools['ids'] or set()):
+                    return False, f"Unauthorized: no access to target school ID {s_id}"
+
+    return True, None
+
+
+def resolve_user_scope(user):
+    """
+    Resolve school_id and branch_id for the current user context.
+    Replaces all ``if current_user.role != 'SuperAdmin'`` scope resolution blocks.
+    Uses header overrides (X-School-ID, X-Branch-ID, X-Branch) with fallbacks
+    to user defaults, then validates against allowed scope.
+
+    Returns dict:
+        school_id, branch_id          – effective single IDs for this request
+        allowed_school_ids, allowed_branch_ids – full sets the user may access
+        is_unlimited                   – True when no scoping needed
+    """
+    allowed_schools = get_user_allowed_schools(user)
+    allowed_branches = get_user_allowed_branches(user)
+
+    # Read from request headers
+    header_school_id = None
+    header_branch_id = None
+    header_branch_name = None
+
+    raw_school = request.headers.get('X-School-ID')
+    if raw_school and raw_school.isdigit():
+        header_school_id = int(raw_school)
+
+    raw_branch = request.headers.get('X-Branch-ID')
+    if raw_branch and raw_branch.isdigit():
+        header_branch_id = int(raw_branch)
+
+    header_branch_name = request.headers.get('X-Branch')
+
+    # Resolve branch_id from branch name if numeric ID not available
+    if header_branch_name and not header_branch_id and header_branch_name != 'All':
+        br = Branch.query.filter_by(branch_name=header_branch_name, is_active=True).first()
+        if br:
+            header_branch_id = br.id
+
+    # Determine effective scope
+    school_id = (header_school_id
+                 or getattr(user, 'default_school_id', None)
+                 or getattr(user, 'school_id', None))
+    branch_id = (header_branch_id
+                 or getattr(user, 'default_branch_id', None)
+                 or getattr(user, 'branch_id', None))
+
+    # Security: ensure resolved IDs are within allowed scope
+    if not allowed_schools['is_unlimited'] and school_id:
+        if school_id not in (allowed_schools['ids'] or set()):
+            school_id = next(iter(allowed_schools['ids'])) if allowed_schools['ids'] else None
+
+    if not allowed_branches['is_unlimited'] and branch_id:
+        if branch_id not in (allowed_branches['ids'] or set()):
+            branch_id = next(iter(allowed_branches['ids'])) if allowed_branches['ids'] else None
+
+    return {
+        'school_id': school_id,
+        'branch_id': branch_id,
+        'allowed_school_ids': allowed_schools['ids'],
+        'allowed_branch_ids': allowed_branches['ids'],
+        'is_unlimited': allowed_branches['is_unlimited'],
+    }
+
+
+def can_manage_global(user):
+    """
+    Returns True if the user may create/modify global ('All'-branch) resources.
+    Uses the franchise-management permission so the capability can be assigned
+    to any role via RolePermission rather than being hardcoded to SuperAdmin.
+    """
+    return has_permission(user, "system.franchise.franchise-management", "write")
+
+
+def cross_branch_required(f):
+    """
+    Decorator for copy / cross-branch endpoints.
+    Reads ``source_branch_id`` and ``target_branch_ids`` from the JSON body,
+    validates access via ``validate_cross_branch_access``, then passes through.
+    """
+    @wraps(f)
+    def wrapper(current_user, *args, **kwargs):
+        data = request.json or {}
+        source_branch_id = data.get('source_branch_id')
+        target_branch_ids = data.get('target_branch_ids', [])
+
+        # Parse IDs safely
+        try:
+            if source_branch_id is not None:
+                source_branch_id = int(source_branch_id)
+            target_branch_ids = [int(x) for x in target_branch_ids if x is not None]
+        except (ValueError, TypeError):
+            return jsonify({"error": "Branch IDs must be integers"}), 400
+
+        is_valid, error = validate_cross_branch_access(
+            current_user,
+            source_branch_id=source_branch_id,
+            target_branch_ids=target_branch_ids
+        )
+        if not is_valid:
+            return jsonify({"error": error}), 403
+
+        return f(current_user, *args, **kwargs)
+    return wrapper
+
+
 def require_academic_year():
     """Helper to enforce academic year validation"""
     if not (year := request.headers.get("X-Academic-Year")):

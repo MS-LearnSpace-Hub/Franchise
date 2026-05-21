@@ -1,9 +1,10 @@
+# pyrefly: ignore [missing-import]
 from flask import Blueprint, request, jsonify, current_app
 from extensions import db
 from models import ClassTest, ClassMaster, ClassSection, TestType, OrgMaster, Branch, User, ClassTestSubject, SubjectMaster
 import sqlalchemy
 from datetime import datetime
-from helpers import token_required
+from helpers import token_required, validate_cross_branch_access, get_user_allowed_branches
  
 class_test_bp = Blueprint('class_test_bp', __name__)
 
@@ -148,13 +149,28 @@ def copy_assignments(current_user):
         if not from_branch or not to_branch or not academic_year or not to_location:
             return jsonify({'error': 'Missing required fields'}), 400
 
-
+        # Resolve branch objects for permission check
+        from_br_obj = Branch.query.filter_by(branch_name=from_branch).first()
+        if not from_br_obj:
+            from_br_obj = Branch.query.filter_by(branch_code=from_branch).first()
 
         # Resolve target branch object
         to_br_obj = Branch.query.filter_by(branch_name=to_branch).first()
         if not to_br_obj:
             to_br_obj = Branch.query.filter_by(branch_code=to_branch).first()
-        
+
+        # Centralized permission check
+        if from_br_obj and to_br_obj:
+            is_valid, perm_error = validate_cross_branch_access(
+                current_user,
+                source_branch_id=from_br_obj.id,
+                target_branch_ids=[to_br_obj.id]
+            )
+            if not is_valid:
+                return jsonify({'error': perm_error}), 403
+        elif not to_br_obj:
+            return jsonify({'error': f'Target branch not found: {to_branch}'}), 404
+
         to_branch_id = to_br_obj.id if to_br_obj else None
         to_school_id = to_br_obj.school_id if to_br_obj else None
 

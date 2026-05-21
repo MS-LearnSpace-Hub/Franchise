@@ -1,10 +1,15 @@
+# pyrefly: ignore [missing-import]
 from flask import Blueprint, jsonify, request
 from extensions import db, to_local_time
 from models import FeeType, ClassFeeStructure, StudentFee, FeeInstallment, Concession, Branch, OrgMaster, Student
 from helpers import fee_type_to_dict
-from helpers import token_required, require_academic_year, generate_installments, shift_installments, assign_fee_to_student, normalize_fee_title, get_default_location, get_user_allowed_branches
+from helpers import (token_required, require_academic_year, generate_installments,
+                     shift_installments, assign_fee_to_student, normalize_fee_title,
+                     get_default_location, get_user_allowed_branches,
+                     validate_cross_branch_access, can_manage_global, has_permission)
 from datetime import datetime
 from sqlalchemy import or_, and_, select
+from sqlalchemy.exc import IntegrityError
 import traceback
 import logging
 
@@ -79,8 +84,8 @@ def create_fee_type(current_user):
     allowed = get_user_allowed_branches(current_user)
     branch = data.get("branch", "All")
     if not allowed['is_unlimited']:
-        if branch == "All":
-            return jsonify({"error": "Unauthorized: Only SuperAdmin can create Global/All branch fee types"}), 403
+        if branch == "All" and not can_manage_global(current_user):
+            return jsonify({"error": "Unauthorized: requires franchise management permission to create Global/All branch fee types"}), 403
         if branch not in allowed['names']:
             return jsonify({"error": f"Unauthorized: branch '{branch}' is not in your allowed list"}), 403
         
@@ -100,16 +105,20 @@ def create_fee_type(current_user):
         else:
             return jsonify({"error": f"Branch '{branch}' not found or is inactive"}), 400
     else:
+        # pyrefly: ignore [missing-import]
         from flask import g
         school_id = getattr(g, 'school_id', None)
         
     try:
-        # Check for duplicates (Name + Branch + Year)
-        if existing := FeeType.query.filter_by(
-            feetype=feetype_name, 
-            branch=branch, 
-            academic_year=academic_year
-        ).first():
+        # Check for duplicates (Name + Branch + Year + School — full tenant scope)
+        dup_filter = {
+            'feetype': feetype_name,
+            'branch': branch,
+            'academic_year': academic_year,
+        }
+        if school_id is not None:
+            dup_filter['school_id'] = school_id
+        if existing := FeeType.query.filter_by(**dup_filter).first():
             return jsonify({"error": f"Fee Type '{feetype_name}' already exists for {branch} ({academic_year})"}), 400
 
         new_ft = FeeType(
@@ -275,8 +284,8 @@ def migrate_class_fee_structures(current_user):
     """
     Migration Tool: Backfill academic_year from academicyear
     """
-    if current_user.role != 'Admin':
-        return jsonify({"error": "Admin required"}), 403
+    if not has_permission(current_user, "fees.fee.class-fee-structure", "write"):
+        return jsonify({"error": "Forbidden: missing permission"}), 403
         
     try:
         structs = ClassFeeStructure.query.filter(
@@ -335,9 +344,9 @@ def create_class_fee_structure(current_user):
         branch = data.get("branch", "All") 
         allowed = get_user_allowed_branches(current_user)
         if not allowed['is_unlimited']:
-            if branch == "All":
-                return jsonify({"error": "Unauthorized: Only SuperAdmin can create Global/All branch fee structures"}), 403
-            if branch not in allowed['names']:
+            if branch == "All" and not can_manage_global(current_user):
+                return jsonify({"error": "Unauthorized: requires franchise management permission for Global/All branch fee structures"}), 403
+            if branch != "All" and branch not in allowed['names']:
                 return jsonify({"error": f"Unauthorized: branch '{branch}' is not allowed"}), 403
 
         # Resolve branch_id and school_id
@@ -351,6 +360,7 @@ def create_class_fee_structure(current_user):
             else:
                 return jsonify({"error": f"Branch '{branch}' not found or is inactive"}), 400
         else:
+            # pyrefly: ignore [missing-import]
             from flask import g
             school_id = getattr(g, 'school_id', None)
         
@@ -524,9 +534,9 @@ def create_concession(current_user):
     branch = data.get("branch") or "All"
     allowed = get_user_allowed_branches(current_user)
     if not allowed['is_unlimited']:
-        if branch == "All":
-            return jsonify({"error": "Unauthorized: Only SuperAdmin can create Global concessions"}), 403
-        if branch not in allowed['names']:
+        if branch == "All" and not can_manage_global(current_user):
+            return jsonify({"error": "Unauthorized: requires franchise management permission for Global concessions"}), 403
+        if branch != "All" and branch not in allowed['names']:
             return jsonify({"error": f"Unauthorized: branch '{branch}' is not allowed"}), 403
 
     is_percentage = data.get("is_percentage", True)
@@ -757,10 +767,12 @@ def create_installment(current_user):
             if isinstance(data, list):
                 for item in data:
                     item_branch = item.get("branch", "All")
-                    if item_branch == "All" or item_branch not in allowed['names']:
+                    if item_branch == "All" and not can_manage_global(current_user):
+                        return jsonify({"error": f"Unauthorized: requires franchise management permission for branch '{item_branch}'"}), 403
+                    if item_branch != "All" and item_branch not in allowed['names']:
                         return jsonify({"error": f"Unauthorized branch: '{item_branch}'"}), 403
             else:
-                if target_branch == "All" or target_branch not in allowed['names']:
+                if target_branch == "All" and not can_manage_global(current_user):
                     return jsonify({"error": f"Unauthorized branch: '{target_branch}'"}), 403
 
         # Bulk creation
@@ -945,6 +957,8 @@ def copy_class_fee_structure(current_user):
                 target_branch_ids.append(int(x))
             except ValueError:
                 return jsonify({"error": f"Invalid target_branch_id: {x}. Must be an integer."}), 400
+        
+        target_branch_ids = list(set(target_branch_ids))
                 
         if not target_branch_ids:
             return jsonify({"error": "target_branch_ids must contain at least one valid integer"}), 400
@@ -955,13 +969,14 @@ def copy_class_fee_structure(current_user):
         if not all([academic_year, class_name]):
             return jsonify({"error": "Missing required fields: academic_year, class"}), 400
             
-        # Check branch permission
-        allowed = get_user_allowed_branches(current_user)
-        if not allowed['is_unlimited']:
-            for t_br_id in target_branch_ids:
-                t_br = Branch.query.filter_by(id=t_br_id).first()
-                if not t_br or t_br.branch_name not in allowed['names']:
-                    return jsonify({"error": "Unauthorized access to target branch"}), 403
+        # Centralized permission check for source + target branches
+        is_valid, perm_error = validate_cross_branch_access(
+            current_user,
+            source_branch_id=source_branch_id,
+            target_branch_ids=target_branch_ids
+        )
+        if not is_valid:
+            return jsonify({"error": perm_error}), 403
             
         # 1. Resolve Source Branch Name (Frontend sends ID)
         source_branch_name = None
@@ -972,12 +987,6 @@ def copy_class_fee_structure(current_user):
              source_branch_name = source_branch_id
         else:
              return jsonify({"error": "Source branch not found"}), 404
-
-        # Check branch permission for source
-        allowed = get_user_allowed_branches(current_user)
-        if not allowed['is_unlimited']:
-            if source_branch_name not in allowed['names']:
-                return jsonify({"error": f"Unauthorized access to source branch: '{source_branch_name}'"}), 403
 
         # 2. Fetch Source Fee Structure
         source_fees = ClassFeeStructure.query.filter_by(
@@ -1051,37 +1060,42 @@ def copy_class_fee_structure(current_user):
                          print(f"[SKIP] Target {t_branch_name} installment mismatch for '{src_ft.feetype}'. Source: {src_fee.installments_count}, Target: {t_inst_count}")
                          continue
 
-                # Check Existing (Merge Mode)
-                # Note: We must check existence using the TARGET Fee Type ID
-                existing = ClassFeeStructure.query.filter_by(
-                    clazz=class_name,
-                    academic_year=academic_year,
-                    branch=t_branch_name,
-                    feetypeid=target_ft_id # Important: Use resolved ID
-                ).first()
-                
-                if existing:
+                try:
+                    with db.session.begin_nested():
+                        # Check Existing (Merge Mode)
+                        # Note: We must check existence using the TARGET Fee Type ID
+                        existing = ClassFeeStructure.query.filter_by(
+                            clazz=class_name,
+                            academic_year=academic_year,
+                            branch=t_branch_name,
+                            feetypeid=target_ft_id # Important: Use resolved ID
+                        ).first()
+                        
+                        if existing:
+                            skipped_count += 1
+                            continue # SKIP duplicate logic
+                        
+                        # COPY
+                        new_fee = ClassFeeStructure(
+                            clazz=src_fee.clazz,
+                            feetypeid=target_ft_id, # Use resolved ID
+                            academicyear=academic_year,
+                            academic_year=academic_year,
+                            totalamount=src_fee.totalamount,
+                            monthly_amount=src_fee.monthly_amount,
+                            installments_count=src_fee.installments_count,
+                            isnewadmission=src_fee.isnewadmission,
+                            feegroup=src_fee.feegroup,
+                            branch=t_branch_name,
+                            location=t_location_name,
+                            branch_id=t_br.id,
+                            school_id=t_br.school_id
+                        )
+                        db.session.add(new_fee)
+                        db.session.flush()
+                        copied_count += 1
+                except IntegrityError:
                     skipped_count += 1
-                    continue # SKIP duplicate logic
-                
-                # COPY
-                new_fee = ClassFeeStructure(
-                    clazz=src_fee.clazz,
-                    feetypeid=target_ft_id, # Use resolved ID
-                    academicyear=academic_year,
-                    academic_year=academic_year,
-                    totalamount=src_fee.totalamount,
-                    monthly_amount=src_fee.monthly_amount,
-                    installments_count=src_fee.installments_count,
-                    isnewadmission=src_fee.isnewadmission,
-                    feegroup=src_fee.feegroup,
-                    branch=t_branch_name,
-                    location=t_location_name,
-                    branch_id=t_br.id,
-                    school_id=t_br.school_id
-                )
-                db.session.add(new_fee)
-                copied_count += 1
                 
         db.session.commit()
         
@@ -1125,6 +1139,8 @@ def copy_fee_types(current_user):
                 target_branch_ids.append(int(x))
             except ValueError:
                 return jsonify({"error": f"Invalid target_branch_id: {x}. Must be an integer."}), 400
+        
+        target_branch_ids = list(set(target_branch_ids))
                 
         if not target_branch_ids:
             return jsonify({"error": "target_branch_ids must contain at least one valid integer"}), 400
@@ -1144,15 +1160,14 @@ def copy_fee_types(current_user):
         else:
              return jsonify({"error": "Source branch not found"}), 404
 
-        # Check branch permission
-        allowed = get_user_allowed_branches(current_user)
-        if not allowed['is_unlimited']:
-            if source_branch_name not in allowed['names']:
-                return jsonify({"error": f"Unauthorized access to source branch: '{source_branch_name}'"}), 403
-            for t_br_id in target_branch_ids:
-                t_br = Branch.query.filter_by(id=t_br_id).first()
-                if not t_br or t_br.branch_name not in allowed['names']:
-                    return jsonify({"error": "Unauthorized access to target branch"}), 403
+        # Centralized permission check for source + target branches
+        is_valid, perm_error = validate_cross_branch_access(
+            current_user,
+            source_branch_id=source_branch_id,
+            target_branch_ids=target_branch_ids
+        )
+        if not is_valid:
+            return jsonify({"error": perm_error}), 403
 
         # 2. Fetch Source Fee Types (Only specific to this branch, not 'All')
         source_fee_types = FeeType.query.filter_by(
@@ -1172,34 +1187,40 @@ def copy_fee_types(current_user):
             t_branch_name = t_br.branch_name
             
             for src_ft in source_fee_types:
-                # Check if exists in target (by name)
-                # Also check 'All' just in case, though we are copying branch specific logic
-                existing = FeeType.query.filter(
-                    FeeType.feetype == src_ft.feetype,
-                    FeeType.academic_year == academic_year,
-                    or_(FeeType.branch == t_branch_name, FeeType.branch == 'All')
-                ).first()
-                
-                if existing:
+                try:
+                    with db.session.begin_nested():
+                        # FIXED: Idempotent check using full tenant scope
+                        # (feetype + branch + academic_year + school_id)
+                        existing = FeeType.query.filter(
+                            FeeType.feetype == src_ft.feetype,
+                            FeeType.academic_year == academic_year,
+                            FeeType.branch == t_branch_name,
+                            FeeType.school_id == t_br.school_id
+                        ).first()
+                        
+                        if existing:
+                            skipped_count += 1
+                            continue
+                        
+                        # Create New
+                        new_ft = FeeType(
+                            feetype=src_ft.feetype,
+                            category=src_ft.category,
+                            feetypegroup=src_ft.feetypegroup,
+                            type=src_ft.type,
+                            displayname=src_ft.displayname,
+                            isrefundable=src_ft.isrefundable,
+                            description=src_ft.description,
+                            branch=t_branch_name,
+                            academic_year=academic_year,
+                            branch_id=t_br.id,
+                            school_id=t_br.school_id or src_ft.school_id
+                        )
+                        db.session.add(new_ft)
+                        db.session.flush()
+                        copied_count += 1
+                except IntegrityError:
                     skipped_count += 1
-                    continue
-                
-                # Create New
-                new_ft = FeeType(
-                    feetype=src_ft.feetype,
-                    category=src_ft.category,
-                    feetypegroup=src_ft.feetypegroup,
-                    type=src_ft.type,
-                    displayname=src_ft.displayname,
-                    isrefundable=src_ft.isrefundable,
-                    description=src_ft.description,
-                    branch=t_branch_name,
-                    academic_year=academic_year,
-                    branch_id=t_br.id,
-                    school_id=t_br.school_id or src_ft.school_id
-                )
-                db.session.add(new_ft)
-                copied_count += 1
                 
         db.session.commit()
         return jsonify({
@@ -1238,6 +1259,8 @@ def copy_installments(current_user):
                 target_branch_ids.append(int(x))
             except ValueError:
                 return jsonify({"error": f"Invalid target_branch_id: {x}. Must be an integer."}), 400
+        
+        target_branch_ids = list(set(target_branch_ids))
                 
         if not target_branch_ids:
             return jsonify({"error": "target_branch_ids must contain at least one valid integer"}), 400
@@ -1252,15 +1275,14 @@ def copy_installments(current_user):
         s_br = Branch.query.filter_by(id=source_branch_id).first()
         source_branch_name = s_br.branch_name if s_br else str(source_branch_id)
         
-        # Check branch permission
-        allowed = get_user_allowed_branches(current_user)
-        if not allowed['is_unlimited']:
-            if source_branch_name not in allowed['names']:
-                return jsonify({"error": f"Unauthorized access to source branch: '{source_branch_name}'"}), 403
-            for t_br_id in target_branch_ids:
-                t_br = Branch.query.filter_by(id=t_br_id).first()
-                if not t_br or t_br.branch_name not in allowed['names']:
-                    return jsonify({"error": "Unauthorized access to target branch"}), 403
+        # Centralized permission check
+        is_valid, perm_error = validate_cross_branch_access(
+            current_user,
+            source_branch_id=source_branch_id,
+            target_branch_ids=target_branch_ids
+        )
+        if not is_valid:
+            return jsonify({"error": perm_error}), 403
         
         src_ft = FeeType.query.get(source_fee_type_id)
         if not src_ft:
@@ -1311,37 +1333,41 @@ def copy_installments(current_user):
                 errors.append(f"Target '{t_branch_name}' missing fee type '{fee_type_name}'")
                 continue
                 
-            # Check for EXISTING installments
-            existing_count = FeeInstallment.query.filter_by(
-                fee_type_id=target_ft.id,
-                branch=t_branch_name,
-                academic_year=academic_year
-            ).count()
-            
-            if existing_count > 0:
+            try:
+                with db.session.begin_nested():
+                    # Check for EXISTING installments
+                    existing_count = FeeInstallment.query.filter_by(
+                        fee_type_id=target_ft.id,
+                        branch=t_branch_name,
+                        academic_year=academic_year
+                    ).count()
+                    
+                    if existing_count > 0:
+                        skipped_batches += 1
+                        continue # Skip to avoid duplicates/mess
+                    
+                    # COPY
+                    for inst in source_installments:
+                        new_inst = FeeInstallment(
+                            installment_no=inst.installment_no,
+                            title=inst.title,
+                            start_date=inst.start_date,
+                            end_date=inst.end_date,
+                            last_pay_date=inst.last_pay_date,
+                            is_admission=inst.is_admission,
+                            description=inst.description,
+                            fee_type_id=target_ft.id, # Link to TARGET fee type
+                            branch=t_branch_name,
+                            location=t_location,
+                            academic_year=academic_year,
+                            branch_id=t_br.id,
+                            school_id=t_br.school_id
+                        )
+                        db.session.add(new_inst)
+                    db.session.flush()
+                    copied_batches += 1
+            except IntegrityError:
                 skipped_batches += 1
-                continue # Skip to avoid duplicates/mess
-            
-            # COPY
-            for inst in source_installments:
-                new_inst = FeeInstallment(
-                    installment_no=inst.installment_no,
-                    title=inst.title,
-                    start_date=inst.start_date,
-                    end_date=inst.end_date,
-                    last_pay_date=inst.last_pay_date,
-                    is_admission=inst.is_admission,
-                    description=inst.description,
-                    fee_type_id=target_ft.id, # Link to TARGET fee type
-                    branch=t_branch_name,
-                    location=t_location,
-                    academic_year=academic_year,
-                    branch_id=t_br.id,
-                    school_id=t_br.school_id
-                )
-                db.session.add(new_inst)
-            
-            copied_batches += 1
             
         db.session.commit()
         return jsonify({
@@ -1383,6 +1409,8 @@ def copy_concessions(current_user):
                 target_branch_ids.append(int(x))
             except ValueError:
                 return jsonify({"error": f"Invalid target_branch_id: {x}. Must be an integer."}), 400
+        
+        target_branch_ids = list(set(target_branch_ids))
                 
         if not target_branch_ids:
             return jsonify({"error": "target_branch_ids must contain at least one valid integer"}), 400
@@ -1396,16 +1424,15 @@ def copy_concessions(current_user):
         s_br = Branch.query.filter_by(id=source_branch_id).first()
         source_branch_name = s_br.branch_name if s_br else str(source_branch_id)
         
-        # Check branch permission
-        allowed = get_user_allowed_branches(current_user)
-        if not allowed['is_unlimited']:
-            if source_branch_name not in allowed['names']:
-                return jsonify({"error": f"Unauthorized access to source branch: '{source_branch_name}'"}), 403
-            for t_br_id in target_branch_ids:
-                t_br = Branch.query.filter_by(id=t_br_id).first()
-                if not t_br or t_br.branch_name not in allowed['names']:
-                    return jsonify({"error": "Unauthorized access to target branch"}), 403
-        
+        # Centralized permission check
+        is_valid, perm_error = validate_cross_branch_access(
+            current_user,
+            source_branch_id=source_branch_id,
+            target_branch_ids=target_branch_ids
+        )
+        if not is_valid:
+            return jsonify({"error": perm_error}), 403
+
         # 2. Fetch Source Concessions
         # Concessions are stored as one row per fee type per concession title
         # We need to fetch all rows for this branch and year
@@ -1444,67 +1471,72 @@ def copy_concessions(current_user):
             t_location = loc_map.get(t_br.location_code, t_br.location_code) or "Unknown Location"
             
             for title, rows in concessions_by_title.items():
-                # Check if this concession title already exists in target
-                existing = Concession.query.filter_by(
-                    title=title,
-                    branch=t_branch_name,
-                    academic_year=academic_year
-                ).first()
-                
-                if existing:
+                try:
+                    with db.session.begin_nested():
+                        # Check if this concession title already exists in target
+                        existing = Concession.query.filter_by(
+                            title=title,
+                            branch=t_branch_name,
+                            academic_year=academic_year
+                        ).first()
+                        
+                        if existing:
+                            skipped_count += 1
+                            continue
+                        
+                        # Copy logic
+                        # For each row (fee type link), find equivalent fee type in target
+                        
+                        rows_inserted = 0
+                        for src_row in rows:
+                            if not src_row.fee_type_id:
+                                continue 
+                                
+                            # Get source fee type name
+                            src_ft = FeeType.query.get(src_row.fee_type_id)
+                            if not src_ft:
+                                continue # Should not happen usually
+                            
+                            ft_name = src_ft.feetype
+                            
+                            # Find target fee type
+                            target_ft = FeeType.query.filter_by(
+                                feetype=ft_name,
+                                branch=t_branch_name,
+                                academic_year=academic_year
+                            ).first() or FeeType.query.filter_by(
+                                feetype=ft_name,
+                                branch='All',
+                                academic_year=academic_year
+                            ).first()
+                            
+                            if not target_ft:
+                                # Skip this specific fee type link if target doesn't have it
+                                # We don't fail the whole concession, just this part
+                                continue
+                                
+                            # Create new concession row
+                            new_c = Concession(
+                                title=src_row.title,
+                                description=src_row.description,
+                                location=t_location,
+                                branch=t_branch_name,
+                                academic_year=academic_year,
+                                fee_type_id=target_ft.id,
+                                percentage=src_row.percentage,
+                                is_percentage=src_row.is_percentage,
+                                show_in_payment=src_row.show_in_payment,
+                                branch_id=t_br.id,
+                                school_id=t_br.school_id
+                            )
+                            db.session.add(new_c)
+                            rows_inserted += 1
+                        
+                        db.session.flush()
+                        if rows_inserted > 0:
+                            copied_count += 1
+                except IntegrityError:
                     skipped_count += 1
-                    continue
-                
-                # Copy logic
-                # For each row (fee type link), find equivalent fee type in target
-                
-                rows_inserted = 0
-                for src_row in rows:
-                    if not src_row.fee_type_id:
-                        continue 
-                        
-                    # Get source fee type name
-                    src_ft = FeeType.query.get(src_row.fee_type_id)
-                    if not src_ft:
-                        continue # Should not happen usually
-                    
-                    ft_name = src_ft.feetype
-                    
-                    # Find target fee type
-                    target_ft = FeeType.query.filter_by(
-                        feetype=ft_name,
-                        branch=t_branch_name,
-                        academic_year=academic_year
-                    ).first() or FeeType.query.filter_by(
-                        feetype=ft_name,
-                        branch='All',
-                        academic_year=academic_year
-                    ).first()
-                    
-                    if not target_ft:
-                        # Skip this specific fee type link if target doesn't have it
-                        # We don't fail the whole concession, just this part
-                        continue
-                        
-                    # Create new concession row
-                    new_c = Concession(
-                        title=src_row.title,
-                        description=src_row.description,
-                        location=t_location,
-                        branch=t_branch_name,
-                        academic_year=academic_year,
-                        fee_type_id=target_ft.id,
-                        percentage=src_row.percentage,
-                        is_percentage=src_row.is_percentage,
-                        show_in_payment=src_row.show_in_payment,
-                        branch_id=t_br.id,
-                        school_id=t_br.school_id
-                    )
-                    db.session.add(new_c)
-                    rows_inserted += 1
-                
-                if rows_inserted > 0:
-                    copied_count += 1
                     
         db.session.commit()
         return jsonify({

@@ -335,6 +335,9 @@ class Student(db.Model, AuditMixin):
 class FeeType(db.Model, AuditMixin):
     __tablename__ = "feetypes"
     __audit_module__ = "FEES"
+    __table_args__ = (
+        db.UniqueConstraint('feetype', 'branch', 'academic_year', 'school_id', name='uq_feetype_branch_year_school'),
+    )
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     feetype = db.Column(db.String(100), nullable=False)
     category = db.Column(db.String(50))
@@ -402,6 +405,9 @@ class ClassFeeStructure(db.Model, AuditMixin):
 class Concession(db.Model, AuditMixin):
     __tablename__ = "concessions"
     __audit_module__ = "FEES"
+    __table_args__ = (
+        db.UniqueConstraint('title', 'branch', 'academic_year', 'fee_type_id', name='uq_concession_title_branch_year_feetype'),
+    )
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(100)) # e.g., "Sibling Discount"
     description = db.Column(db.String(255))
