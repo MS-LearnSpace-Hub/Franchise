@@ -6,6 +6,9 @@ from helpers import token_required, require_academic_year, generate_installments
 from datetime import datetime
 from sqlalchemy import or_, and_, select
 import traceback
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 bp = Blueprint('fee_master_routes', __name__)
@@ -44,17 +47,24 @@ def get_fee_types(current_user):
         
     fee_types = query.all()
     
+    # pyrefly: ignore [missing-import]
     from flask import g
-    print(f"DEBUG get_fee_types:")
-    print(f"h_branch: {h_branch}")
-    print(f"h_year: {h_year}")
-    print(f"g.branch_id: {getattr(g, 'branch_id', 'NOT SET')}")
-    print(f"allowed names: {allowed['names']}")
-    print(f"results count: {len(fee_types)}")
-    
+    import logging
+    logger = logging.getLogger(__name__)
+
+    logger.debug(
+    "get_fee_types executed",
+    extra={
+        "branch": h_branch,
+        "year": h_year,
+        "branch_id": getattr(g, "branch_id", None),
+        "results_count": len(fee_types),
+    }
+)
+
     return jsonify({
     "fee_types": [fee_type_to_dict(ft) for ft in fee_types]
-}), 200
+    }), 200
 
 
 @bp.route("/api/fee-types", methods=["POST"])
@@ -88,9 +98,7 @@ def create_fee_type(current_user):
             branch_id = branch_obj.id
             school_id = branch_obj.school_id
         else:
-            from flask import g
-            branch_id = getattr(g, 'branch_id', None)
-            school_id = getattr(g, 'school_id', None)
+            return jsonify({"error": f"Branch '{branch}' not found or is inactive"}), 400
     else:
         from flask import g
         school_id = getattr(g, 'school_id', None)
@@ -306,7 +314,7 @@ def _auto_assign_students_bulk(fs, is_new_admission):
         students_query = students_query.filter_by(academic_year=fs.academic_year)
     
     students = students_query.all()
-    print(f"DEBUG: Found {len(students)} students in Class {fs.clazz} (Branch: {fs.branch}) for auto-assignment.")
+    logger.debug(f"Found {len(students)} students in Class {fs.clazz} (Branch: {fs.branch}) for auto-assignment.")
     
     for s in students:
         if fs.branch and fs.branch != "All" and s.branch != fs.branch:
@@ -341,9 +349,7 @@ def create_class_fee_structure(current_user):
                 branch_id = branch_obj.id
                 school_id = branch_obj.school_id
             else:
-                from flask import g
-                branch_id = getattr(g, 'branch_id', None)
-                school_id = getattr(g, 'school_id', None)
+                return jsonify({"error": f"Branch '{branch}' not found or is inactive"}), 400
         else:
             from flask import g
             school_id = getattr(g, 'school_id', None)
@@ -386,8 +392,7 @@ def create_class_fee_structure(current_user):
                 fs.branch = branch 
                 fs.location = fee_item.get("location", fs.location)
                 fs.academic_year = academic_year 
-                if branch_id is not None:
-                    fs.branch_id = branch_id
+                fs.branch_id = branch_id
                 if school_id is not None:
                     fs.school_id = school_id
             else:
@@ -920,13 +925,35 @@ def delete_installment(current_user, id):
 def copy_class_fee_structure(current_user):
     try:
         data = request.json or {}
-        source_branch_id = int(data.get("source_branch_id")) if data.get("source_branch_id") is not None else None
-        target_branch_ids = [int(x) for x in data.get("target_branch_ids", []) if x is not None]
+        source_branch_id_raw = data.get("source_branch_id")
+        if source_branch_id_raw is None:
+            return jsonify({"error": "Missing source_branch_id"}), 400
+        try:
+            source_branch_id = int(source_branch_id_raw)
+        except ValueError:
+            return jsonify({"error": "source_branch_id must be an integer"}), 400
+
+        target_branch_ids_raw = data.get("target_branch_ids")
+        if not target_branch_ids_raw:
+            return jsonify({"error": "target_branch_ids must not be empty"}), 400
+            
+        target_branch_ids = []
+        for x in target_branch_ids_raw:
+            if x is None:
+                continue
+            try:
+                target_branch_ids.append(int(x))
+            except ValueError:
+                return jsonify({"error": f"Invalid target_branch_id: {x}. Must be an integer."}), 400
+                
+        if not target_branch_ids:
+            return jsonify({"error": "target_branch_ids must contain at least one valid integer"}), 400
+
         academic_year = data.get("academic_year")
         class_name = data.get("class")
         
-        if not all([source_branch_id, target_branch_ids, academic_year, class_name]):
-            return jsonify({"error": "Missing required fields (source_branch_id, target_branch_ids, academic_year, class)"}), 400
+        if not all([academic_year, class_name]):
+            return jsonify({"error": "Missing required fields: academic_year, class"}), 400
             
         # Check branch permission
         allowed = get_user_allowed_branches(current_user)
@@ -964,6 +991,9 @@ def copy_class_fee_structure(current_user):
 
         # 3. Resolve Target Branches & Locations
         target_branches = Branch.query.filter(Branch.id.in_(target_branch_ids)).all()
+        for t_br in target_branches:
+            if t_br.school_id is None:
+                return jsonify({"error": f"Target branch '{t_br.branch_name}' (ID: {t_br.id}) lacks a school_id"}), 400
         
         # Location Helper
         all_locs = OrgMaster.query.filter_by(master_type='LOCATION').all()
@@ -1048,7 +1078,7 @@ def copy_class_fee_structure(current_user):
                     branch=t_branch_name,
                     location=t_location_name,
                     branch_id=t_br.id,
-                    school_id=t_br.school_id or src_fee.school_id
+                    school_id=t_br.school_id
                 )
                 db.session.add(new_fee)
                 copied_count += 1
@@ -1075,12 +1105,34 @@ def copy_class_fee_structure(current_user):
 def copy_fee_types(current_user):
     try:
         data = request.json or {}
-        source_branch_id = int(data.get("source_branch_id")) if data.get("source_branch_id") is not None else None
-        target_branch_ids = [int(x) for x in data.get("target_branch_ids", []) if x is not None]
+        source_branch_id_raw = data.get("source_branch_id")
+        if source_branch_id_raw is None:
+            return jsonify({"error": "Missing source_branch_id"}), 400
+        try:
+            source_branch_id = int(source_branch_id_raw)
+        except ValueError:
+            return jsonify({"error": "source_branch_id must be an integer"}), 400
+
+        target_branch_ids_raw = data.get("target_branch_ids")
+        if not target_branch_ids_raw:
+            return jsonify({"error": "target_branch_ids must not be empty"}), 400
+            
+        target_branch_ids = []
+        for x in target_branch_ids_raw:
+            if x is None:
+                continue
+            try:
+                target_branch_ids.append(int(x))
+            except ValueError:
+                return jsonify({"error": f"Invalid target_branch_id: {x}. Must be an integer."}), 400
+                
+        if not target_branch_ids:
+            return jsonify({"error": "target_branch_ids must contain at least one valid integer"}), 400
+
         academic_year = data.get("academic_year")
         
-        if not all([source_branch_id, target_branch_ids, academic_year]):
-            return jsonify({"error": "Missing required fields"}), 400
+        if not academic_year:
+            return jsonify({"error": "Missing academic_year"}), 400
             
         # 1. Resolve Source Branch Name
         source_branch_name = None
@@ -1166,13 +1218,35 @@ def copy_fee_types(current_user):
 def copy_installments(current_user):
     try:
         data = request.json or {}
-        source_branch_id = int(data.get("source_branch_id")) if data.get("source_branch_id") is not None else None
-        target_branch_ids = [int(x) for x in data.get("target_branch_ids", []) if x is not None]
+        source_branch_id_raw = data.get("source_branch_id")
+        if source_branch_id_raw is None:
+            return jsonify({"error": "Missing source_branch_id"}), 400
+        try:
+            source_branch_id = int(source_branch_id_raw)
+        except ValueError:
+            return jsonify({"error": "source_branch_id must be an integer"}), 400
+
+        target_branch_ids_raw = data.get("target_branch_ids")
+        if not target_branch_ids_raw:
+            return jsonify({"error": "target_branch_ids must not be empty"}), 400
+            
+        target_branch_ids = []
+        for x in target_branch_ids_raw:
+            if x is None:
+                continue
+            try:
+                target_branch_ids.append(int(x))
+            except ValueError:
+                return jsonify({"error": f"Invalid target_branch_id: {x}. Must be an integer."}), 400
+                
+        if not target_branch_ids:
+            return jsonify({"error": "target_branch_ids must contain at least one valid integer"}), 400
+
         source_fee_type_id = data.get("source_fee_type_id")
         academic_year = data.get("academic_year")
         
-        if not all([source_branch_id, target_branch_ids, source_fee_type_id, academic_year]):
-            return jsonify({"error": "Missing required fields"}), 400
+        if not all([source_fee_type_id, academic_year]):
+            return jsonify({"error": "Missing required fields: source_fee_type_id, academic_year"}), 400
             
         # 1. Resolve Source
         s_br = Branch.query.filter_by(id=source_branch_id).first()
@@ -1206,6 +1280,9 @@ def copy_installments(current_user):
 
         # 3. Process Targets
         target_branches = Branch.query.filter(Branch.id.in_(target_branch_ids)).all()
+        for t_br in target_branches:
+            if t_br.school_id is None:
+                return jsonify({"error": f"Target branch '{t_br.branch_name}' (ID: {t_br.id}) lacks a school_id"}), 400
         
         # Helper for locations
         all_locs = OrgMaster.query.filter_by(master_type='LOCATION').all()
@@ -1260,7 +1337,7 @@ def copy_installments(current_user):
                     location=t_location,
                     academic_year=academic_year,
                     branch_id=t_br.id,
-                    school_id=t_br.school_id or inst.school_id
+                    school_id=t_br.school_id
                 )
                 db.session.add(new_inst)
             
@@ -1286,12 +1363,34 @@ def copy_installments(current_user):
 def copy_concessions(current_user):
     try:
         data = request.json or {}
-        source_branch_id = int(data.get("source_branch_id")) if data.get("source_branch_id") is not None else None
-        target_branch_ids = [int(x) for x in data.get("target_branch_ids", []) if x is not None]
+        source_branch_id_raw = data.get("source_branch_id")
+        if source_branch_id_raw is None:
+            return jsonify({"error": "Missing source_branch_id"}), 400
+        try:
+            source_branch_id = int(source_branch_id_raw)
+        except ValueError:
+            return jsonify({"error": "source_branch_id must be an integer"}), 400
+
+        target_branch_ids_raw = data.get("target_branch_ids")
+        if not target_branch_ids_raw:
+            return jsonify({"error": "target_branch_ids must not be empty"}), 400
+            
+        target_branch_ids = []
+        for x in target_branch_ids_raw:
+            if x is None:
+                continue
+            try:
+                target_branch_ids.append(int(x))
+            except ValueError:
+                return jsonify({"error": f"Invalid target_branch_id: {x}. Must be an integer."}), 400
+                
+        if not target_branch_ids:
+            return jsonify({"error": "target_branch_ids must contain at least one valid integer"}), 400
+
         academic_year = data.get("academic_year")
         
-        if not all([source_branch_id, target_branch_ids, academic_year]):
-            return jsonify({"error": "Missing required fields"}), 400
+        if not academic_year:
+            return jsonify({"error": "Missing academic_year"}), 400
             
         # 1. Resolve Source Branch Name
         s_br = Branch.query.filter_by(id=source_branch_id).first()
@@ -1328,6 +1427,9 @@ def copy_concessions(current_user):
 
         # 3. Process Targets
         target_branches = Branch.query.filter(Branch.id.in_(target_branch_ids)).all()
+        for t_br in target_branches:
+            if t_br.school_id is None:
+                return jsonify({"error": f"Target branch '{t_br.branch_name}' (ID: {t_br.id}) lacks a school_id"}), 400
         
         # Helper for locations
         all_locs = OrgMaster.query.filter_by(master_type='LOCATION').all()
@@ -1396,7 +1498,7 @@ def copy_concessions(current_user):
                         is_percentage=src_row.is_percentage,
                         show_in_payment=src_row.show_in_payment,
                         branch_id=t_br.id,
-                        school_id=t_br.school_id or src_row.school_id
+                        school_id=t_br.school_id
                     )
                     db.session.add(new_c)
                     rows_inserted += 1

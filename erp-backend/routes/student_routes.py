@@ -141,7 +141,8 @@ def save_student_photo(student, photo_data):
 @bp.route("/api/students", methods=["GET"])
 @token_required
 def get_students(current_user):
-    # Allowed for any authenticated user; results are securely scoped via scope_query
+    if not has_permission(current_user, "administration.student.student-administration", "read"):
+        return jsonify({"error": "Forbidden: missing permission"}), 403
     try:
         class_name = request.args.get("class")
         section = request.args.get("section")
@@ -339,8 +340,13 @@ def update_student(current_user, student_id):
 
         data = request.json or {}
         new_branch = data.get('branch')
-        if new_branch and not allowed['is_unlimited'] and new_branch not in allowed['names']:
-            return jsonify({"error": "Unauthorized to move student to branch: " + new_branch}), 403
+        b_obj = None
+        if new_branch:
+            b_obj = Branch.query.filter_by(branch_name=new_branch, is_active=True).first()
+            if not b_obj:
+                return jsonify({"error": f"Branch '{new_branch}' not found or is inactive"}), 400
+            if not allowed['is_unlimited'] and new_branch not in allowed['names']:
+                return jsonify({"error": "Unauthorized to move student to branch: " + new_branch}), 403
 
         # -------- EXPLICIT FIELD MAPPING --------
         # Map frontend field names to backend model attributes
@@ -355,7 +361,6 @@ def update_student(current_user, student_id):
             'section': 'section',
             'Roll_Number': 'Roll_Number',
             'status': 'status',
-            'branch': 'branch',
             'location': 'location',
             'academic_year': 'academic_year',
             'BloodGroup': 'BloodGroup',
@@ -496,11 +501,10 @@ def update_student(current_user, student_id):
             student.inactivated_by = None
 
         # -------- BRANCH & TENANT MAPPING RESOLUTION --------
-        if 'branch' in data and data['branch']:
-            b_obj = Branch.query.filter_by(branch_name=data['branch'], is_active=True).first()
-            if b_obj:
-                student.branch_id = b_obj.id
-                student.school_id = b_obj.school_id
+        if b_obj:
+            student.branch = b_obj.branch_name
+            student.branch_id = b_obj.id
+            student.school_id = b_obj.school_id
 
         # -------- PHOTO HANDLING --------
         photos = data.get("photos")
@@ -876,10 +880,17 @@ def upload_students_csv(current_user):
         
         for row_num, row in enumerate(data, start=2):
             try:
-                # Create student from CSV row
                 s_branch = row.get('branch')
+                b_obj = Branch.query.filter_by(branch_name=s_branch, is_active=True).first()
+                if not b_obj:
+                    b_obj = Branch.query.filter_by(branch_code=s_branch, is_active=True).first()
+                if not b_obj:
+                    return jsonify({"error": f"Row {row_num}: Branch '{s_branch}' not found or is inactive"}), 400
+
                 student = Student(
-                    branch=s_branch,
+                    branch=b_obj.branch_name,
+                    branch_id=b_obj.id,
+                    school_id=b_obj.school_id,
                     academic_year=academic_year,
                     admission_no=row.get('admission_no'),
                     first_name=row.get('first_name'),

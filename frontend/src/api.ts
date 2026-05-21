@@ -21,9 +21,7 @@ interface CustomHeaders {
   'Authorization'?: string;
   'X-Branch'?: string;
   'X-Location'?: string;
-  'X-School-Id'?: string;
   'X-School-ID'?: string;
-  'X-Branch-Id'?: string;
   'X-Branch-ID'?: string;
   'X-Academic-Year'?: string;
   'X-Requested-With'?: string;
@@ -113,7 +111,6 @@ api.interceptors.request.use(
         if (currentSchoolId) {
           config.headers = config.headers || {};
           config.headers['X-School-ID'] = currentSchoolId;
-          config.headers['X-School-Id'] = currentSchoolId;
         }
       } catch (error) {
         console.error('Error parsing user data from localStorage:', error);

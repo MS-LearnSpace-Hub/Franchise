@@ -1,5 +1,5 @@
 # pyrefly: ignore [missing-import]
-from flask import request, jsonify, current_app
+from flask import request, jsonify, current_app, abort
 # pyrefly: ignore [missing-import]
 import jwt
 from functools import wraps
@@ -166,15 +166,27 @@ def token_required(f):
             header_school_id = request.headers.get('X-School-ID')
             header_branch_id = request.headers.get('X-Branch-ID')
             
-            if header_school_id and header_school_id.lower() == 'all':
-                g.school_id = None
+            if header_school_id is not None and header_school_id != "":
+                if header_school_id.lower() == 'all':
+                    g.school_id = None
+                else:
+                    try:
+                        g.school_id = int(header_school_id)
+                    except (ValueError, TypeError):
+                        abort(400, description="Invalid X-School-ID header. Must be an integer or 'all'.")
             else:
-                g.school_id = int(header_school_id) if header_school_id else (data.get('school_id') or getattr(current_user, 'default_school_id', None))
+                g.school_id = data.get('school_id') or getattr(current_user, 'default_school_id', None)
                 
-            if header_branch_id and header_branch_id.lower() == 'all':
-                g.branch_id = None
+            if header_branch_id is not None and header_branch_id != "":
+                if header_branch_id.lower() == 'all':
+                    g.branch_id = None
+                else:
+                    try:
+                        g.branch_id = int(header_branch_id)
+                    except (ValueError, TypeError):
+                        abort(400, description="Invalid X-Branch-ID header. Must be an integer or 'all'.")
             else:
-                g.branch_id = int(header_branch_id) if header_branch_id else (data.get('branch_id') or getattr(current_user, 'default_branch_id', None))
+                g.branch_id = data.get('branch_id') or getattr(current_user, 'default_branch_id', None)
         except jwt.ExpiredSignatureError:
             return jsonify({'error': 'Token has expired!'}), 401
         except Exception as e:

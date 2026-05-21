@@ -47,12 +47,21 @@ def run_migration():
     print("\n3. Seeding default permissions for all roles...")
     permissions = Permission.query.filter_by(is_active=True).all()
     
+    force_reseed = "--force" in sys.argv
     for r_name, r_obj in role_objs.items():
-        print(f"   Seeding permissions for role: {r_name}...")
-        # Clear existing to ensure fresh default sync
-        RolePermission.query.filter_by(role_id=r_obj.id).delete()
+        print(f"   Seeding permissions for role: {r_name} (force={force_reseed})...")
+        
+        existing_rp_map = {}
+        if force_reseed:
+            RolePermission.query.filter_by(role_id=r_obj.id).delete()
+        else:
+            existing_rps = RolePermission.query.filter_by(role_id=r_obj.id).all()
+            existing_rp_map = {rp.permission_id: rp for rp in existing_rps}
         
         for p in permissions:
+            if not force_reseed and p.id in existing_rp_map:
+                continue
+                
             rp = RolePermission(role_id=r_obj.id, permission_id=p.id)
             
             if r_name in ("SuperAdmin", "Admin", "Franchise Admin", "BranchAdmin"):

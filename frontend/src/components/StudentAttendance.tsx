@@ -6,6 +6,14 @@ import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 import api from '../api';
 
+const getNormalizedBranch = (): string => {
+    const b = localStorage.getItem('currentBranch') || 'All';
+    if (b === 'All Locations' || b === 'All Branches' || b === 'All') {
+        return 'All';
+    }
+    return b;
+};
+
 
 interface StudentAttendanceProps {
     navigateTo: (page: Page) => void;
@@ -18,9 +26,10 @@ interface AttendanceHeaderProps {
     activeTab: AttendanceTab;
     onTabChange: (tab: AttendanceTab) => void;
     onAction: (action: string) => void;
+    navigateTo?: (page: Page) => void;
 }
 
-const AttendanceHeader: React.FC<AttendanceHeaderProps> = ({ activeTab, onTabChange, onAction }) => {
+const AttendanceHeader: React.FC<AttendanceHeaderProps> = ({ activeTab, onTabChange, onAction, navigateTo }) => {
     const [openDropdown, setOpenDropdown] = useState<string | null>(null);
     const buttonStyle = "px-3 py-1.5 text-sm border border-gray-300 bg-white text-gray-700 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-violet-500";
     const activeButtonStyle = "px-3 py-1.5 text-sm border border-transparent bg-sky-600 text-white rounded-md";
@@ -74,7 +83,7 @@ const AttendanceHeader: React.FC<AttendanceHeaderProps> = ({ activeTab, onTabCha
                     </h2>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-
+                    <button className={buttonStyle} onClick={() => navigateTo?.('student-administration')}>Student Directory</button>
                     <button className={activeTab === 'take' ? activeButtonStyle : buttonStyle} onClick={() => onTabChange('take')}>Take Attendance</button>
                     <button className={activeTab === 'register' ? activeButtonStyle : buttonStyle} onClick={() => onTabChange('register')}>Register View</button>
                     <Dropdown title="Reports">
@@ -115,7 +124,7 @@ const TakeAttendanceForm: React.FC = () => {
             return;
         }
 
-        const branch = localStorage.getItem('currentBranch') || 'All';
+        const branch = getNormalizedBranch();
         const academicYear = localStorage.getItem('academicYear') || '';
         api.get('/sections', {
             params: {
@@ -140,7 +149,7 @@ const TakeAttendanceForm: React.FC = () => {
         setLoading(true);
         setDateBlocked({ blocked: false, reason: '' });
         try {
-            const globalBranch = localStorage.getItem('currentBranch') || 'All';
+            const globalBranch = getNormalizedBranch();
             const branchParam = globalBranch === "All Branches" || globalBranch === "All" ? "All" : globalBranch;
 
             // Pre-check: Is this date a holiday or weekoff?
@@ -409,7 +418,7 @@ const RegisterViewTab: React.FC = () => {
             return;
         }
 
-        const branch = localStorage.getItem('currentBranch') || 'All';
+        const branch = getNormalizedBranch();
         const academicYear = localStorage.getItem('academicYear') || '';
         api.get('/sections', {
             params: {
@@ -432,7 +441,7 @@ const RegisterViewTab: React.FC = () => {
         }
         setLoading(true);
         try {
-            const globalBranch = localStorage.getItem('currentBranch') || 'All';
+            const globalBranch = getNormalizedBranch();
             const branchParam = globalBranch === "All Branches" || globalBranch === "All" ? "All" : globalBranch;
             const res = await api.get('/attendance', {
                 params: {
@@ -770,7 +779,7 @@ const MonthlyAttendanceEntryTab: React.FC = () => {
             return;
         }
 
-        const branch = localStorage.getItem('currentBranch') || 'All';
+        const branch = getNormalizedBranch();
         const academicYear = localStorage.getItem('academicYear') || '';
         api.get('/sections', {
             params: {
@@ -793,7 +802,7 @@ const MonthlyAttendanceEntryTab: React.FC = () => {
         }
         setLoading(true);
         try {
-            const globalBranch = localStorage.getItem('currentBranch') || 'All';
+            const globalBranch = getNormalizedBranch();
             const branchParam = globalBranch === "All Branches" || globalBranch === "All" ? "All" : globalBranch;
             const res = await api.get('/attendance', {
                 params: {
@@ -880,7 +889,7 @@ const MonthlyAttendanceEntryTab: React.FC = () => {
         if (!selectedClass) return alert("Select a class first");
 
         try {
-            const globalBranch = localStorage.getItem('currentBranch') || 'All';
+            const globalBranch = getNormalizedBranch();
             const branchParam = globalBranch === "All Branches" || globalBranch === "All" ? "All" : globalBranch;
             const academicYear = localStorage.getItem('academicYear') || '';
 
@@ -1247,7 +1256,7 @@ const AbsentReport: React.FC = () => {
             return;
         }
 
-        const branch = localStorage.getItem('currentBranch') || 'All';
+        const branch = getNormalizedBranch();
         const academicYear = localStorage.getItem('academicYear') || '';
         api.get('/sections', {
             params: {
@@ -1270,7 +1279,7 @@ const AbsentReport: React.FC = () => {
         }
         setLoading(true);
         try {
-            const globalBranch = localStorage.getItem('currentBranch') || 'All';
+            const globalBranch = getNormalizedBranch();
             const branchParam = globalBranch === "All Branches" || globalBranch === "All" ? "All" : globalBranch;
             const res = await api.get('/students', { params: { search: searchQuery, branch: branchParam } });
             const students = res.data.students || [];
@@ -1323,7 +1332,7 @@ const AbsentReport: React.FC = () => {
         setLoading(true);
         setResults([]);
         try {
-            const globalBranch = localStorage.getItem('currentBranch') || 'All';
+            const globalBranch = getNormalizedBranch();
             const branchParam = globalBranch === "All Branches" || globalBranch === "All" ? "All" : globalBranch;
             const params: any = { date: date, branch: branchParam };
             if (selectedClass) params.class = selectedClass;
@@ -1427,7 +1436,7 @@ const AbsentReport: React.FC = () => {
                                                 }
                                                 setLoading(true);
                                                 try {
-                                                    const globalBranch = localStorage.getItem('currentBranch') || 'All';
+                                                    const globalBranch = getNormalizedBranch();
                                                     const branchParam = globalBranch === "All Branches" || globalBranch === "All" ? "All" : globalBranch;
                                                     const params: any = { class: selectedClass, branch: branchParam };
                                                     if (selectedSection) params.section = selectedSection;
@@ -1662,7 +1671,7 @@ const AbsentReport: React.FC = () => {
     );
 };
 
-const StudentAttendance: React.FC<StudentAttendanceProps> = ({ defaultTab = 'take' }) => {
+const StudentAttendance: React.FC<StudentAttendanceProps> = ({ navigateTo, defaultTab = 'take' }) => {
     const [activeTab, setActiveTab] = useState<AttendanceTab>(defaultTab);
 
     // Handle dropdown actions
@@ -1702,6 +1711,7 @@ const StudentAttendance: React.FC<StudentAttendanceProps> = ({ defaultTab = 'tak
                 activeTab={activeTab}
                 onTabChange={setActiveTab}
                 onAction={handleDropdownAction}
+                navigateTo={navigateTo}
             />
             {renderContent()}
         </div>

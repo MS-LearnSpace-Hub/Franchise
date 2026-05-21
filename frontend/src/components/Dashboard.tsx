@@ -70,7 +70,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
           {currentPage === 'fee' && <Fee navigateTo={navigateTo} />}
           {currentPage === 'fee-type' && <FeeType />}
           {currentPage === 'class-fee-structure' && <ClassFeeStructure />}
-          {currentPage === 'assign-special-fee' && <AssignSpecialFee />}
+          {currentPage === 'assign-special-fee' && <AssignSpecialFee navigateTo={navigateTo} />}
           {currentPage === 'fee-installments' && <FeeInstallments />}
           {currentPage === 'take-fee' && <TakeFee navigateTo={navigateTo} />}
           {currentPage === 'administration' && <Administration navigateTo={navigateTo} />}

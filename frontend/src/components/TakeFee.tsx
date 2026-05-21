@@ -215,17 +215,7 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
     const [selectedStudentId, setSelectedStudentId] = useState<number | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
 
-    // ─── Role-Based Access Control ───────────────────────────────────────────────
-    // Reads the user role from localStorage (set during login).
-    // Only users with role "admin" can cancel/delete receipts.
-    let isAdmin = false;
-    try {
-        const user = JSON.parse(localStorage.getItem('user') || '{}');
-        isAdmin = user.role === 'Admin';
-    } catch {
-        // Malformed JSON in localStorage; default to non-admin
-    }
-    // ─────────────────────────────────────────────────────────────────────────────
+
     const selectedStudent = useMemo(
         () => students.find(s => s.student_id === selectedStudentId),
         [students, selectedStudentId]

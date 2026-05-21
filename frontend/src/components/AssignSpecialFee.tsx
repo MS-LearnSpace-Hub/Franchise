@@ -7,7 +7,7 @@ interface Student {
     name: string;
     class: string;
     section: string;
-    fatherMobile: string; 
+    fatherMobile: string;
 }
 
 interface FeeType {
@@ -24,8 +24,13 @@ interface SelectedFee {
     amount: number;
 }
 
-const AssignSpecialFee: React.FC = () => {
+interface AssignSpecialFeeProps {
+    navigateTo?: (page: string) => void;
+}
+
+const AssignSpecialFee: React.FC<AssignSpecialFeeProps> = ({ navigateTo }) => {
     const [classes, setClasses] = useState<string[]>([]);
+    const [searchQuery, setSearchQuery] = useState('');
     const [sections, setSections] = useState<string[]>([]);
     const [feeTypes, setFeeTypes] = useState<FeeType[]>([]);
 
@@ -176,11 +181,17 @@ const AssignSpecialFee: React.FC = () => {
     };
 
     // ... (handlers remain same)
+    const filteredStudents = students.filter(student =>
+        student.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        student.admission_no.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
     const handleSelectAllStudents = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const filteredIds = filteredStudents.map(s => s.student_id);
         if (e.target.checked) {
-            setSelectedStudentIds(students.map(s => s.student_id));
+            setSelectedStudentIds(prev => [...new Set([...prev, ...filteredIds])]);
         } else {
-            setSelectedStudentIds([]);
+            setSelectedStudentIds(prev => prev.filter(id => !filteredIds.includes(id)));
         }
     };
 
@@ -307,7 +318,12 @@ const AssignSpecialFee: React.FC = () => {
                 <div className="w-1/3 bg-white p-4 rounded-xl shadow-sm h-fit">
                     <div className="flex justify-between items-center mb-4">
                         <h3 className="font-bold text-lg">Special Fee Type</h3>
-                        <button className="bg-green-500 text-white px-2 py-1 rounded text-sm">+ Add Special Fee Type</button>
+                        <button
+                            onClick={() => navigateTo && navigateTo('fee-type')}
+                            className="bg-green-500 hover:bg-green-600 text-white px-2 py-1 rounded text-sm"
+                        >
+                            + Add Special Fee Type
+                        </button>
                     </div>
 
                     <div className="space-y-3">
@@ -369,6 +385,8 @@ const AssignSpecialFee: React.FC = () => {
                         <input
                             type="text"
                             placeholder="Search"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
                             className="border rounded-lg px-3 py-1 text-sm"
                         />
                     </div>
@@ -381,7 +399,7 @@ const AssignSpecialFee: React.FC = () => {
                                         <input
                                             type="checkbox"
                                             onChange={handleSelectAllStudents}
-                                            checked={students.length > 0 && selectedStudentIds.length === students.length}
+                                            checked={filteredStudents.length > 0 && filteredStudents.every(s => selectedStudentIds.includes(s.student_id))}
                                         />
                                     </th>
                                     <th className="p-2">Admission No.</th>
@@ -397,14 +415,14 @@ const AssignSpecialFee: React.FC = () => {
                                             Loading students...
                                         </td>
                                     </tr>
-                                ) : students.length === 0 ? (
+                                ) : filteredStudents.length === 0 ? (
                                     <tr>
                                         <td colSpan={5} className="p-4 text-center text-gray-500">
-                                            No students found. Select Class and Section to load.
+                                            No students match the search criteria.
                                         </td>
                                     </tr>
                                 ) : (
-                                    students.map(student => (
+                                    filteredStudents.map(student => (
                                         <tr key={student.student_id} className="border-b hover:bg-gray-50">
                                             <td className="p-2">
                                                 <input

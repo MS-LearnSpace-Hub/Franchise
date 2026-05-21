@@ -212,7 +212,11 @@ def upgrade():
     # ----------------------------------------------------
     # DATA MIGRATION: Backfill school_id and branch_id for existing records
     # ----------------------------------------------------
-    op.execute("INSERT INTO schools (school_name, is_active, created_at, updated_at) SELECT 'AMS HighSchool', 1, NOW(), NOW() FROM (SELECT 1) AS tmp WHERE NOT EXISTS (SELECT 1 FROM schools LIMIT 1)")
+    # This bootstrap insert is only intended for initial/first-time migrations to setup the default school tenant.
+    import os
+    default_school_name = os.environ.get('DEFAULT_SCHOOL_NAME', 'Default School').replace("'", "''")
+    default_school_code = os.environ.get('DEFAULT_SCHOOL_CODE', 'default').replace("'", "''")
+    op.execute(f"INSERT INTO schools (school_name, school_code, is_active, created_at, updated_at) SELECT '{default_school_name}', '{default_school_code}', 1, NOW(), NOW() FROM (SELECT 1) AS tmp WHERE NOT EXISTS (SELECT 1 FROM schools WHERE school_code = '{default_school_code}')")
     op.execute("UPDATE branches SET school_id = (SELECT id FROM schools LIMIT 1) WHERE school_id IS NULL")
     op.execute("UPDATE students s JOIN branches b ON LOWER(s.branch) = LOWER(b.branch_name) SET s.branch_id = b.id, s.school_id = b.school_id WHERE s.branch_id IS NULL")
     op.execute("UPDATE students s JOIN branches b ON s.branch_id = b.id SET s.school_id = b.school_id WHERE s.school_id IS NULL")

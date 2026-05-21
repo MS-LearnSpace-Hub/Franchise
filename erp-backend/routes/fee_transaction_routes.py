@@ -2,12 +2,14 @@
 from flask import Blueprint, jsonify, request
 from extensions import db, get_now, get_today
 from models import Student, StudentFee, FeePayment, Branch, FeeInstallment, Concession, ClassFeeStructure, StudentAcademicRecord, FeeType
-from helpers import token_required, require_academic_year, normalize_fee_title, assign_fee_to_student, require_editable_student, ensure_student_editable, get_user_allowed_branches
+from helpers import token_required, require_academic_year, normalize_fee_title, assign_fee_to_student, require_editable_student, ensure_student_editable, get_user_allowed_branches, has_permission
 from services.sequence_service import SequenceService
 from datetime import datetime, date
 from decimal import Decimal
 from sqlalchemy import func, or_, and_
 import traceback
+import logging
+logger = logging.getLogger(__name__)
 
 bp = Blueprint('fee_transaction_routes', __name__)
 
@@ -480,6 +482,13 @@ def delete_fee_payment(current_user, payment_id):
         if not reason:
              return jsonify({"error": "Cancellation reason is required"}), 400
 
+        logger.info("User %s is attempting to cancel payment %s. Reason: %s", current_user.username, payment_id, reason)
+
+        # Permission Check
+        if not has_permission(current_user, "fees.fee.take-fee", "delete"):
+            logger.warning("User %s attempted to cancel payment %s without delete permission.", current_user.username, payment_id)
+            return jsonify({"error": "Forbidden: missing permission"}), 403
+
         payment = FeePayment.query.get(payment_id)
         if not payment:
             return jsonify({"error": "Payment not found"}), 404
@@ -490,6 +499,7 @@ def delete_fee_payment(current_user, payment_id):
         # Permission Check
         allowed = get_user_allowed_branches(current_user)
         if not allowed['is_unlimited'] and payment.branch not in allowed['names']:
+             logger.warning("User %s attempted to cancel payment %s for branch %s without branch access.", current_user.username, payment_id, payment.branch)
              return jsonify({"error": "Unauthorized"}), 403
 
         # Revert Logic

@@ -318,6 +318,10 @@ def copy_branch_structure(current_user):
         if missing_ids:
              return jsonify({"error": f"Invalid or non-existent target branch IDs: {list(missing_ids)}"}), 400
 
+        for tb in target_branches:
+            if tb.school_id is None:
+                return jsonify({"error": f"Target branch '{tb.branch_name}' (ID: {tb.id}) lacks a school_id"}), 400
+
         target_br_map = {tb.id: tb.school_id for tb in target_branches}
 
         # Enforce allowed branch boundaries
@@ -350,6 +354,10 @@ def copy_branch_structure(current_user):
                 if str(target_id) == str(source_branch_id):
                     continue
                 
+                target_school_id = target_br_map.get(target_id)
+                if target_school_id is None:
+                    return jsonify({"error": f"Target branch {target_id} does not have a valid school_id"}), 400
+
                 for section, class_master in source_sections:
                     # Check if exists in target
                     existing = ClassSection.query.filter_by(
@@ -367,7 +375,7 @@ def copy_branch_structure(current_user):
                     new_sec = ClassSection(
                         class_id=section.class_id,
                         branch_id=target_id,
-                        school_id=target_br_map.get(target_id) or section.school_id,
+                        school_id=target_school_id,
                         academic_year=academic_year,
                         section_name=section.section_name,
                         student_strength=section.student_strength

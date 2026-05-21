@@ -1256,18 +1256,38 @@ def before_compile_scoping(query):
         if role == 'SuperAdmin':
             return query
             
-        # Store original limit and offset clauses
-        limit = query._limit_clause
-        offset = query._offset_clause
-        has_pagination = (limit is not None or offset is not None)
+        # Capture numeric values of limit and offset before stripping
+        limit_val = None
+        offset_val = None
         
-        # Temporarily clear pagination to avoid:
-        # "Query.filter() being called on a Query which already has LIMIT or OFFSET applied."
-        if has_pagination:
-            query = query.limit(None).offset(None)
+        limit_clause = getattr(query, '_limit_clause', None)
+        offset_clause = getattr(query, '_offset_clause', None)
+        
+        if limit_clause is not None:
+            if hasattr(limit_clause, 'value'):
+                limit_val = limit_clause.value
+            else:
+                try:
+                    limit_val = int(limit_clause)
+                except (ValueError, TypeError):
+                    pass
+                    
+        if offset_clause is not None:
+            if hasattr(offset_clause, 'value'):
+                offset_val = offset_clause.value
+            else:
+                try:
+                    offset_val = int(offset_clause)
+                except (ValueError, TypeError):
+                    pass
+
+        has_pagination = (limit_val is not None or offset_val is not None)
+        
+        # Create non-paginated clone for scoping
+        clone_query = query.limit(None).offset(None)
 
         # Inspect query's entities to see if we should apply scoping
-        for desc in query.column_descriptions:
+        for desc in clone_query.column_descriptions:
             model = desc.get('type')
             if not model or not isinstance(model, type) or not hasattr(model, '__name__'):
                 continue
@@ -1280,28 +1300,29 @@ def before_compile_scoping(query):
             if hasattr(model, 'school_id'):
                 s_id = getattr(g, 'school_id', None)
                 if s_id is not None:
-                    query = query.filter((model.school_id == s_id) | (model.school_id.is_(None)))
+                    clone_query = clone_query.filter((model.school_id == s_id) | (model.school_id.is_(None)))
                 else:
                     allowed_schools = get_user_allowed_schools(user)
                     if not allowed_schools['is_unlimited'] and allowed_schools['ids']:
-                        query = query.filter((model.school_id.in_(allowed_schools['ids'])) | (model.school_id.is_(None)))
+                        clone_query = clone_query.filter((model.school_id.in_(allowed_schools['ids'])) | (model.school_id.is_(None)))
                         
             # Apply branch_id scoping if model has branch_id column
             if hasattr(model, 'branch_id'):
                 b_id = getattr(g, 'branch_id', None)
                 if b_id is not None:
-                    query = query.filter((model.branch_id == b_id) | (model.branch_id.is_(None)))
+                    clone_query = clone_query.filter((model.branch_id == b_id) | (model.branch_id.is_(None)))
                 else:
                     allowed_branches = get_user_allowed_branches(user)
                     if not allowed_branches['is_unlimited'] and allowed_branches['ids']:
-                        query = query.filter((model.branch_id.in_(allowed_branches['ids'])) | (model.branch_id.is_(None)))
+                        clone_query = clone_query.filter((model.branch_id.in_(allowed_branches['ids'])) | (model.branch_id.is_(None)))
                         
         # Restore original limit and offset if they were present
         if has_pagination:
-            if limit is not None:
-                query = query.limit(limit)
-            if offset is not None:
-                query = query.offset(offset)
+            if limit_val is not None:
+                clone_query = clone_query.limit(limit_val)
+            if offset_val is not None:
+                clone_query = clone_query.offset(offset_val)
+        query = clone_query
     finally:
         g._in_scoping = False
         

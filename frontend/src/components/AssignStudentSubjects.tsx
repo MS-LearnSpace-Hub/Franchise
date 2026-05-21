@@ -44,8 +44,12 @@ const AssignStudentSubjects: React.FC = () => {
         if (userStr) {
             try {
                 const selected = localStorage.getItem("currentBranch");
-                if (selected && selected !== "All Locations") {
-                    storedBranch = selected;
+                if (selected) {
+                    if (selected === "All Locations" || selected === "All Branches" || selected === "All") {
+                        storedBranch = "All";
+                    } else {
+                        storedBranch = selected;
+                    }
                 }
             } catch (e) {
                 console.error("Error parsing user", e);
@@ -71,18 +75,24 @@ const AssignStudentSubjects: React.FC = () => {
         }
     };
 
-    // Fetch sections when class changes
+    // Fetch sections when class, branch, or academicYear changes
     useEffect(() => {
         setSelectedSection(""); // Reset section
         setSectionList([]);
         if (selectedClass) {
             fetchSections(selectedClass);
         }
-    }, [selectedClass]);
+    }, [selectedClass, branch, academicYear]);
 
     const fetchSections = async (cls: string) => {
         try {
-            const res = await api.get(`/sections?class=${cls}`);
+            const res = await api.get('/sections', {
+                params: {
+                    class: cls,
+                    branch: branch,
+                    academic_year: academicYear
+                }
+            });
             if (res.data && res.data.sections) {
                 setSectionList(res.data.sections);
             }

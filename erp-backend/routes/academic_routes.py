@@ -4,12 +4,14 @@ from extensions import db, to_local_time
 from models import SubjectMaster, Branch, OrgMaster, ClassSubjectAssignment
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.sql import exists
-from helpers import token_required, ensure_student_editable, get_user_allowed_branches, StudentRecordLockedError
+from helpers import token_required, ensure_student_editable, get_user_allowed_branches, StudentRecordLockedError, has_permission
 
 bp = Blueprint("academic", __name__)
 @bp.route("/api/academic/subjects", methods=["POST"])
 @token_required
 def create_subject(current_user):
+    if not has_permission(current_user, "academics.academic.subject-master", "write"):
+        return jsonify({"error": "Forbidden: missing permission"}), 403
     try: 
         data = request.json
         print(f"[DEBUG] Received request to create subject: {data}")
@@ -95,6 +97,8 @@ def create_subject(current_user):
 @bp.route("/api/academic/subjects", methods=["GET"])
 @token_required
 def list_subjects(current_user):
+    if not has_permission(current_user, "academics.academic.subject-master", "read"):
+        return jsonify({"error": "Forbidden: missing permission"}), 403
     try:
         academic_year = request.args.get("academic_year")
         if academic_year:
@@ -151,6 +155,8 @@ def list_subjects(current_user):
 @bp.route("/api/academic/subjects/<int:subject_id>", methods=["PUT"])
 @token_required
 def update_subject(current_user, subject_id):
+    if not has_permission(current_user, "academics.academic.subject-master", "write"):
+        return jsonify({"error": "Forbidden: missing permission"}), 403
     try:
         data = request.json
         if not data:
@@ -190,6 +196,8 @@ def update_subject(current_user, subject_id):
 @bp.route("/api/academic/subjects/<int:subject_id>", methods=["DELETE"])
 @token_required
 def delete_subject(current_user, subject_id):
+    if not has_permission(current_user, "academics.academic.subject-master", "write"):
+        return jsonify({"error": "Forbidden: missing permission"}), 403
     try:
         subject = SubjectMaster.query.get(subject_id)
         if not subject:

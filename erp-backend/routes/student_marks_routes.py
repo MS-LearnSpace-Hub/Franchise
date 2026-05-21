@@ -12,7 +12,8 @@ from helpers import token_required, ensure_student_editable
 student_marks_bp = Blueprint('student_marks_bp', __name__)
 
 @student_marks_bp.route('/api/marks/entry/subject', methods=['GET'])
-def get_marks_entry_grid():
+@token_required
+def get_marks_entry_grid(current_user):
     try: 
         academic_year = request.args.get('academic_year')
         branch = request.args.get('branch')

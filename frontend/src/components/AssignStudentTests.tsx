@@ -2,6 +2,14 @@ import React, { useEffect, useState } from "react";
 import api from "../api";
 import { Save } from "lucide-react";
 
+const getNormalizedBranch = (): string => {
+    const b = localStorage.getItem('currentBranch') || 'All';
+    if (b === 'All Locations' || b === 'All Branches' || b === 'All') {
+        return 'All Locations';
+    }
+    return b;
+};
+
 interface TestColumn {
     class_test_id: number;
     test_name: string;
@@ -22,16 +30,9 @@ interface AssignmentsMap {
 
 export default function AssignStudentTests() {
     /* ---------------- STATE ---------------- */
-    // Get initial values safely
-    const getInitialBranch = () => {
-        const storedBranch = localStorage.getItem("currentBranch");
-        if (storedBranch && storedBranch !== "undefined" && storedBranch !== "All Locations") return storedBranch;
-        return "";
-    };
-
     const [filters, setFilters] = useState({
         academic_year_id: localStorage.getItem("academicYear") || "",
-        branch_id: getInitialBranch(),
+        branch_id: getNormalizedBranch(),
         class_id: "",
     });
 
@@ -206,6 +207,7 @@ export default function AssignStudentTests() {
                         onChange={e => setFilters({ ...filters, branch_id: e.target.value })}
                     >
                         <option value="">Select Branch</option>
+                        <option value="All Locations">All Locations</option>
                         {dropdowns.branches.map((b: any) => <option key={b.id} value={b.branch_name}>{b.branch_name}</option>)}
                     </select>
                 </div>

@@ -233,11 +233,18 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, navigateTo, onLogout, go
         localStorage.removeItem('currentBranchId');
       }
 
-      if (schoolId) {
-        localStorage.setItem('currentSchoolId', String(schoolId));
-      }
-      if (schoolName) {
-        localStorage.setItem('currentSchool', schoolName);
+      if (val === 'All') {
+        localStorage.removeItem('currentSchoolId');
+        localStorage.removeItem('currentSchool');
+        setSelectedSchool('All');
+        setSelectedSchoolId('All');
+      } else {
+        if (schoolId) {
+          localStorage.setItem('currentSchoolId', String(schoolId));
+        }
+        if (schoolName) {
+          localStorage.setItem('currentSchool', schoolName);
+        }
       }
 
       setCurrentBranch(val);
