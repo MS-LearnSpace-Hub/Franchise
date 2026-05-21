@@ -69,6 +69,19 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
           localStorage.setItem('user', JSON.stringify(response.data.user));
           console.log("User saved to localStorage");
         }
+
+        try {
+          const yearsRes = await axios.get(`${API_URL}/org/academic-years`, {
+            headers: { Authorization: `Bearer ${response.data.token}` }
+          });
+          const yearsList = yearsRes.data.academic_years || [];
+          if (yearsList.length > 0) {
+            localStorage.setItem('academicYear', yearsList[0].name);
+            console.log("Academic year saved");
+          }
+        } catch (err) {
+          console.warn("Could not fetch academic years during login", err);
+        }
       } catch (ex) {
         console.warn('Could not persist to localStorage', ex);
       }
