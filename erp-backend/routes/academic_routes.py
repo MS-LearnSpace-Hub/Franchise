@@ -147,6 +147,97 @@ def list_subjects(current_user):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@bp.route("/api/academic/copy-subjects", methods=["POST"])
+@token_required
+def copy_subjects(current_user):
+    """
+    Copies Subjects from a source branch to multiple target branches.
+    Uses skip_scoping to allow multi-tenant inserts.
+    """
+    if not has_permission(current_user, "academics.academic.subject-master", "write"):
+        return jsonify({"error": "Forbidden: missing permission"}), 403
+
+    try:
+        data = request.json or {}
+        source_branch_id_raw = data.get("source_branch_id")
+        target_branch_ids_raw = data.get("target_branch_ids")
+        academic_year = data.get("academic_year")
+
+        if not all([source_branch_id_raw, target_branch_ids_raw, academic_year]):
+            return jsonify({"error": "Missing required fields"}), 400
+
+        source_branch_id = int(source_branch_id_raw)
+        target_branch_ids = [int(x) for x in target_branch_ids_raw if x]
+
+        # Validate permissions for cross-branch copy
+        is_valid, perm_error = validate_cross_branch_access(
+            current_user,
+            source_branch_id=source_branch_id,
+            target_branch_ids=target_branch_ids
+        )
+        if not is_valid:
+            return jsonify({"error": perm_error}), 403
+
+        # Fetch source subjects
+        source_subjects = SubjectMaster.query.filter_by(
+            branch_id=source_branch_id,
+            academic_year=academic_year
+        ).all()
+
+        if not source_subjects:
+            return jsonify({"message": "No subjects found in source branch to copy."}), 404
+
+        target_branches = Branch.query.filter(Branch.id.in_(target_branch_ids)).all()
+
+        copied_count = 0
+        skipped_count = 0
+
+        with skip_scoping():
+            for t_br in target_branches:
+                for src_sub in source_subjects:
+                    try:
+                        with db.session.begin_nested():
+                            # Check if subject already exists in target branch
+                            existing = SubjectMaster.query.filter_by(
+                                subject_name=src_sub.subject_name,
+                                subject_type=src_sub.subject_type,
+                                academic_year=academic_year,
+                                branch_id=t_br.id
+                            ).first()
+
+                            if existing:
+                                skipped_count += 1
+                                continue
+
+                            new_sub = SubjectMaster(
+                                subject_name=src_sub.subject_name,
+                                subject_type=src_sub.subject_type,
+                                academic_year=academic_year,
+                                is_active=src_sub.is_active,
+                                branch_id=t_br.id,
+                                school_id=t_br.school_id or src_sub.school_id
+                            )
+                            db.session.add(new_sub)
+                            db.session.flush()
+                            copied_count += 1
+                    except IntegrityError:
+                        skipped_count += 1
+
+        db.session.commit()
+        return jsonify({
+            "message": "Subjects copied successfully",
+            "details": {
+                "copied": copied_count,
+                "skipped": skipped_count
+            }
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"[ERROR] Copy Subjects: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 @bp.route("/api/academic/subjects/<int:subject_id>", methods=["PUT"])
 @token_required
 def update_subject(current_user, subject_id):
