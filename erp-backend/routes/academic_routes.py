@@ -1174,27 +1174,54 @@ def copy_subject_assignments(current_user):
                     branch=t_branch_name
                 ).all()
 
-                # Create a set of existing keys: (class_id, subject_id)
-                existing_set = set((a.class_id, a.subject_id) for a in existing_target_assigns)
+                # Create a set of existing keys: (class_id, subject_name) since subject_id might differ
+                existing_set = set()
+                for a in existing_target_assigns:
+                    sub = SubjectMaster.query.get(a.subject_id)
+                    if sub:
+                        existing_set.add((a.class_id, sub.subject_name))
 
                 for src_assign in source_assignments:
-                     # Check if this (class, subject) already exists in target
-                     if (src_assign.class_id, src_assign.subject_id) in existing_set:
-                         skipped_count += 1
-                         continue # MERGE MODE: Skip if exists
+                    src_sub = SubjectMaster.query.get(src_assign.subject_id)
+                    if not src_sub:
+                        continue
 
-                     # Logic for Insert
-                     new_assign = ClassSubjectAssignment(
-                         class_id=src_assign.class_id,
-                         subject_id=src_assign.subject_id,
-                         academic_year=academic_year_name,
-                         branch=t_branch_name,
-                         location_name=t_location_name,
-                         branch_id=t_br.id,
-                         school_id=t_br.school_id or src_assign.school_id
-                     )
-                     db.session.add(new_assign)
-                     copied_count += 1
+                    # Check if this (class, subject_name) already exists in target
+                    if (src_assign.class_id, src_sub.subject_name) in existing_set:
+                        skipped_count += 1
+                        continue # MERGE MODE: Skip if exists
+
+                    # Find matching target subject by name
+                    target_sub = SubjectMaster.query.filter_by(
+                        subject_name=src_sub.subject_name,
+                        academic_year=academic_year_name,
+                        branch_id=t_br.id
+                    ).first()
+
+                    if not target_sub:
+                        # Fallback to global subject if exists
+                        target_sub = SubjectMaster.query.filter_by(
+                            subject_name=src_sub.subject_name,
+                            academic_year=academic_year_name,
+                            branch_id=None
+                        ).first()
+
+                        if not target_sub:
+                            skipped_count += 1
+                            continue # Target branch doesn't have this subject
+
+                    # Logic for Insert
+                    new_assign = ClassSubjectAssignment(
+                        class_id=src_assign.class_id,
+                        subject_id=target_sub.id,
+                        academic_year=academic_year_name,
+                        branch=t_branch_name,
+                        location_name=t_location_name,
+                        branch_id=t_br.id,
+                        school_id=t_br.school_id or src_assign.school_id
+                    )
+                    db.session.add(new_assign)
+                    copied_count += 1
 
             db.session.commit()
         
