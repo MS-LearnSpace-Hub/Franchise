@@ -140,6 +140,22 @@ def get_default_location():
 
 # pyrefly: ignore [missing-import]
 from flask import g
+from contextlib import contextmanager
+
+@contextmanager
+def skip_scoping():
+    """
+    Context manager to temporarily disable automatic query scoping.
+    Useful for cross-branch operations where the user has already
+    been explicitly validated for access to target branches, but
+    the standard scoping would block queries to those targets.
+    """
+    was_scoping = getattr(g, '_in_scoping', False)
+    g._in_scoping = True
+    try:
+        yield
+    finally:
+        g._in_scoping = was_scoping
 
 def token_required(f):
     @wraps(f)

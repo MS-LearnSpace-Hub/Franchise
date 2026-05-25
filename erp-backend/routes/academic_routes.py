@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.sql import exists
 from helpers import (token_required, ensure_student_editable, get_user_allowed_branches,
                      StudentRecordLockedError, has_permission, resolve_user_scope,
-                     can_manage_global, validate_cross_branch_access)
+                     can_manage_global, validate_cross_branch_access, skip_scoping)
 
 bp = Blueprint("academic", __name__)
 @bp.route("/api/academic/subjects", methods=["POST"])
@@ -1072,39 +1072,40 @@ def copy_subject_assignments(current_user):
         skipped_count = 0
         
         # 3. Process Each Target Branch (MERGE MODE)
-        for t_br in target_branches:
-            t_branch_name = t_br.branch_name
-            t_location_name = loc_map.get(t_br.location_code, "Hyderabad") # Default
-            
-            # Fetch existing assignments for this target (to check duplicates)
-            existing_target_assigns = ClassSubjectAssignment.query.filter_by(
-                academic_year=academic_year_name,
-                branch=t_branch_name
-            ).all()
-            
-            # Create a set of existing keys: (class_id, subject_id)
-            existing_set = set((a.class_id, a.subject_id) for a in existing_target_assigns)
-            
-            for src_assign in source_assignments:
-                 # Check if this (class, subject) already exists in target
-                 if (src_assign.class_id, src_assign.subject_id) in existing_set:
-                     skipped_count += 1
-                     continue # MERGE MODE: Skip if exists
-                 
-                 # Logic for Insert
-                 new_assign = ClassSubjectAssignment(
-                     class_id=src_assign.class_id,
-                     subject_id=src_assign.subject_id,
-                     academic_year=academic_year_name,
-                     branch=t_branch_name,
-                     location_name=t_location_name,
-                     branch_id=t_br.id,
-                     school_id=t_br.school_id or src_assign.school_id
-                 )
-                 db.session.add(new_assign)
-                 copied_count += 1
+        with skip_scoping():
+            for t_br in target_branches:
+                t_branch_name = t_br.branch_name
+                t_location_name = loc_map.get(t_br.location_code, "Hyderabad") # Default
 
-        db.session.commit()
+                # Fetch existing assignments for this target (to check duplicates)
+                existing_target_assigns = ClassSubjectAssignment.query.filter_by(
+                    academic_year=academic_year_name,
+                    branch=t_branch_name
+                ).all()
+
+                # Create a set of existing keys: (class_id, subject_id)
+                existing_set = set((a.class_id, a.subject_id) for a in existing_target_assigns)
+
+                for src_assign in source_assignments:
+                     # Check if this (class, subject) already exists in target
+                     if (src_assign.class_id, src_assign.subject_id) in existing_set:
+                         skipped_count += 1
+                         continue # MERGE MODE: Skip if exists
+
+                     # Logic for Insert
+                     new_assign = ClassSubjectAssignment(
+                         class_id=src_assign.class_id,
+                         subject_id=src_assign.subject_id,
+                         academic_year=academic_year_name,
+                         branch=t_branch_name,
+                         location_name=t_location_name,
+                         branch_id=t_br.id,
+                         school_id=t_br.school_id or src_assign.school_id
+                     )
+                     db.session.add(new_assign)
+                     copied_count += 1
+
+            db.session.commit()
         
         return jsonify({
             "message": "Copy completed (Merge Mode)",

@@ -4,7 +4,7 @@ from extensions import db, to_local_time
 from models import ClassMaster, ClassSection, Branch, Student, OrgMaster, User
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func
-from helpers import token_required, get_user_allowed_branches, validate_cross_branch_access
+from helpers import token_required, get_user_allowed_branches, validate_cross_branch_access, skip_scoping
               
 bp = Blueprint("class_routes", __name__)
 
@@ -228,62 +228,63 @@ def copy_class_structure(current_user):
         # Ideally, we should reuse the existing logic or just query it.
         
         with db.session.begin():
-            # 1. Ensure ClassMaster exists
-            class_obj = ClassMaster.query.filter(
-                func.lower(ClassMaster.class_name) == func.lower(class_name)
-            ).first()
+            with skip_scoping():
+                # 1. Ensure ClassMaster exists
+                class_obj = ClassMaster.query.filter(
+                    func.lower(ClassMaster.class_name) == func.lower(class_name)
+                ).first()
 
-            if not class_obj:
-                class_obj = ClassMaster(class_name=class_name)
-                db.session.add(class_obj)
-                db.session.flush() # Get ID
+                if not class_obj:
+                    class_obj = ClassMaster(class_name=class_name)
+                    db.session.add(class_obj)
+                    db.session.flush() # Get ID
 
-            total_copied = 0
-            skipped_count = 0
+                total_copied = 0
+                skipped_count = 0
 
-            # 2. Iterate over target branches
-            for branch_id in target_branch_ids:
-                # Verify branch exists (optional, but good for data integrity)
-                branch = Branch.query.get(branch_id)
-                if not branch:
-                    print(f"Skipping invalid branch_id: {branch_id}")
-                    continue
-
-                for sec in sections:
-                    sec_name = sec.get("name", "").strip().upper()
-                    strength = int(sec.get("strength", 0))
-
-                    if not sec_name:
+                # 2. Iterate over target branches
+                for branch_id in target_branch_ids:
+                    # Verify branch exists (optional, but good for data integrity)
+                    branch = Branch.query.get(branch_id)
+                    if not branch:
+                        print(f"Skipping invalid branch_id: {branch_id}")
                         continue
 
-                    try:
-                        with db.session.begin_nested():
-                            # Check if exists
-                            existing_sec = ClassSection.query.filter_by(
-                                class_id=class_obj.id,
-                                branch_id=branch_id,
-                                academic_year=academic_year,
-                                section_name=sec_name
-                            ).first()
+                    for sec in sections:
+                        sec_name = sec.get("name", "").strip().upper()
+                        strength = int(sec.get("strength", 0))
 
-                            if existing_sec:
-                                skipped_count += 1
-                                continue # Skip existing
-                            
-                            # Create new section for this branch
-                            new_sec = ClassSection(
-                                class_id=class_obj.id,
-                                branch_id=branch_id,
-                                school_id=branch.school_id,
-                                academic_year=academic_year,
-                                section_name=sec_name,
-                                student_strength=strength
-                            )
-                            db.session.add(new_sec)
-                            db.session.flush()
-                            total_copied += 1
-                    except IntegrityError:
-                        skipped_count += 1
+                        if not sec_name:
+                            continue
+
+                        try:
+                            with db.session.begin_nested():
+                                # Check if exists
+                                existing_sec = ClassSection.query.filter_by(
+                                    class_id=class_obj.id,
+                                    branch_id=branch_id,
+                                    academic_year=academic_year,
+                                    section_name=sec_name
+                                ).first()
+
+                                if existing_sec:
+                                    skipped_count += 1
+                                    continue # Skip existing
+
+                                # Create new section for this branch
+                                new_sec = ClassSection(
+                                    class_id=class_obj.id,
+                                    branch_id=branch_id,
+                                    school_id=branch.school_id,
+                                    academic_year=academic_year,
+                                    section_name=sec_name,
+                                    student_strength=strength
+                                )
+                                db.session.add(new_sec)
+                                db.session.flush()
+                                total_copied += 1
+                        except IntegrityError:
+                            skipped_count += 1
 
         return jsonify({
             "message": "Copy operation completed",
@@ -354,46 +355,47 @@ def copy_branch_structure(current_user):
         skipped_count = 0
 
         try:
-            # 2. Iterate Targets
-            for target_id in target_branch_ids:
-                if str(target_id) == str(source_branch_id):
-                    continue
-                
-                target_school_id = target_br_map.get(target_id)
-                if target_school_id is None:
-                    return jsonify({"error": f"Target branch {target_id} does not have a valid school_id"}), 400
+            with skip_scoping():
+                # 2. Iterate Targets
+                for target_id in target_branch_ids:
+                    if str(target_id) == str(source_branch_id):
+                        continue
 
-                for section, class_master in source_sections:
-                    try:
-                        with db.session.begin_nested():
-                            # Check if exists in target
-                            existing = ClassSection.query.filter_by(
-                                class_id=section.class_id, # Same ClassMaster ID (Global)
-                                branch_id=target_id,
-                                academic_year=academic_year,
-                                section_name=section.section_name
-                            ).first()
+                    target_school_id = target_br_map.get(target_id)
+                    if target_school_id is None:
+                        return jsonify({"error": f"Target branch {target_id} does not have a valid school_id"}), 400
 
-                            if existing:
-                                skipped_count += 1
-                                continue
-                            
-                            # Create Copy
-                            new_sec = ClassSection(
-                                class_id=section.class_id,
-                                branch_id=target_id,
-                                school_id=target_school_id,
-                                academic_year=academic_year,
-                                section_name=section.section_name,
-                                student_strength=section.student_strength
-                            )
-                            db.session.add(new_sec)
-                            db.session.flush()
-                            total_copied += 1
-                    except IntegrityError:
-                        skipped_count += 1
-            
-            db.session.commit()
+                    for section, class_master in source_sections:
+                        try:
+                            with db.session.begin_nested():
+                                # Check if exists in target
+                                existing = ClassSection.query.filter_by(
+                                    class_id=section.class_id, # Same ClassMaster ID (Global)
+                                    branch_id=target_id,
+                                    academic_year=academic_year,
+                                    section_name=section.section_name
+                                ).first()
+
+                                if existing:
+                                    skipped_count += 1
+                                    continue
+
+                                # Create Copy
+                                new_sec = ClassSection(
+                                    class_id=section.class_id,
+                                    branch_id=target_id,
+                                    school_id=target_school_id,
+                                    academic_year=academic_year,
+                                    section_name=section.section_name,
+                                    student_strength=section.student_strength
+                                )
+                                db.session.add(new_sec)
+                                db.session.flush()
+                                total_copied += 1
+                        except IntegrityError:
+                            skipped_count += 1
+
+                db.session.commit()
 
         except Exception as e:
             db.session.rollback()

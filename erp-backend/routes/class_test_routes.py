@@ -4,7 +4,7 @@ from extensions import db
 from models import ClassTest, ClassMaster, ClassSection, TestType, OrgMaster, Branch, User, ClassTestSubject, SubjectMaster
 import sqlalchemy
 from datetime import datetime
-from helpers import token_required, validate_cross_branch_access, get_user_allowed_branches
+from helpers import token_required, validate_cross_branch_access, get_user_allowed_branches, skip_scoping
  
 class_test_bp = Blueprint('class_test_bp', __name__)
 
@@ -184,32 +184,33 @@ def copy_assignments(current_user):
             return jsonify({'message': 'No assignments found in source branch'}), 404
 
         count = 0
-        for src in source_assignments:
-            # Check collision
-            existing = ClassTest.query.filter_by(
-                academic_year=academic_year,
-                branch=to_branch,
-                class_id=src.class_id,
-                test_id=src.test_id
-            ).first()
-
-            if not existing:
-                # Copy
-                new_entry = ClassTest(
+        with skip_scoping():
+            for src in source_assignments:
+                # Check collision
+                existing = ClassTest.query.filter_by(
                     academic_year=academic_year,
-                    branch=to_branch, # Target Branch Name
-                    location=to_location, # Target Location Name
+                    branch=to_branch,
                     class_id=src.class_id,
-                    test_id=src.test_id,
-                    test_order=src.test_order,
-                    status=src.status,
-                    branch_id=to_branch_id,
-                    school_id=to_school_id or src.school_id
-                )
-                db.session.add(new_entry)
-                count += 1
-        
-        db.session.commit()
+                    test_id=src.test_id
+                ).first()
+
+                if not existing:
+                    # Copy
+                    new_entry = ClassTest(
+                        academic_year=academic_year,
+                        branch=to_branch, # Target Branch Name
+                        location=to_location, # Target Location Name
+                        class_id=src.class_id,
+                        test_id=src.test_id,
+                        test_order=src.test_order,
+                        status=src.status,
+                        branch_id=to_branch_id,
+                        school_id=to_school_id or src.school_id
+                    )
+                    db.session.add(new_entry)
+                    count += 1
+
+            db.session.commit()
         return jsonify({'message': f'Copied {count} assignments successfully'}), 200
 
     except Exception as e:

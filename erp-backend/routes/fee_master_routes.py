@@ -6,7 +6,8 @@ from helpers import fee_type_to_dict
 from helpers import (token_required, require_academic_year, generate_installments,
                      shift_installments, assign_fee_to_student, normalize_fee_title,
                      get_default_location, get_user_allowed_branches,
-                     validate_cross_branch_access, can_manage_global, has_permission)
+                     validate_cross_branch_access, can_manage_global, has_permission,
+                     skip_scoping)
 from datetime import datetime
 from sqlalchemy import or_, and_, select
 from sqlalchemy.exc import IntegrityError
@@ -1012,90 +1013,91 @@ def copy_class_fee_structure(current_user):
         skipped_count = 0
         skipped_validation_count = 0
         
-        for t_br in target_branches:
-            t_branch_name = t_br.branch_name
-            # Fallback to location_code if name lookup fails (Specific fix for 'Delhi' etc.)
-            t_location_name = loc_map.get(t_br.location_code, t_br.location_code) or "Unknown Location"
-            
-            for src_fee in source_fees:
-                # --- VALIDATION 1: Fee Type Existence ---
-                src_ft = FeeType.query.get(src_fee.feetypeid)
-                if not src_ft:
-                    continue # Should not happen
+        with skip_scoping():
+            for t_br in target_branches:
+                t_branch_name = t_br.branch_name
+                # Fallback to location_code if name lookup fails (Specific fix for 'Delhi' etc.)
+                t_location_name = loc_map.get(t_br.location_code, t_br.location_code) or "Unknown Location"
                 
-                target_ft_id = None
-                
-                if src_ft.branch == 'All':
-                     # Global Fee Type: Valid for everyone
-                     target_ft_id = src_ft.id
-                elif target_ft_obj := FeeType.query.filter_by(
-                         feetype=src_ft.feetype,
-                         branch=t_branch_name,
-                         academic_year=academic_year
-                     ).first():
-                     target_ft_id = target_ft_obj.id
-                else:
-                     # VALIDATION FAILED: Target missing required fee type
-                     skipped_validation_count += 1
-                     print(f"[SKIP] Target {t_branch_name} missing fee type '{src_ft.feetype}'")
-                     continue
-
-                # --- VALIDATION 2: Installment Count Match ---
-                if src_fee.installments_count > 0:
-                    # Check how many installments are configured for the TARGET context
-                    # Logic: global installments + branch specific installments? 
-                    # Usually FeeInstallment is searched by fee_type_id and (branch OR All).
+                for src_fee in source_fees:
+                    # --- VALIDATION 1: Fee Type Existence ---
+                    src_ft = FeeType.query.get(src_fee.feetypeid)
+                    if not src_ft:
+                        continue # Should not happen
                     
-                    # We use a query similar to 'get_installments' logic:
-                    cnt_query = FeeInstallment.query.filter(
-                        FeeInstallment.fee_type_id == target_ft_id,
-                        FeeInstallment.academic_year == academic_year,
-                        or_(FeeInstallment.branch == t_branch_name, FeeInstallment.branch == 'All')
-                    )
-                    t_inst_count = cnt_query.count()
+                    target_ft_id = None
                     
-                    if t_inst_count != src_fee.installments_count:
-                         # VALIDATION FAILED: Mismatch in installments
+                    if src_ft.branch == 'All':
+                         # Global Fee Type: Valid for everyone
+                         target_ft_id = src_ft.id
+                    elif target_ft_obj := FeeType.query.filter_by(
+                             feetype=src_ft.feetype,
+                             branch=t_branch_name,
+                             academic_year=academic_year
+                         ).first():
+                         target_ft_id = target_ft_obj.id
+                    else:
+                         # VALIDATION FAILED: Target missing required fee type
                          skipped_validation_count += 1
-                         print(f"[SKIP] Target {t_branch_name} installment mismatch for '{src_ft.feetype}'. Source: {src_fee.installments_count}, Target: {t_inst_count}")
+                         print(f"[SKIP] Target {t_branch_name} missing fee type '{src_ft.feetype}'")
                          continue
 
-                try:
-                    with db.session.begin_nested():
-                        # Check Existing (Merge Mode)
-                        # Note: We must check existence using the TARGET Fee Type ID
-                        existing = ClassFeeStructure.query.filter_by(
-                            clazz=class_name,
-                            academic_year=academic_year,
-                            branch=t_branch_name,
-                            feetypeid=target_ft_id # Important: Use resolved ID
-                        ).first()
+                    # --- VALIDATION 2: Installment Count Match ---
+                    if src_fee.installments_count > 0:
+                        # Check how many installments are configured for the TARGET context
+                        # Logic: global installments + branch specific installments?
+                        # Usually FeeInstallment is searched by fee_type_id and (branch OR All).
                         
-                        if existing:
-                            skipped_count += 1
-                            continue # SKIP duplicate logic
-                        
-                        # COPY
-                        new_fee = ClassFeeStructure(
-                            clazz=src_fee.clazz,
-                            feetypeid=target_ft_id, # Use resolved ID
-                            academicyear=academic_year,
-                            academic_year=academic_year,
-                            totalamount=src_fee.totalamount,
-                            monthly_amount=src_fee.monthly_amount,
-                            installments_count=src_fee.installments_count,
-                            isnewadmission=src_fee.isnewadmission,
-                            feegroup=src_fee.feegroup,
-                            branch=t_branch_name,
-                            location=t_location_name,
-                            branch_id=t_br.id,
-                            school_id=t_br.school_id
+                        # We use a query similar to 'get_installments' logic:
+                        cnt_query = FeeInstallment.query.filter(
+                            FeeInstallment.fee_type_id == target_ft_id,
+                            FeeInstallment.academic_year == academic_year,
+                            or_(FeeInstallment.branch == t_branch_name, FeeInstallment.branch == 'All')
                         )
-                        db.session.add(new_fee)
-                        db.session.flush()
-                        copied_count += 1
-                except IntegrityError:
-                    skipped_count += 1
+                        t_inst_count = cnt_query.count()
+
+                        if t_inst_count != src_fee.installments_count:
+                             # VALIDATION FAILED: Mismatch in installments
+                             skipped_validation_count += 1
+                             print(f"[SKIP] Target {t_branch_name} installment mismatch for '{src_ft.feetype}'. Source: {src_fee.installments_count}, Target: {t_inst_count}")
+                             continue
+
+                    try:
+                        with db.session.begin_nested():
+                            # Check Existing (Merge Mode)
+                            # Note: We must check existence using the TARGET Fee Type ID
+                            existing = ClassFeeStructure.query.filter_by(
+                                clazz=class_name,
+                                academic_year=academic_year,
+                                branch=t_branch_name,
+                                feetypeid=target_ft_id # Important: Use resolved ID
+                            ).first()
+
+                            if existing:
+                                skipped_count += 1
+                                continue # SKIP duplicate logic
+
+                            # COPY
+                            new_fee = ClassFeeStructure(
+                                clazz=src_fee.clazz,
+                                feetypeid=target_ft_id, # Use resolved ID
+                                academicyear=academic_year,
+                                academic_year=academic_year,
+                                totalamount=src_fee.totalamount,
+                                monthly_amount=src_fee.monthly_amount,
+                                installments_count=src_fee.installments_count,
+                                isnewadmission=src_fee.isnewadmission,
+                                feegroup=src_fee.feegroup,
+                                branch=t_branch_name,
+                                location=t_location_name,
+                                branch_id=t_br.id,
+                                school_id=t_br.school_id
+                            )
+                            db.session.add(new_fee)
+                            db.session.flush()
+                            copied_count += 1
+                    except IntegrityError:
+                        skipped_count += 1
                 
         db.session.commit()
         
@@ -1183,44 +1185,45 @@ def copy_fee_types(current_user):
         copied_count = 0
         skipped_count = 0
         
-        for t_br in target_branches:
-            t_branch_name = t_br.branch_name
-            
-            for src_ft in source_fee_types:
-                try:
-                    with db.session.begin_nested():
-                        # FIXED: Idempotent check using full tenant scope
-                        # (feetype + branch + academic_year + school_id)
-                        existing = FeeType.query.filter(
-                            FeeType.feetype == src_ft.feetype,
-                            FeeType.academic_year == academic_year,
-                            FeeType.branch == t_branch_name,
-                            FeeType.school_id == t_br.school_id
-                        ).first()
-                        
-                        if existing:
-                            skipped_count += 1
-                            continue
-                        
-                        # Create New
-                        new_ft = FeeType(
-                            feetype=src_ft.feetype,
-                            category=src_ft.category,
-                            feetypegroup=src_ft.feetypegroup,
-                            type=src_ft.type,
-                            displayname=src_ft.displayname,
-                            isrefundable=src_ft.isrefundable,
-                            description=src_ft.description,
-                            branch=t_branch_name,
-                            academic_year=academic_year,
-                            branch_id=t_br.id,
-                            school_id=t_br.school_id or src_ft.school_id
-                        )
-                        db.session.add(new_ft)
-                        db.session.flush()
-                        copied_count += 1
-                except IntegrityError:
-                    skipped_count += 1
+        with skip_scoping():
+            for t_br in target_branches:
+                t_branch_name = t_br.branch_name
+
+                for src_ft in source_fee_types:
+                    try:
+                        with db.session.begin_nested():
+                            # FIXED: Idempotent check using full tenant scope
+                            # (feetype + branch + academic_year + school_id)
+                            existing = FeeType.query.filter(
+                                FeeType.feetype == src_ft.feetype,
+                                FeeType.academic_year == academic_year,
+                                FeeType.branch == t_branch_name,
+                                FeeType.school_id == t_br.school_id
+                            ).first()
+
+                            if existing:
+                                skipped_count += 1
+                                continue
+
+                            # Create New
+                            new_ft = FeeType(
+                                feetype=src_ft.feetype,
+                                category=src_ft.category,
+                                feetypegroup=src_ft.feetypegroup,
+                                type=src_ft.type,
+                                displayname=src_ft.displayname,
+                                isrefundable=src_ft.isrefundable,
+                                description=src_ft.description,
+                                branch=t_branch_name,
+                                academic_year=academic_year,
+                                branch_id=t_br.id,
+                                school_id=t_br.school_id or src_ft.school_id
+                            )
+                            db.session.add(new_ft)
+                            db.session.flush()
+                            copied_count += 1
+                    except IntegrityError:
+                        skipped_count += 1
                 
         db.session.commit()
         return jsonify({
@@ -1314,60 +1317,61 @@ def copy_installments(current_user):
         skipped_batches = 0
         errors = []
         
-        for t_br in target_branches:
-            t_branch_name = t_br.branch_name
-            t_location = loc_map.get(t_br.location_code, t_br.location_code) or "Unknown Location"
-            
-            # Find Target Fee Type by Name
-            target_ft = FeeType.query.filter_by(
-                feetype=fee_type_name,
-                branch=t_branch_name,
-                academic_year=academic_year
-            ).first() or FeeType.query.filter_by(
-                feetype=fee_type_name,
-                branch='All',
-                academic_year=academic_year
-            ).first()
+        with skip_scoping():
+            for t_br in target_branches:
+                t_branch_name = t_br.branch_name
+                t_location = loc_map.get(t_br.location_code, t_br.location_code) or "Unknown Location"
                 
-            if not target_ft:
-                errors.append(f"Target '{t_branch_name}' missing fee type '{fee_type_name}'")
-                continue
-                
-            try:
-                with db.session.begin_nested():
-                    # Check for EXISTING installments
-                    existing_count = FeeInstallment.query.filter_by(
-                        fee_type_id=target_ft.id,
-                        branch=t_branch_name,
-                        academic_year=academic_year
-                    ).count()
+                # Find Target Fee Type by Name
+                target_ft = FeeType.query.filter_by(
+                    feetype=fee_type_name,
+                    branch=t_branch_name,
+                    academic_year=academic_year
+                ).first() or FeeType.query.filter_by(
+                    feetype=fee_type_name,
+                    branch='All',
+                    academic_year=academic_year
+                ).first()
                     
-                    if existing_count > 0:
-                        skipped_batches += 1
-                        continue # Skip to avoid duplicates/mess
+                if not target_ft:
+                    errors.append(f"Target '{t_branch_name}' missing fee type '{fee_type_name}'")
+                    continue
                     
-                    # COPY
-                    for inst in source_installments:
-                        new_inst = FeeInstallment(
-                            installment_no=inst.installment_no,
-                            title=inst.title,
-                            start_date=inst.start_date,
-                            end_date=inst.end_date,
-                            last_pay_date=inst.last_pay_date,
-                            is_admission=inst.is_admission,
-                            description=inst.description,
-                            fee_type_id=target_ft.id, # Link to TARGET fee type
+                try:
+                    with db.session.begin_nested():
+                        # Check for EXISTING installments
+                        existing_count = FeeInstallment.query.filter_by(
+                            fee_type_id=target_ft.id,
                             branch=t_branch_name,
-                            location=t_location,
-                            academic_year=academic_year,
-                            branch_id=t_br.id,
-                            school_id=t_br.school_id
-                        )
-                        db.session.add(new_inst)
-                    db.session.flush()
-                    copied_batches += 1
-            except IntegrityError:
-                skipped_batches += 1
+                            academic_year=academic_year
+                        ).count()
+
+                        if existing_count > 0:
+                            skipped_batches += 1
+                            continue # Skip to avoid duplicates/mess
+
+                        # COPY
+                        for inst in source_installments:
+                            new_inst = FeeInstallment(
+                                installment_no=inst.installment_no,
+                                title=inst.title,
+                                start_date=inst.start_date,
+                                end_date=inst.end_date,
+                                last_pay_date=inst.last_pay_date,
+                                is_admission=inst.is_admission,
+                                description=inst.description,
+                                fee_type_id=target_ft.id, # Link to TARGET fee type
+                                branch=t_branch_name,
+                                location=t_location,
+                                academic_year=academic_year,
+                                branch_id=t_br.id,
+                                school_id=t_br.school_id
+                            )
+                            db.session.add(new_inst)
+                        db.session.flush()
+                        copied_batches += 1
+                except IntegrityError:
+                    skipped_batches += 1
             
         db.session.commit()
         return jsonify({
@@ -1466,77 +1470,78 @@ def copy_concessions(current_user):
         skipped_count = 0
         errors = []
         
-        for t_br in target_branches:
-            t_branch_name = t_br.branch_name
-            t_location = loc_map.get(t_br.location_code, t_br.location_code) or "Unknown Location"
-            
-            for title, rows in concessions_by_title.items():
-                try:
-                    with db.session.begin_nested():
-                        # Check if this concession title already exists in target
-                        existing = Concession.query.filter_by(
-                            title=title,
-                            branch=t_branch_name,
-                            academic_year=academic_year
-                        ).first()
-                        
-                        if existing:
-                            skipped_count += 1
-                            continue
-                        
-                        # Copy logic
-                        # For each row (fee type link), find equivalent fee type in target
-                        
-                        rows_inserted = 0
-                        for src_row in rows:
-                            if not src_row.fee_type_id:
-                                continue 
-                                
-                            # Get source fee type name
-                            src_ft = FeeType.query.get(src_row.fee_type_id)
-                            if not src_ft:
-                                continue # Should not happen usually
-                            
-                            ft_name = src_ft.feetype
-                            
-                            # Find target fee type
-                            target_ft = FeeType.query.filter_by(
-                                feetype=ft_name,
+        with skip_scoping():
+            for t_br in target_branches:
+                t_branch_name = t_br.branch_name
+                t_location = loc_map.get(t_br.location_code, t_br.location_code) or "Unknown Location"
+
+                for title, rows in concessions_by_title.items():
+                    try:
+                        with db.session.begin_nested():
+                            # Check if this concession title already exists in target
+                            existing = Concession.query.filter_by(
+                                title=title,
                                 branch=t_branch_name,
-                                academic_year=academic_year
-                            ).first() or FeeType.query.filter_by(
-                                feetype=ft_name,
-                                branch='All',
                                 academic_year=academic_year
                             ).first()
                             
-                            if not target_ft:
-                                # Skip this specific fee type link if target doesn't have it
-                                # We don't fail the whole concession, just this part
+                            if existing:
+                                skipped_count += 1
                                 continue
+
+                            # Copy logic
+                            # For each row (fee type link), find equivalent fee type in target
+
+                            rows_inserted = 0
+                            for src_row in rows:
+                                if not src_row.fee_type_id:
+                                    continue
+
+                                # Get source fee type name
+                                src_ft = FeeType.query.get(src_row.fee_type_id)
+                                if not src_ft:
+                                    continue # Should not happen usually
                                 
-                            # Create new concession row
-                            new_c = Concession(
-                                title=src_row.title,
-                                description=src_row.description,
-                                location=t_location,
-                                branch=t_branch_name,
-                                academic_year=academic_year,
-                                fee_type_id=target_ft.id,
-                                percentage=src_row.percentage,
-                                is_percentage=src_row.is_percentage,
-                                show_in_payment=src_row.show_in_payment,
-                                branch_id=t_br.id,
-                                school_id=t_br.school_id
-                            )
-                            db.session.add(new_c)
-                            rows_inserted += 1
-                        
-                        db.session.flush()
-                        if rows_inserted > 0:
-                            copied_count += 1
-                except IntegrityError:
-                    skipped_count += 1
+                                ft_name = src_ft.feetype
+
+                                # Find target fee type
+                                target_ft = FeeType.query.filter_by(
+                                    feetype=ft_name,
+                                    branch=t_branch_name,
+                                    academic_year=academic_year
+                                ).first() or FeeType.query.filter_by(
+                                    feetype=ft_name,
+                                    branch='All',
+                                    academic_year=academic_year
+                                ).first()
+
+                                if not target_ft:
+                                    # Skip this specific fee type link if target doesn't have it
+                                    # We don't fail the whole concession, just this part
+                                    continue
+
+                                # Create new concession row
+                                new_c = Concession(
+                                    title=src_row.title,
+                                    description=src_row.description,
+                                    location=t_location,
+                                    branch=t_branch_name,
+                                    academic_year=academic_year,
+                                    fee_type_id=target_ft.id,
+                                    percentage=src_row.percentage,
+                                    is_percentage=src_row.is_percentage,
+                                    show_in_payment=src_row.show_in_payment,
+                                    branch_id=t_br.id,
+                                    school_id=t_br.school_id
+                                )
+                                db.session.add(new_c)
+                                rows_inserted += 1
+
+                            db.session.flush()
+                            if rows_inserted > 0:
+                                copied_count += 1
+                    except IntegrityError:
+                        skipped_count += 1
                     
         db.session.commit()
         return jsonify({
