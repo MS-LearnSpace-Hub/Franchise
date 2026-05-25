@@ -18,7 +18,7 @@ from models import (
 
 
 from services.sequence_service import SequenceService
-from helpers import token_required, require_academic_year, get_branch_query_filter, student_to_dict, auto_enroll_student_fee, require_editable_student, is_admin_level, has_permission, get_user_allowed_branches
+from helpers import token_required, require_academic_year, get_branch_query_filter, student_to_dict, auto_enroll_student_fee, require_editable_student, is_admin_level, has_permission, get_user_allowed_branches, resolve_user_scope
 from datetime import datetime
 from sqlalchemy import or_, and_, func
 import io
@@ -580,16 +580,33 @@ def create_student(current_user):
             # Ideally OrgMaster should have this year.
             return jsonify({"error": f"Academic Year {h_year} not found in Master"}), 400
 
-        # 2. Resolve Branch ID
+        # 2. Resolve Branch ID (more tolerant for multi-branch users)
         branch_name_code = data.get("branch")
-        branch_id = SequenceService.resolve_branch_id(branch_name_code)
+        branch_id = None
+
+        # If client passed a numeric branch id as string, accept it
+        if isinstance(branch_name_code, str) and branch_name_code.isdigit():
+            branch_id = int(branch_name_code)
+        else:
+            branch_id = SequenceService.resolve_branch_id(branch_name_code) if branch_name_code else None
+
+        # Fallback to effective request/user scope (X-Branch header or user default)
         if not branch_id:
-             return jsonify({"error": f"Invalid Branch: {branch_name_code}"}), 400
-             
-        # Check branch permission
+            scope = resolve_user_scope(current_user)
+            branch_id = scope.get('branch_id')
+            # Update branch_name_code to readable name for messages
+            if branch_id:
+                br = Branch.query.get(branch_id)
+                branch_name_code = br.branch_name if br else branch_name_code
+
+        if not branch_id:
+            return jsonify({"error": f"Invalid Branch: {branch_name_code}"}), 400
+
+        # Load branch object and check permission
+        b_obj = Branch.query.get(branch_id)
+
         allowed = get_user_allowed_branches(current_user)
         if not allowed['is_unlimited']:
-            b_obj = Branch.query.filter_by(id=branch_id).first()
             if not b_obj or b_obj.branch_name not in allowed['names']:
                 return jsonify({"error": "Unauthorized to create student for branch: " + (b_obj.branch_name if b_obj else branch_name_code)}), 403
 
@@ -625,11 +642,11 @@ def create_student(current_user):
                 s.admission_date = datetime.strptime(data['admission_date'], '%Y-%m-%d').date()
                 
         s.status = data.get("status", "Active")
-        s.branch = data.get("branch")
+        s.branch = b_obj.branch_name if b_obj else data.get("branch")
         s.location = data.get("location")
         s.academic_year = h_year
         s.branch_id = branch_id
-        s.school_id = b_obj.school_id
+        s.school_id = b_obj.school_id if b_obj else None
         
         s.BloodGroup = data.get("BloodGroup")
         s.Adharcardno = data.get("Adharcardno")

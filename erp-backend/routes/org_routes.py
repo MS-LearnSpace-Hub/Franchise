@@ -3,6 +3,7 @@ import os
 from flask import Blueprint, jsonify, request, current_app, send_from_directory
 from extensions import db
 from models import Branch, School, OrgMaster, User, UserBranchAccess, ClassMaster, ClassSection
+from services.sequence_service import SequenceService
 from helpers import token_required, require_academic_year, get_branch_query_filter, get_user_allowed_branches
 from datetime import date, datetime
 from sqlalchemy import or_ 
@@ -292,7 +293,19 @@ def create_branch(current_user):
         updated_by=current_user.user_id,
     )
     try:
+        # Create branch and also initialize enrollment sequences for existing academic years
         db.session.add(branch)
+        db.session.flush()  # ensure branch.id is available for sequence creation
+
+        # For every active academic year, ensure an enrollment sequence exists for this branch
+        active_years = OrgMaster.query.filter_by(master_type='ACADEMIC_YEAR', is_active=True).all()
+        for ay in active_years:
+            try:
+                SequenceService.get_or_create_sequence(branch.id, ay.id, user_id=current_user.user_id)
+            except Exception:
+                # swallow per-year errors to avoid blocking branch creation; they'll be visible in DB if any
+                pass
+
         db.session.commit()
         return jsonify({"message": "Branch created", "branch_id": branch.id}), 201
     except Exception as e:
