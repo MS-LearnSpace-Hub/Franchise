@@ -1,3 +1,4 @@
+ 
 import React, { useState, useEffect } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -7,25 +8,25 @@ import { ProgressReportData } from '../reportcardtypes';
 import api from '../api';
 import ReceiptLogo from '../images/Receiptlogo.png'; // fallback logo (same as FeeReceipt)
 import RightLogo from '../images/MSEA.png';
-
+ 
 interface ReportCardProps {
   data: ProgressReportData;
 }
-
+ 
 // ─────────────────────────────────────────────────────────────────────────────
 // RIGHT LOGO — static, same on all report cards.
 // Change ReceiptLogo import above to point to your actual right-side logo file.
 // ─────────────────────────────────────────────────────────────────────────────
 const STATIC_RIGHT_LOGO: string = RightLogo;
-
+ 
 const GRADE_LABELS = ['E', 'D', 'C2', 'C1', 'B2', 'B1', 'A2', 'A1'] as const;
-
+ 
 const GRADE_HEADER_COLORS: Record<string, string> = {
   E:  '#dc2626', D:  '#dc2626',
   C2: '#ea580c', C1: '#ea580c',
   B2: '#15803d', B1: '#15803d', A2: '#15803d', A1: '#15803d',
 };
-
+ 
 const GRADE_BADGE_COLORS: Record<string, string> = {
   'A+': '#15803d', A1: '#15803d', A2: '#16a34a', A: '#15803d',
   'B+': '#b45309', B1: '#d97706', B2: '#f59e0b', B: '#d97706',
@@ -33,10 +34,10 @@ const GRADE_BADGE_COLORS: Record<string, string> = {
   D:    '#b91c1c', E:  '#b91c1c',
 };
 const gradeColor = (g?: string) => GRADE_BADGE_COLORS[g ?? ''] ?? '#6b7280';
-
+ 
 const calcPct = (num: number, den: number) =>
   den > 0 ? Math.round((num / den) * 100) : 0;
-
+ 
 const buildGradeCells = (values: number[]): string[] => {
   const thresholds = values.slice(1);
   return GRADE_LABELS.map((_, i) => {
@@ -46,7 +47,7 @@ const buildGradeCells = (values: number[]): string[] => {
     return `${lo}–${hi}`;
   });
 };
-
+ 
 const COLOR = {
   navy:    '#1e3a5f',
   purple:  '#4a235a',
@@ -58,7 +59,7 @@ const COLOR = {
   border:  '#e2e8f0',
   white:   '#ffffff',
 };
-
+ 
 const sectionHdr = (color: string): React.CSSProperties => ({
   backgroundColor: color,
   color: COLOR.white,
@@ -71,26 +72,26 @@ const sectionHdr = (color: string): React.CSSProperties => ({
   alignItems: 'center',
   gap: '6px',
 });
-
+ 
 const cell: React.CSSProperties = {
   border: `1px solid ${COLOR.border}`,
   padding: '4px 7px',
   fontSize: '10.5px',
 };
-
+ 
 // ─────────────────────────────────────────────────────────────────────────────
 const ReportCard: React.FC<ReportCardProps> = ({ data }) => {
-
+ 
   // ── Dynamic branch logo — exact same pattern as FeeReceipt.tsx ──────────────
   // 1. Fetches all branches from /api/branches
   // 2. Finds the branch matching student.branchName
   // 3. Uses branch.school_logo from the DB (served by your Flask backend)
   // 4. Falls back to local ReceiptLogo if no match or no logo in DB
   const [leftLogoUrl, setLeftLogoUrl] = useState<string>(ReceiptLogo);
-
+ 
   useEffect(() => {
     if (!data?.student?.branchName) return;
-
+ 
     api.get('/branches')
       .then(res => {
         const branches: any[] = res.data.branches || [];
@@ -111,7 +112,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ data }) => {
       });
   }, [data?.student?.branchName]);
   // ────────────────────────────────────────────────────────────────────────────
-
+ 
   if (!data) {
     return (
       <div style={{ padding: '32px', textAlign: 'center', color: '#9ca3af' }}>
@@ -119,19 +120,19 @@ const ReportCard: React.FC<ReportCardProps> = ({ data }) => {
       </div>
     );
   }
-
+ 
   const {
-    student, academicPerformance, hifzData, attendance,
+    student, academicPerformance, DeeniyathData, attendance,
     teacherRemark, gradingScales,
   } = data;
-
+ 
   // leftLogoUrl is resolved dynamically above via useEffect + /api/branches
-
+ 
   // Grading scale
   const gradingRows = (gradingScales ?? []).filter(
     gs => gs?.values && gs.values.length >= 2
   );
-
+ 
   // ── Academic rows — sorted by subject_order from backend, Total/Grade always last ──
   const acadAll      = (academicPerformance ?? []).filter(ap => ap.subject && ap.subject !== '');
   const acadSorted   = [...acadAll]
@@ -141,39 +142,33 @@ const ReportCard: React.FC<ReportCardProps> = ({ data }) => {
   // acadRows = sorted subjects + Total row at the end (for table rendering)
   const acadRows     = acadTotal ? [...acadSorted, acadTotal] : acadSorted;
   const acadSubjects = acadSorted; // excludes Total/Grade
-
-  const pieData = acadSubjects.map(ap => ({
-    name:  ap.subject,
-    value: ap.totalMarks > 0 ? Math.round((Number(ap.securedMarks) / ap.totalMarks) * 100) : 0,
-    color: ap.color ?? '#6b7280',
-  }));
-
-  // ── HIFZ / Deeniyath rows — sorted by subject_order, Total always last ──
-  const hifzAll      = (hifzData ?? []).filter(h => h.subject && h.subject !== '');
-  const hifzSorted   = [...hifzAll]
+ 
+   // ── deeniyath / Deeniyath rows — sorted by subject_order, Total always last ──
+  const deeniyathAll      = (DeeniyathData ?? []).filter(h => h.subject && h.subject !== '');
+  const deeniyathSorted   = [...deeniyathAll]
     .filter(h => h.subject !== 'Total/Grade')
     .sort((a, b) => ((a as any).subject_order ?? 999) - ((b as any).subject_order ?? 999));
-  const hifzTotal    = hifzAll.find(h => h.subject === 'Total/Grade');
-  const hifzRows     = hifzTotal ? [...hifzSorted, hifzTotal] : hifzSorted;
-  const hifzSubjects = hifzSorted; // excludes Total/Grade
-
+  const deeniyathTotal    = deeniyathAll.find(h => h.subject === 'Total/Grade');
+  const deeniyathRows     = deeniyathTotal ? [...deeniyathSorted, deeniyathTotal] : deeniyathSorted;
+  const deeniyathSubjects = deeniyathSorted; // excludes Total/Grade
+ 
   // Marks
   const totalMarks    = acadTotal?.totalMarks ?? acadSubjects.reduce((s, a) => s + a.totalMarks, 0);
   const obtainedMarks = typeof acadTotal?.securedMarks === 'number'
     ? acadTotal.securedMarks
     : acadSubjects.reduce((s, a) => s + Number(a.securedMarks), 0);
   const finalPct   = calcPct(obtainedMarks, totalMarks);
-
+ 
   // Attendance
   const attSummary = attendance?.summary;
   const attPct     = attSummary?.presentPercentage
     ?? calcPct(attSummary?.presentCount ?? 0, attSummary?.totalCount ?? 1);
-
+ 
   // Title
   const titleParts = (data.reportTitle ?? '').split(' OF ');
   const mainTitle  = titleParts[0] || 'PROGRESS REPORT';
   const subTitle   = titleParts.slice(1).join(' OF ') || '';
-
+ 
   return (
     <div
       className="report-card-container"
@@ -190,7 +185,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ data }) => {
         // pageBreakAfter: 'always',
       }}
     >
-
+ 
       {/* ══════════════════════════════════════════════════════════════
           HEADER
       ══════════════════════════════════════════════════════════════ */}
@@ -209,7 +204,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ data }) => {
           style={{ height: '62px', width: 'auto', objectFit: 'contain' }}
           onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
         />
-
+ 
         {/* ── CENTRE: report title ── */}
         <div style={{ textAlign: 'center', flex: 1, padding: '0 12px' }}>
           <div style={{
@@ -228,16 +223,16 @@ const ReportCard: React.FC<ReportCardProps> = ({ data }) => {
             </div>
           )}
         </div>
-
+ 
         {/* ── RIGHT: static logo — same on every report card (STATIC_RIGHT_LOGO) ── */}
         <img
           src={STATIC_RIGHT_LOGO}
-          alt="MS Education Academy"
+          alt="MS LearnSpace"
           style={{ height: '62px', width: 'auto', objectFit: 'contain' }}
           onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
         />
       </div>
-
+ 
       {/* ══════════════════════════════════════════════════════════════
           ROW 1 — Student Details (2-column split)
       ══════════════════════════════════════════════════════════════ */}
@@ -265,7 +260,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ data }) => {
           ))}
         </div>
       </div>
-
+ 
       {/* ══════════════════════════════════════════════════════════════
           ROW 2 — Academic Performance + Pie Chart
       ══════════════════════════════════════════════════════════════ */}
@@ -316,53 +311,82 @@ const ReportCard: React.FC<ReportCardProps> = ({ data }) => {
               </tbody>
             </table>
           </div>
-
-          {/* Pie Chart */}
-          <div>
-            <div style={sectionHdr(COLOR.teal)}>
-              <Dot color="#6ee7b7" /> Subject Performance Visual
-            </div>
-            <div style={{
-              display: 'flex', flexDirection: 'column', alignItems: 'center',
-              justifyContent: 'center', padding: '8px', height: '230px', position: 'relative',
-            }}>
-              <ResponsiveContainer width="100%" height={160}>
-                <PieChart>
-                  <Pie
-                    data={pieData} cx="50%" cy="50%"
-                    innerRadius={46} outerRadius={72}
-                    dataKey="value" startAngle={90} endAngle={-270}
-                  >
-                    {pieData.map((e, i) => <Cell key={i} fill={e.color} />)}
-                  </Pie>
-                  <Tooltip formatter={(v: any) => `${v}%`} />
-                </PieChart>
-              </ResponsiveContainer>
-              {/* Centre % label */}
-              <div style={{
-                position: 'absolute', top: '50%', left: '50%',
-                transform: 'translate(-50%, -62%)',
-                textAlign: 'center', pointerEvents: 'none',
-              }}>
-                <div style={{ fontSize: '16px', fontWeight: 800, color: COLOR.navy }}>{finalPct}%</div>
-              </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', justifyContent: 'center', fontSize: '9.5px', marginTop: '4px' }}>
-                {pieData.map((e, i) => (
-                  <span key={i} style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
-                    <span style={{ width: 9, height: 9, borderRadius: '2px', backgroundColor: e.color, display: 'inline-block', flexShrink: 0 }} />
-                    {e.name}: {e.value}%
-                  </span>
-                ))}
-              </div>
-            </div>
-          </div>
+ 
+          {/* Academic Bar Chart */}
+        <div>
+        <div style={sectionHdr(COLOR.teal)}>
+            <Dot color="#6ee7b7" /> Subject Performance Visual
+        </div>
+ 
+        <div
+            style={{
+            padding: '10px',
+            height: '250px',
+            display: 'flex',
+            justifyContent: 'left',
+            alignItems: 'center',
+            }}
+        >
+            <ResponsiveContainer width="85%" height="100%">
+            <BarChart
+                data={acadSubjects.map(ap => ({
+                name: ap.subject,
+                'Total Marks': ap.totalMarks,
+                'Secured Marks': Number(ap.securedMarks) || 0,
+                }))}
+                barSize={24}
+                margin={{ left: 0, right: 6, top: 4, bottom: 20 }}
+            >
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+ 
+                <XAxis
+                dataKey="name"
+                fontSize={9}
+                interval={0}
+                angle={-20}
+                textAnchor="end"
+                />
+ 
+                <YAxis fontSize={9} />
+ 
+                <Tooltip />
+ 
+                <Bar
+                dataKey="Total Marks"
+                fill="#1d4ed8"
+                radius={[3, 3, 0, 0]}
+                />
+ 
+                <Bar
+                dataKey="Secured Marks"
+                fill="#16a34a"
+                radius={[3, 3, 0, 0]}
+                />
+            </BarChart>
+            </ResponsiveContainer>
+        </div>
+ 
+        {/* Result Percentage */}
+        <div
+            style={{
+            textAlign: 'center',
+            paddingBottom: '10px',
+            fontSize: '15px',
+            fontWeight: 800,
+            color: COLOR.navy,
+            }}
+        >
+            Result: {finalPct}%
+        </div>
+        </div>
+ 
         </div>
       )}
-
+ 
       {/* ══════════════════════════════════════════════════════════════
           ROW 3 — Deeniyath Table + Bar Chart (only if has subjects)
       ══════════════════════════════════════════════════════════════ */}
-      {hifzSubjects.length > 0 && (
+      {deeniyathSubjects.length > 0 && (
         <div style={{
           display: 'grid', gridTemplateColumns: '1fr 1fr',
           borderBottom: `1px solid ${COLOR.border}`,
@@ -381,7 +405,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ data }) => {
                 </tr>
               </thead>
               <tbody>
-                {hifzRows.map((h, i) => {
+                {deeniyathRows.map((h, i) => {
                   const isTotal = h.subject === 'Total/Grade';
                   return (
                     <tr key={i} style={{
@@ -401,36 +425,136 @@ const ReportCard: React.FC<ReportCardProps> = ({ data }) => {
               </tbody>
             </table>
           </div>
-
-          {/* Deeniyath Bar Chart */}
-          <div>
+ 
+          {/* Deeniyath Pie Chart */}
+            <div>
             <div style={sectionHdr('#0d6e6e')}>
-              <Dot color="#99f6e4" /> Deeniyath Performance
+                <Dot color="#99f6e4" /> Deeniyath Performance
             </div>
-            <div style={{ padding: '8px', height: '220px' }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={hifzSubjects.map(h => ({
-                    name: h.subject,
-                    'Total Marks':   h.totalMarks,
-                    'Secured Marks': Number(h.securedMarks) || 0,
-                  }))}
-                  barSize={24}
-                  margin={{ left: 0, right: 8, top: 4, bottom: 28 }}
+ 
+            <div
+                style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '8px',
+                height: '230px',
+                position: 'relative',
+                }}
+            >
+                <ResponsiveContainer width="100%" height={160}>
+                <PieChart>
+                    <Pie
+                    data={deeniyathSubjects.map(h => ({
+                        name: h.subject,
+                        value:
+                        h.totalMarks > 0
+                            ? Math.round(
+                                (Number(h.securedMarks) / h.totalMarks) * 100
+                            )
+                            : 0,
+                        color: h.color ?? '#0fbe53',
+                    }))}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={46}
+                    outerRadius={72}
+                    dataKey="value"
+                    startAngle={90}
+                    endAngle={-270}
+                    >
+                    {deeniyathSubjects.map((h, i) => (
+                        <Cell
+                        key={i}
+                        fill={
+                            h.color ??
+                            ['#7c3aed', '#16a34a', '#ea580c', '#2563eb', '#dc2626', '#0fbe53'][i % 6]
+                        }
+                        />
+                    ))}
+                    </Pie>
+ 
+                    <Tooltip formatter={(v: any) => `${v}%`} />
+                </PieChart>
+                </ResponsiveContainer>
+ 
+                {/* Center Label */}
+                <div
+                style={{
+                    position: 'absolute',
+                    top: '42%',
+                    left: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    textAlign: 'center',
+                    pointerEvents: 'none',
+                }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="name" fontSize={9} interval={0} angle={-20} textAnchor="end" />
-                  <YAxis fontSize={9} />
-                  <Tooltip />
-                  <Bar dataKey="Total Marks"   fill="#c4b5fd" radius={[3, 3, 0, 0]} />
-                  <Bar dataKey="Secured Marks" fill="#7c3aed" radius={[3, 3, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+                <div
+                    style={{
+                    fontSize: '15px',
+                    fontWeight: 800,
+                    color: COLOR.purple,
+                    }}
+                >
+                   
+                </div>
+                </div>
+ 
+                {/* Legend */}
+                <div
+                style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: '6px',
+                    justifyContent: 'center',
+                    fontSize: '9.5px',
+                    marginTop: '4px',
+                }}
+                >
+                {deeniyathSubjects.map((h, i) => {
+                    const pct =
+                    h.totalMarks > 0
+                        ? Math.round(
+                            (Number(h.securedMarks) / h.totalMarks) * 100
+                        )
+                        : 0;
+ 
+                    const clr =
+                    h.color ??
+                    ['#7c3aed', '#16a34a', '#ea580c', '#2563eb', '#dc2626', '#0fbe53'][i % 6  ];
+ 
+                    return (
+                    <span
+                        key={i}
+                        style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '3px',
+                        }}
+                    >
+                        <span
+                        style={{
+                            width: 9,
+                            height: 9,
+                            borderRadius: '2px',
+                            backgroundColor: clr,
+                            display: 'inline-block',
+                            flexShrink: 0,
+                        }}
+                        />
+ 
+                        {h.subject}: {pct}%
+                    </span>
+                    );
+                })}
+                </div>
             </div>
-          </div>
+            </div>
+ 
         </div>
       )}
-
+ 
       {/* ══════════════════════════════════════════════════════════════
           ROW 4 — ATTENDANCE TRACK  full width horizontal
           No split box. Progress bar + stats on one line.
@@ -441,7 +565,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ data }) => {
           <Dot color="#93c5fd" /> Attendance Track
         </div>
         <div style={{ padding: '10px 16px' }}>
-
+ 
           {/* ── Line 1: progress bar + summary stats side by side ── */}
           <div style={{
             display: 'flex', alignItems: 'center', gap: '20px', marginBottom: '10px',
@@ -461,7 +585,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ data }) => {
                 }} />
               </div>
             </div>
-
+ 
             {/* Stats inline — no separate box */}
             <div style={{ display: 'flex', gap: '16px', fontSize: '10px', fontWeight: 700, flexShrink: 0 }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -477,7 +601,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ data }) => {
               </span>
             </div>
           </div>
-
+ 
           {/* ── Monthly attendance table — full width with Total column at end ── */}
           {attendance?.monthly && attendance.monthly.length > 0 && (
             <>
@@ -553,7 +677,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ data }) => {
           )}
         </div>
       </div>
-
+ 
       {/* ══════════════════════════════════════════════════════════════
           ROW 5 — GRADING SCALE  full width (above teacher remarks)
       ══════════════════════════════════════════════════════════════ */}
@@ -607,7 +731,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ data }) => {
           )}
         </div>
       </div>
-
+ 
       {/* ══════════════════════════════════════════════════════════════
           ROW 6 — TEACHER REMARKS  full width horizontal (one row)
       ══════════════════════════════════════════════════════════════ */}
@@ -623,11 +747,11 @@ const ReportCard: React.FC<ReportCardProps> = ({ data }) => {
             lineHeight: 1.8,
             fontSize: '11px',
           }}>
-            {teacherRemark ? `"${teacherRemark}"` : 'No remarks provided.'}
+            {teacherRemark ? `"${teacherRemark}"` : ''}
           </p>
         </div>
       </div>
-
+ 
       {/* ══════════════════════════════════════════════════════════════
           SIGNATURE FOOTER
       ══════════════════════════════════════════════════════════════ */}
@@ -643,26 +767,26 @@ const ReportCard: React.FC<ReportCardProps> = ({ data }) => {
           </div>
         ))}
       </div>
-
+ 
     </div>
   );
 };
-
+ 
 // ─────────────────────────────────────────────────────────────────────────────
 // SUB-COMPONENTS
 // ─────────────────────────────────────────────────────────────────────────────
-
+ 
 const Dot: React.FC<{ color: string }> = ({ color }) => (
   <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: color, display: 'inline-block', flexShrink: 0 }} />
 );
-
+ 
 const InfoRow: React.FC<{ label: string; value?: string }> = ({ label, value }) => (
   <div style={{ display: 'flex', gap: '8px', marginBottom: '5px', fontSize: '11.5px' }}>
     <span style={{ color: '#374151', fontWeight: 600, minWidth: '110px', flexShrink: 0 }}>{label}</span>
     <span style={{ color: '#111827' }}>: {value || '—'}</span>
   </div>
 );
-
+ 
 const GradeBadge: React.FC<{ grade?: string }> = ({ grade }) => {
   if (!grade || grade === '-') return <span style={{ color: '#9ca3af' }}>—</span>;
   const color = gradeColor(grade);
@@ -676,5 +800,7 @@ const GradeBadge: React.FC<{ grade?: string }> = ({ grade }) => {
     </span>
   );
 };
-
+ 
 export default ReportCard;
+ 
+ 

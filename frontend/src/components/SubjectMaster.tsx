@@ -4,7 +4,7 @@ import api from "../api";
 interface Subject {
     id: number;
     subject_name: string;
-    subject_type: "Academic" | "Hifz";
+    subject_type: "Academic" | "Deeniyath";
     academic_year: string;
     is_active: boolean;
 }
@@ -23,12 +23,12 @@ const SubjectMaster: React.FC = () => {
 
     const [subjects, setSubjects] = useState<Subject[]>([]);
     const [name, setName] = useState("");
-    const [group, setGroup] = useState<"Academic" | "Hifz">("Academic");
+    const [group, setGroup] = useState<"Academic" | "Deeniyath">("Academic");
 
     // Editing states
     const [editingId, setEditingId] = useState<number | null>(null);
     const [editName, setEditName] = useState("");
-    const [editGroup, setEditGroup] = useState<"Academic" | "Hifz">("Academic");
+    const [editGroup, setEditGroup] = useState<"Academic" | "Deeniyath">("Academic");
 
     // Copy Feature State
     const [allBranches, setAllBranches] = useState<BranchOption[]>([]);
@@ -283,11 +283,11 @@ const SubjectMaster: React.FC = () => {
                     <label className="block text-sm font-medium text-gray-700 mb-1">Group</label>
                     <select
                         value={group}
-                        onChange={(e) => setGroup(e.target.value as "Academic" | "Hifz")}
+                        onChange={(e) => setGroup(e.target.value as "Academic" | "Deeniyath")}
                         className="border px-3 py-2 rounded w-40"
                     >
                         <option value="Academic">Academic</option>
-                        <option value="Hifz">Hifz</option>
+                        <option value="Deeniyath">Deeniyath</option>
                     </select>
                 </div>
 
@@ -328,14 +328,14 @@ const SubjectMaster: React.FC = () => {
                                 {editingId === s.id ? (
                                     <select
                                         value={editGroup}
-                                        onChange={(e) => setEditGroup(e.target.value as "Academic" | "Hifz")}
+                                        onChange={(e) => setEditGroup(e.target.value as "Academic" | "Deeniyath")}
                                         className="border px-2 py-1 rounded w-full"
                                     >
                                         <option value="Academic">Academic</option>
-                                        <option value="Hifz">Hifz</option>
+                                        <option value="Deeniyath">Deeniyath</option>
                                     </select>
                                 ) : (
-                                    <span className={`px-2 py-1 rounded text-xs font-medium ${s.subject_type === 'Hifz' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'
+                                    <span className={`px-2 py-1 rounded text-xs font-medium ${s.subject_type === 'Deeniyath' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'
                                         }`}>
                                         {s.subject_type || 'Academic'}
                                     </span>

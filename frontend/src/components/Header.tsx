@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ChevronDownIcon, UserIcon, LogoutIcon, MenuIcon, ArrowBackIcon, ArrowForwardIcon, HomeIcon } from './icons';
 import { Page } from '../App';
 import api from '../api';
-import HifzAcademylogo from '../images/HifzAcademylogo.png';
+import Learnspacelogo from '../images/Learnspacelogo.png';
 import { useAuth } from '../contexts/AuthContext';
 
 interface HeaderProps {
@@ -40,8 +40,8 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, navigateTo, onLogout, go
   const isAllSchools = selectedSchoolId === 'All' || selectedSchool === 'All Schools' || !user.school_id;
   const rawLogo = user.school_logo || null;
   // Use relative path — Vite proxy forwards /static/* to the Flask backend
-  const schoolLogo = (isAllSchools || !rawLogo) ? HifzAcademylogo : rawLogo;
-  const schoolName = isAllSchools ? 'Hifz Academy' : (user.school_name || 'Hifz Academy');
+  const schoolLogo = (isAllSchools || !rawLogo) ? Learnspacelogo : rawLogo;
+  const schoolName = isAllSchools ? 'MS LearnSpace' : (user.school_name || 'MS LearnSpace');
   const branchLabel = isAllSchools ? 'All Branches' : (user.branch_name || user.branch || '');
   const themeColor = isAllSchools ? '#009746' : (user.school_theme || '#009746');
 
@@ -333,7 +333,7 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, navigateTo, onLogout, go
                 src={schoolLogo}
                 alt={schoolName}
                 className="h-12 w-auto max-w-[120px] object-contain rounded-sm"
-                onError={(e) => { (e.target as HTMLImageElement).src = HifzAcademylogo; }}
+                onError={(e) => { (e.target as HTMLImageElement).src = Learnspacelogo; }}
               />
               <div className="hidden md:block leading-tight">
                 <p className="font-bold text-sm tracking-wide">{schoolName}</p>

@@ -36,7 +36,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar, navigateTo, cu
 
       <div className="p-4">
         <p className={`font-bold text-lg text-center text-white bg-green-500 px-2 py-1 rounded ${!isOpen && 'md:hidden'}`}>
-          {user?.school_name || 'MS Hifz-Academy'}
+          {user?.school_name || 'MS LearnSpace'}
         </p>
       </div>
       <nav className="flex-1 px-2 space-y-1 overflow-y-auto">

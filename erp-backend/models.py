@@ -754,7 +754,7 @@ class SubjectMaster(db.Model, AuditMixin):
     subject_name = db.Column(db.String(100), nullable=False)
     subject_name_urdu = db.Column(db.String(255), nullable=True)  # New field
 
-    subject_type = db.Column(db.Enum('Hifz', 'Academic'), default='Academic')
+    subject_type = db.Column(db.Enum('Deeniyath', 'Academic'), default='Academic')
     academic_year = db.Column(db.String(20)) # New: Scope to year
     is_active = db.Column(db.Boolean, default=True) # New: Active Status
 
@@ -1075,15 +1075,19 @@ def receive_before_flush(session, flush_context, instances):
             obj.updated_at = now
 
             # Auto-fill tenant context if not explicitly set
-            if hasattr(obj, 'school_id') and getattr(obj, 'school_id', None) is None:
-                s_id = getattr(g, 'school_id', None)
-                if s_id is not None:
-                    obj.school_id = s_id
+            if hasattr(obj, 'school_id'):
+                school_state = inspect(obj).attrs.school_id.history
+                if not school_state.added and getattr(obj, 'school_id', None) is None:
+                    s_id = getattr(g, 'school_id', None)
+                    if s_id is not None:
+                        obj.school_id = s_id
 
-            if hasattr(obj, 'branch_id') and getattr(obj, 'branch_id', None) is None:
-                b_id = getattr(g, 'branch_id', None)
-                if b_id is not None:
-                    obj.branch_id = b_id
+            if hasattr(obj, 'branch_id'):
+                branch_state = inspect(obj).attrs.branch_id.history
+                if not branch_state.added and getattr(obj, 'branch_id', None) is None:
+                    b_id = getattr(g, 'branch_id', None)
+                    if b_id is not None:
+                        obj.branch_id = b_id
 
     # =========================================================
     # AUTO-FILL updated_by on DIRTY objects
@@ -1321,7 +1325,6 @@ def before_compile_scoping(query):
                     allowed_branches = get_user_allowed_branches(user)
                     if not allowed_branches['is_unlimited'] and allowed_branches['ids']:
                         clone_query = clone_query.filter((model.branch_id.in_(allowed_branches['ids'])) | (model.branch_id.is_(None)))
-                        
         # Restore original limit and offset if they were present
         if has_pagination:
             if limit_val is not None:
@@ -1331,5 +1334,5 @@ def before_compile_scoping(query):
         query = clone_query
     finally:
         g._in_scoping = False
-        
+       
     return query

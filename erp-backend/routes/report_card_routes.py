@@ -309,13 +309,13 @@ def get_student_report(current_user):
             
             return '-'
         
-        # ========== Separate Hifz and Academic subjects ==========
-        hifz_data = []
+        # ========== Separate Deeniyath and Academic subjects ==========
+        Deeniyath_data = []
         academic_data = []
         colors = ['#4ade80', '#38bdf8', '#f472b6', '#facc15', '#a78bfa', '#fb923c', '#f87171', '#34d399']
         
-        hifz_total_marks = 0
-        hifz_secured_marks = 0
+        Deeniyath_total_marks = 0
+        Deeniyath_secured_marks = 0
         academic_total_marks = 0
         academic_secured_marks = 0
         
@@ -329,10 +329,10 @@ def get_student_report(current_user):
             grade = '-' if is_absent else get_grade(secured, max_marks, require_exact_scale=True)
             percentage = 0 if max_marks == 0 else round((secured / max_marks) * 100)
             
-            if subject['subject_type'] == 'Hifz':
-                hifz_total_marks += max_marks
-                hifz_secured_marks += secured
-                hifz_data.append({
+            if subject['subject_type'] == 'Deeniyath':
+                Deeniyath_total_marks += max_marks
+                Deeniyath_secured_marks += secured
+                Deeniyath_data.append({
         'subject': subject['subject_name'],
         'urduSubject': subject['subject_name_urdu'] or '',
         'totalMarks': max_marks,
@@ -357,16 +357,16 @@ def get_student_report(current_user):
                 })
                 color_idx += 1
         
-        # Add totals to hifz data
-        if hifz_data:
-            hifz_grade = get_grade(hifz_secured_marks, hifz_total_marks, require_exact_scale=True) if hifz_total_marks > 0 else '-'
-            hifz_data.append({
+        # Add totals to Deeniyath data
+        if Deeniyath_data:
+            Deeniyath_grade = get_grade(Deeniyath_secured_marks, Deeniyath_total_marks, require_exact_scale=True) if Deeniyath_total_marks > 0 else '-'
+            Deeniyath_data.append({
                 'subject': 'Total/Grade',
                 'urduSubject': 'کل/گریڈ',
-                'totalMarks': hifz_total_marks,
-                'securedMarks': int(hifz_secured_marks),
+                'totalMarks': Deeniyath_total_marks,
+                'securedMarks': int(Deeniyath_secured_marks),
                 'classMarks': 0,
-                'grade': hifz_grade
+                'grade': Deeniyath_grade
             })
         
         # Add totals to academic data
@@ -582,7 +582,7 @@ def get_student_report(current_user):
                 'academicYear': academic_year
             },
             'gradingScales': grading_scales,
-            'hifzData': hifz_data,
+            'DeeniyathData': Deeniyath_data,
             'academicPerformance': academic_data,
             'attendance': {
                 'monthly': monthly_attendance,
@@ -594,7 +594,7 @@ def get_student_report(current_user):
                     'totalCount': total_days
                 }
             },
-            'hifzTargetLevel': [],  # Keep empty as per requirement
+            'DeeniyathTargetLevel': [],  # Keep empty as per requirement
             'teacherRemark': '',     # Keep empty as per requirement
             'academicHistory': academic_history,
             'historicalPerformance': historical_performance
@@ -926,7 +926,7 @@ def get_student_report_by_year(current_user):
             avg_rows = cursor.fetchall()
             avg_map = {row['subject_id']: round(float(row['avg'] or 0), 1) for row in avg_rows}
             
-            hifz_data = []
+            Deeniyath_data = []
             academic_data = []
             colors = ['#4ade80', '#38bdf8', '#f472b6', '#facc15', '#a78bfa', '#fb923c']
             
@@ -946,9 +946,9 @@ def get_student_report_by_year(current_user):
                     'grade': grade
                 }
                 
-                if subj['subject_type'] == 'Hifz':
+                if subj['subject_type'] == 'Deeniyath':
                     entry['classMarks'] = int(class_avg)
-                    hifz_data.append(entry)
+                    Deeniyath_data.append(entry)
                 else:
                     entry['percentage'] = percentage
                     entry['color'] = colors[idx % len(colors)]
@@ -958,7 +958,7 @@ def get_student_report_by_year(current_user):
                 'testId': test['test_id'],
                 'testName': test['test_name'],
                 'classTestId': test['class_test_id'],
-                'hifzData': hifz_data,
+                'DeeniyathData': Deeniyath_data,
                 'academicPerformance': academic_data
             })
         

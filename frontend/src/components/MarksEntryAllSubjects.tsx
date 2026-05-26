@@ -427,7 +427,7 @@ const MarksEntryAllSubjects: React.FC = () => {
                     >
                         <option value="All">All Types</option>
                         <option value="Academic">Academic</option>
-                        <option value="Hifz">Hifz</option>
+                        <option value="Deeniyath">Deeniyath</option>
                         {/* Dynamic types? Maybe in future */}
                     </select>
                 </div>

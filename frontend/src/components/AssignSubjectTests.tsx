@@ -276,7 +276,7 @@ export default function AssignSubjectTests() {
                     >
                         <option value="">All Types</option>
                         <option value="Academic">Academic</option>
-                        <option value="Hifz">Hifz</option>
+                        <option value="Deeniyath">Deeniyath</option>
                     </select>
                 </div>
             </div>

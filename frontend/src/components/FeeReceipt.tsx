@@ -270,7 +270,7 @@ const FeeReceipt: React.FC<FeeReceiptProps> = ({ onClose, receiptData }) => {
 
   const matchingBranch = branches.find(b => b.branch_name === receiptData.branch);
   const schoolLogo = matchingBranch?.school_logo || ReceiptLogo;
-  const schoolName = matchingBranch?.school_name || "MS Education Academy";
+  const schoolName = matchingBranch?.school_name || "MS LearnSpace";
   const resolvedLogo = schoolLogo.startsWith('/') 
     ? `${window.location.origin}${schoolLogo}` 
     : schoolLogo;

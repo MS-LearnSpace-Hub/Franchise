@@ -320,11 +320,11 @@ const AssignStudentSubjects: React.FC = () => {
                                 type="radio"
                                 name="subjectType"
                                 className="mr-2"
-                                value="Hifz"
-                                checked={subjectType === "Hifz"}
+                                value="Deeniyath"
+                                checked={subjectType === "Deeniyath"}
                                 onChange={(e) => setSubjectType(e.target.value)}
                             />
-                            Hifz
+                            Deeniyath
                         </label>
                     </div>
                 </div>
