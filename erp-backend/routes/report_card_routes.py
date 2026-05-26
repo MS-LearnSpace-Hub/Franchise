@@ -333,13 +333,14 @@ def get_student_report(current_user):
                 hifz_total_marks += max_marks
                 hifz_secured_marks += secured
                 hifz_data.append({
-                    'subject': subject['subject_name'],
-                    'urduSubject': subject['subject_name_urdu'] or '',
-                    'totalMarks': max_marks,
-                    'securedMarks': 'AB' if is_absent else int(secured),  # Show 'AB' in marks column
-                    'classMarks': int(subject['class_average']),
-                    'grade': grade
-                })
+        'subject': subject['subject_name'],
+        'urduSubject': subject['subject_name_urdu'] or '',
+        'totalMarks': max_marks,
+        'securedMarks': 'AB' if is_absent else int(secured),
+        'classMarks': int(subject['class_average']),
+        'grade': grade,
+        'subject_order': subject['subject_order'] or 0,   # ← ADD THIS LINE
+    })
             else:
                 academic_total_marks += max_marks
                 academic_secured_marks += secured
@@ -350,7 +351,9 @@ def get_student_report(current_user):
                     'securedMarks': 'AB' if is_absent else int(secured),  # Show 'AB' in marks column
                     'percentage': percentage,
                     'grade': grade,
-                    'color': colors[color_idx % len(colors)]
+                    'color': colors[color_idx % len(colors)],
+                    'subject_order': subject['subject_order'] or 0,
+                    
                 })
                 color_idx += 1
         
