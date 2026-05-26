@@ -59,7 +59,7 @@ const DashboardHome: React.FC = () => {
                 src={dashboardImg}
                 alt="Dashboard Illustration"
                 className="w-full h-auto rounded-lg shadow-sm"
-                style={{ maxHeight: '58vh', objectFit: 'cover' }}
+                style={{ maxHeight: '65vh', objectFit: 'cover' }}
             />
         </div>
     );

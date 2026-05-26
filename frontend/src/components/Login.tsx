@@ -24,32 +24,34 @@ const styles: Record<string, React.CSSProperties> = {
     width: '100vw',
     fontFamily: "'Inter', 'Segoe UI', sans-serif",
     overflow: 'hidden',
+    position: 'relative',
   },
 
-  /* ── Left illustrated panel ── */
   leftPanel: {
-    flex: '1 1 55%',
+    flex: '0 0 42%',
     backgroundImage: `url(${LoginBg})`,
-    backgroundSize: 'auto 100%',
-    backgroundPosition: 'left center',
+    backgroundSize: '100%',
+    backgroundPosition: 'center center',
     backgroundRepeat: 'no-repeat',
-    overflow: 'hidden',
+    backgroundColor: '#ffffffff',
     height: '100vh',
+    position: 'relative',
   },
 
   /* ── Right login panel ── */
   rightPanel: {
-    flexShrink: 0,
-    width: '420px',
+    flex: '0 0 58%',
     display: 'flex',
     flexDirection: 'column',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#ffffff',
-    padding: '48px 48px 32px',
+    backgroundColor: '#fff',
+    padding: '40px 48px 32px 56px',
     position: 'relative',
-    overflow: 'hidden',
+    overflow: 'visible',
     height: '100vh',
+    marginLeft: '-32px',
+    zIndex: 2,
   },
 
   /* decorative green/blue wave at bottom-right */
@@ -57,26 +59,59 @@ const styles: Record<string, React.CSSProperties> = {
     position: 'absolute',
     bottom: 0,
     right: 0,
-    width: '260px',
-    height: '130px',
+    width: '300px',
+    height: '160px',
     pointerEvents: 'none',
     zIndex: 0,
+  },
+
+  curvedBgContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 0,
+    pointerEvents: 'none',
+  },
+  gradientCurve: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: '100px',
+    height: '100%',
+  },
+  whiteCurve: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: '100px',
+    height: '100%',
+    filter: 'drop-shadow(-8px 0 8px rgba(170, 21, 21, 0.08))',
+  },
+  solidWhiteBg: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(236, 230, 230, 1)',
   },
 
   /* ── Content block inside right panel ── */
   formWrapper: {
     width: '100%',
-    maxWidth: '380px',
+    maxWidth: '400px',
     zIndex: 1,
   },
 
   /* ── Logo block ── */
   logoBlock: {
     textAlign: 'center',
-    marginBottom: '36px',
+    marginBottom: '40px',
   },
   logoImg: {
-    width: '260px',
+    width: '500px',
     objectFit: 'contain',
   },
 
@@ -84,24 +119,25 @@ const styles: Record<string, React.CSSProperties> = {
   inputRow: {
     display: 'flex',
     alignItems: 'center',
-    border: '1.5px solid #d0d5dd',
-    borderRadius: '10px',
-    padding: '13px 16px',
-    gap: '12px',
-    marginBottom: '16px',
+    border: '1.5px solid #2d75d3ff',
+    borderRadius: '18px',
+    padding: '16px 20px',
+    gap: '14px',
+    marginBottom: '20px',
     backgroundColor: '#fff',
-    transition: 'border-color 0.2s',
+    transition: 'border-color 0.2s, box-shadow 0.2s',
+    boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
   },
   inputIcon: {
     color: '#94a3b8',
-    fontSize: '18px',
+    fontSize: '20px',
     flexShrink: 0,
   },
   input: {
     flex: 1,
     border: 'none',
     outline: 'none',
-    fontSize: '15px',
+    fontSize: '16px',
     color: '#1e293b',
     backgroundColor: 'transparent',
     fontFamily: "'Inter', 'Segoe UI', sans-serif",
@@ -118,12 +154,12 @@ const styles: Record<string, React.CSSProperties> = {
   /* ── Login button ── */
   loginBtn: {
     width: '100%',
-    padding: '15px',
-    borderRadius: '10px',
+    padding: '17px',
+    borderRadius: '12px',
     border: 'none',
-    background: 'linear-gradient(90deg, #1a3c8f 0%, #1e6fd9 50%, #22c55e 100%)',
+    background: 'linear-gradient(90deg, #1a3c8f 0%, #1e6fd9 55%, #22c55e 100%)',
     color: '#fff',
-    fontSize: '17px',
+    fontSize: '18px',
     fontWeight: 700,
     letterSpacing: '0.5px',
     cursor: 'pointer',
@@ -133,6 +169,7 @@ const styles: Record<string, React.CSSProperties> = {
     gap: '10px',
     marginTop: '8px',
     transition: 'opacity 0.2s, transform 0.15s',
+    boxShadow: '0 4px 16px rgba(26,60,143,0.25)',
   },
   loginBtnDisabled: {
     opacity: 0.65,
@@ -143,10 +180,10 @@ const styles: Record<string, React.CSSProperties> = {
   forgotLink: {
     display: 'block',
     textAlign: 'center',
-    marginTop: '18px',
+    marginTop: '20px',
     color: '#1a3c8f',
     fontWeight: 700,
-    fontSize: '14px',
+    fontSize: '15px',
     cursor: 'pointer',
     background: 'none',
     border: 'none',
@@ -197,41 +234,41 @@ const styles: Record<string, React.CSSProperties> = {
     marginTop: '14px',
   },
 
-  /* ── DE logo bottom-left of right panel ── */
+  /* ── DE logo bottom-right of right panel ── */
   deLogoWrapper: {
     position: 'absolute',
-    bottom: '20px',
+    bottom: '80px',
     right: '24px',
     zIndex: 2,
   },
   deLogoImg: {
     height: '52px',
     objectFit: 'contain',
-    opacity: 0.9,
+    opacity: 1,
   },
 
-  /* ── dots decoration top-right ── */
+  /* ── dots decoration top-right ── 
   dotsDecor: {
     position: 'absolute',
-    top: '24px',
-    right: '24px',
+    top: '28px',
+    right: '28px',
     display: 'grid',
     gridTemplateColumns: 'repeat(5, 8px)',
-    gap: '5px',
+    gap: '6px',
     zIndex: 0,
-  },
+  },*/
 };
 
 /* ── SVG icons ─────────────────────────────────────────────────────── */
 const UserIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1a3c8f" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
     <circle cx="12" cy="7" r="4" />
   </svg>
 );
 
 const LockIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
     <path d="M7 11V7a5 5 0 0 1 10 0v4" />
   </svg>
@@ -281,18 +318,74 @@ const DotsDecor = () => (
   </div>
 );
 
+/* ── Curved Divider on left edge of white background ────────────────── */
+const CurvedDivider = () => (
+  <div style={styles.curvedBgContainer}>
+    {/* Gradient border curve behind */}
+    <svg style={styles.gradientCurve} viewBox="0 0 120 1000" preserveAspectRatio="none">
+      <path
+        d="M 120 0 
+           C 60 180, 0 420, 50 650 
+           C 85 820, 30 920, 120 1000 
+           L 120 1000 Z"
+        fill="url(#borderGradient)"
+      />
+      <defs>
+        <linearGradient id="borderGradient" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#1a3c8f" />
+          <stop offset="50%" stopColor="#1e6fd9" />
+          <stop offset="100%" stopColor="#22c55e" />
+        </linearGradient>
+      </defs>
+    </svg>
+    {/* White background curve in front */}
+    <svg style={styles.whiteCurve} viewBox="0 0 120 1000" preserveAspectRatio="none">
+      <path
+        d="M 120 0 
+           C 68 180, 8 420, 58 650 
+           C 93 820, 38 920, 120 1000 
+           L 120 1000 Z"
+        fill="#ffffff"
+      />
+    </svg>
+    {/* Solid white area filling the rest of the right panel */}
+    <div style={styles.solidWhiteBg} />
+  </div>
+);
+
 /* ── Wave SVG at bottom right ──────────────────────────────────────── */
 const WaveDecor = () => (
-  <svg style={styles.waveDecor} viewBox="0 0 260 130" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M260 130 Q180 80 80 130 Q40 150 0 130 L0 130 L260 130 Z" fill="url(#wg1)" opacity="0.15" />
-    <path d="M260 130 Q200 60 100 110 Q50 135 0 110 L0 130 L260 130 Z" fill="url(#wg2)" opacity="0.25" />
+  <svg style={styles.waveDecor} viewBox="0 0 300 160" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path
+      d="M 0 160 Q 120 50 300 90 L 300 160 Z"
+      fill="url(#wg2)"
+      opacity="0.9"
+    />
+    <path
+      d="M 30 160 Q 150 70 300 110 L 300 160 Z"
+      fill="url(#wg1)"
+    />
+    {/* Grid of dots at the bottom right 
+    <g opacity="0.3">
+      {Array.from({ length: 5 }).map((_, col) =>
+        Array.from({ length: 4 }).map((_, row) => (
+          <circle
+            key={`${col}-${row}`}
+            cx={200 + col * 18}
+            cy={100 + row * 18 - col * 6}
+            r="2.5"
+            fill="#ffffff"
+          />
+        ))
+      )}
+    </g>*/}
     <defs>
-      <linearGradient id="wg1" x1="0" y1="0" x2="260" y2="0">
+      <linearGradient id="wg1" x1="0" y1="160" x2="300" y2="90" gradientUnits="userSpaceOnUse">
         <stop offset="0%" stopColor="#1a3c8f" />
         <stop offset="100%" stopColor="#22c55e" />
       </linearGradient>
-      <linearGradient id="wg2" x1="0" y1="0" x2="260" y2="0">
-        <stop offset="0%" stopColor="#1a3c8f" />
+      <linearGradient id="wg2" x1="0" y1="160" x2="300" y2="90" gradientUnits="userSpaceOnUse">
+        <stop offset="0%" stopColor="#1e6fd9" />
         <stop offset="100%" stopColor="#22c55e" />
       </linearGradient>
     </defs>
@@ -439,7 +532,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
     e.currentTarget.style.boxShadow = '0 0 0 3px rgba(26,60,143,0.12)';
   };
   const handleBlur = (e: React.FocusEvent<HTMLDivElement>) => {
-    e.currentTarget.style.borderColor = '#d0d5dd';
+    e.currentTarget.style.borderColor = '#e2e8f0';
     e.currentTarget.style.boxShadow = 'none';
   };
 
@@ -453,11 +546,11 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
 
       {/* ── RIGHT PANEL ── */}
       <div style={styles.rightPanel}>
-        <DotsDecor />
+        <CurvedDivider />
         <WaveDecor />
 
         {/* ── Logo ── */}
-        <div style={{ ...styles.formWrapper, marginBottom: 0 }}>
+        <div style={{ ...styles.formWrapper, marginBottom: 10 }}>
           <div style={styles.logoBlock}>
             <img src={Learnspacelogo} alt="MS LearnSpace" style={styles.logoImg} />
           </div>
