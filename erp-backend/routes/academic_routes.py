@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.sql import exists
 from helpers import (token_required, ensure_student_editable, get_user_allowed_branches,
                      StudentRecordLockedError, has_permission, resolve_user_scope,
-                     can_manage_global, validate_cross_branch_access)
+                     can_manage_global, validate_cross_branch_access, skip_scoping)
 
 bp = Blueprint("academic", __name__)
 @bp.route("/api/academic/subjects", methods=["POST"])
@@ -146,6 +146,97 @@ def list_subjects(current_user):
         ])
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@bp.route("/api/academic/copy-subjects", methods=["POST"])
+@token_required
+def copy_subjects(current_user):
+    """
+    Copies Subjects from a source branch to multiple target branches.
+    Uses skip_scoping to allow multi-tenant inserts.
+    """
+    if not has_permission(current_user, "academics.academic.subject-master", "write"):
+        return jsonify({"error": "Forbidden: missing permission"}), 403
+        
+    try:
+        data = request.json or {}
+        source_branch_id_raw = data.get("source_branch_id")
+        target_branch_ids_raw = data.get("target_branch_ids")
+        academic_year = data.get("academic_year")
+        
+        if not all([source_branch_id_raw, target_branch_ids_raw, academic_year]):
+            return jsonify({"error": "Missing required fields"}), 400
+            
+        source_branch_id = int(source_branch_id_raw)
+        target_branch_ids = [int(x) for x in target_branch_ids_raw if x]
+        
+        # Validate permissions for cross-branch copy
+        is_valid, perm_error = validate_cross_branch_access(
+            current_user,
+            source_branch_id=source_branch_id,
+            target_branch_ids=target_branch_ids
+        )
+        if not is_valid:
+            return jsonify({"error": perm_error}), 403
+
+        # Fetch source subjects
+        source_subjects = SubjectMaster.query.filter_by(
+            branch_id=source_branch_id,
+            academic_year=academic_year
+        ).all()
+        
+        if not source_subjects:
+            return jsonify({"message": "No subjects found in source branch to copy."}), 404
+
+        target_branches = Branch.query.filter(Branch.id.in_(target_branch_ids)).all()
+        
+        copied_count = 0
+        skipped_count = 0
+        
+        with skip_scoping():
+            for t_br in target_branches:
+                for src_sub in source_subjects:
+                    try:
+                        with db.session.begin_nested():
+                            # Check if subject already exists in target branch
+                            existing = SubjectMaster.query.filter_by(
+                                subject_name=src_sub.subject_name,
+                                subject_type=src_sub.subject_type,
+                                academic_year=academic_year,
+                                branch_id=t_br.id
+                            ).first()
+                            
+                            if existing:
+                                skipped_count += 1
+                                continue
+                            
+                            new_sub = SubjectMaster(
+                                subject_name=src_sub.subject_name,
+                                subject_type=src_sub.subject_type,
+                                academic_year=academic_year,
+                                is_active=src_sub.is_active,
+                                branch_id=t_br.id,
+                                school_id=t_br.school_id or src_sub.school_id
+                            )
+                            db.session.add(new_sub)
+                            db.session.flush()
+                            copied_count += 1
+                    except IntegrityError:
+                        skipped_count += 1
+                        
+        db.session.commit()
+        return jsonify({
+            "message": "Subjects copied successfully",
+            "details": {
+                "copied": copied_count,
+                "skipped": skipped_count
+            }
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"[ERROR] Copy Subjects: {e}")
+        return jsonify({"error": str(e)}), 500
+
 
 @bp.route("/api/academic/subjects/<int:subject_id>", methods=["PUT"])
 @token_required
@@ -1072,39 +1163,40 @@ def copy_subject_assignments(current_user):
         skipped_count = 0
         
         # 3. Process Each Target Branch (MERGE MODE)
-        for t_br in target_branches:
-            t_branch_name = t_br.branch_name
-            t_location_name = loc_map.get(t_br.location_code, "Hyderabad") # Default
-            
-            # Fetch existing assignments for this target (to check duplicates)
-            existing_target_assigns = ClassSubjectAssignment.query.filter_by(
-                academic_year=academic_year_name,
-                branch=t_branch_name
-            ).all()
-            
-            # Create a set of existing keys: (class_id, subject_id)
-            existing_set = set((a.class_id, a.subject_id) for a in existing_target_assigns)
-            
-            for src_assign in source_assignments:
-                 # Check if this (class, subject) already exists in target
-                 if (src_assign.class_id, src_assign.subject_id) in existing_set:
-                     skipped_count += 1
-                     continue # MERGE MODE: Skip if exists
-                 
-                 # Logic for Insert
-                 new_assign = ClassSubjectAssignment(
-                     class_id=src_assign.class_id,
-                     subject_id=src_assign.subject_id,
-                     academic_year=academic_year_name,
-                     branch=t_branch_name,
-                     location_name=t_location_name,
-                     branch_id=t_br.id,
-                     school_id=t_br.school_id or src_assign.school_id
-                 )
-                 db.session.add(new_assign)
-                 copied_count += 1
+        with skip_scoping():
+            for t_br in target_branches:
+                t_branch_name = t_br.branch_name
+                t_location_name = loc_map.get(t_br.location_code, "Hyderabad") # Default
+                
+                # Fetch existing assignments for this target (to check duplicates)
+                existing_target_assigns = ClassSubjectAssignment.query.filter_by(
+                    academic_year=academic_year_name,
+                    branch=t_branch_name
+                ).all()
+                
+                # Create a set of existing keys: (class_id, subject_id)
+                existing_set = set((a.class_id, a.subject_id) for a in existing_target_assigns)
+                
+                for src_assign in source_assignments:
+                     # Check if this (class, subject) already exists in target
+                     if (src_assign.class_id, src_assign.subject_id) in existing_set:
+                         skipped_count += 1
+                         continue # MERGE MODE: Skip if exists
+                     
+                     # Logic for Insert
+                     new_assign = ClassSubjectAssignment(
+                         class_id=src_assign.class_id,
+                         subject_id=src_assign.subject_id,
+                         academic_year=academic_year_name,
+                         branch=t_branch_name,
+                         location_name=t_location_name,
+                         branch_id=t_br.id,
+                         school_id=t_br.school_id or src_assign.school_id
+                     )
+                     db.session.add(new_assign)
+                     copied_count += 1
 
-        db.session.commit()
+            db.session.commit()
         
         return jsonify({
             "message": "Copy completed (Merge Mode)",

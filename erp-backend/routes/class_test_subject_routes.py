@@ -12,7 +12,7 @@ from models import (
     Branch,
     OrgMaster
 )
-from helpers import token_required, validate_cross_branch_access, get_user_allowed_branches
+from helpers import token_required, validate_cross_branch_access, get_user_allowed_branches, skip_scoping
 # -------------------------------------------------
 # Blueprint
 # -------------------------------------------------
@@ -309,63 +309,64 @@ def copy_assignments(current_user):
         success_count = 0
         skipped_count = 0
         
-        for target_id in target_ids:
-            # Determine filters for this specific target
-            t_year = current_academic_year
-            t_branch = current_branch
-            t_class = current_class
-            t_test = current_test
+        with skip_scoping():
+            for target_id in target_ids:
+                # Determine filters for this specific target
+                t_year = current_academic_year
+                t_branch = current_branch
+                t_class = current_class
+                t_test = current_test
 
-            if copy_mode == 'test_to_test':
-                t_test = target_id
-            elif copy_mode == 'class_to_class':
-                t_class = target_id
-            elif copy_mode == 'branch_to_branch':
-                b_obj = Branch.query.get(target_id)
-                if b_obj:
-                    t_branch = b_obj.branch_name
+                if copy_mode == 'test_to_test':
+                    t_test = target_id
+                elif copy_mode == 'class_to_class':
+                    t_class = target_id
+                elif copy_mode == 'branch_to_branch':
+                    b_obj = Branch.query.get(target_id)
+                    if b_obj:
+                        t_branch = b_obj.branch_name
+                    else:
+                        t_branch = target_id 
                 else:
-                    t_branch = target_id 
-            else:
-                continue
-            
-            # Find Existing ClassTest for Target
-            target_ct = ClassTest.query.filter_by(
-                academic_year=t_year,
-                branch=t_branch,
-                class_id=t_class,
-                test_id=t_test
-            ).first()
+                    continue
+                
+                # Find Existing ClassTest for Target
+                target_ct = ClassTest.query.filter_by(
+                    academic_year=t_year,
+                    branch=t_branch,
+                    class_id=t_class,
+                    test_id=t_test
+                ).first()
 
-            # RULE 1: Do NOT auto-create. If it doesn't exist, SKIP.
-            if not target_ct:
-                skipped_count += 1
-                continue
+                # RULE 1: Do NOT auto-create. If it doesn't exist, SKIP.
+                if not target_ct:
+                    skipped_count += 1
+                    continue
 
-            # Prevent self-copy via ID check
-            if target_ct.id == int(source_class_test_id):
-                continue
-            
-            # RULE 2: Do NOT overwrite if data exists
-            existing_count = ClassTestSubject.query.filter_by(class_test_id=target_ct.id).count()
-            if existing_count > 0:
-                skipped_count += 1
-                continue
+                # Prevent self-copy via ID check
+                if target_ct.id == int(source_class_test_id):
+                    continue
+                
+                # RULE 2: Do NOT overwrite if data exists
+                existing_count = ClassTestSubject.query.filter_by(class_test_id=target_ct.id).count()
+                if existing_count > 0:
+                    skipped_count += 1
+                    continue
 
-            # Insert new subjects
-            for item in source_data:
-                db.session.add(ClassTestSubject(
-                    class_test_id=target_ct.id,
-                    subject_id=item['subject_id'],
-                    max_marks=item['max_marks'],
-                    subject_order=item['subject_order'],
-                    branch_id=target_ct.branch_id,
-                    school_id=target_ct.school_id
-                ))
-            
-            success_count += 1
+                # Insert new subjects
+                for item in source_data:
+                    db.session.add(ClassTestSubject(
+                        class_test_id=target_ct.id,
+                        subject_id=item['subject_id'],
+                        max_marks=item['max_marks'],
+                        subject_order=item['subject_order'],
+                        branch_id=target_ct.branch_id,
+                        school_id=target_ct.school_id
+                    ))
+                
+                success_count += 1
 
-        db.session.commit()
+            db.session.commit()
         
         msg = f'Successfully copied to {success_count} targets.'
         if skipped_count > 0:
