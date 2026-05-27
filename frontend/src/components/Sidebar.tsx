@@ -4,6 +4,7 @@ import {
 } from './icons';
 import { Page } from "../App";
 import { useAuth } from '../contexts/AuthContext';
+import Learnspacelogo from '../images/Learnspacelogo.png';
 
 
 interface SidebarProps {
@@ -34,11 +35,17 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar, navigateTo, cu
         </button>
       </div>
 
-      <div className="p-4">
-        <p className={`font-bold text-lg text-center text-white bg-green-500 px-2 py-1 rounded ${!isOpen && 'md:hidden'}`}>
-          {user?.school_name || 'MS LearnSpace'}
-        </p>
-      </div>
+      <div className="p-2 border-b">
+  <div className="flex items-center gap-2 justify-center">
+    
+    {/* Permanent Logo */}
+    <img
+      src={Learnspacelogo}
+      alt="LearnSpace Logo"
+      className="w-18 h-12 object-contain flex-shrink-0"
+    />
+  </div>
+</div>
       <nav className="flex-1 px-2 space-y-1 overflow-y-auto">
         {navCategories.filter(cat => canAccess(cat.permission)).map((cat) => (
           <a
