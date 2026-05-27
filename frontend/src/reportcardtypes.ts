@@ -74,7 +74,7 @@ export interface StudentDetails {
     studentName: string;
     fathersName: string;
     classSection: string;
-    rollNo: string;
+    groupRollNo: string;
     branchName: string;
     academicYear: string;
 }

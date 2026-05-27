@@ -252,7 +252,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ data }) => {
         </div>
         <div style={{ padding: '10px 16px' }}>
           {([
-            ['Roll No',           student?.rollNo?.split('/')[0] ?? student?.rollNo],
+            ['Roll No',           student?.groupRollNo],
             ['Class / Section', student?.classSection],
             ['Branch',          student?.branchName],
           ] as [string, string][]).map(([label, value]) => (
