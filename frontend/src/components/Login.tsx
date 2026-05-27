@@ -45,7 +45,7 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: 'column',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: '#f5faf9',
     padding: '40px 48px 32px 56px',
     position: 'relative',
     overflow: 'visible',
@@ -95,7 +95,7 @@ const styles: Record<string, React.CSSProperties> = {
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(236, 230, 230, 1)',
+    backgroundColor: 'rgb(237, 243, 242)',
   },
 
   /* ── Content block inside right panel ── */

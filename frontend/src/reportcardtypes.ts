@@ -20,7 +20,7 @@ export interface StudentOption {
     student_id?: number | string;
     name?: string;
     student_name?: string;
-    roll_number?: number | string;
+    roll_no?: number | string;
     father_name?: string;
     admission_no?: string;
 }
@@ -31,7 +31,7 @@ export interface GradingScale {
     colors: string[];
 }
 
-export interface HifzDataItem {
+export interface DeeniyathDataItem {
     subject: string;
     urduSubject: string;
     totalMarks: number;
@@ -74,7 +74,7 @@ export interface StudentDetails {
     studentName: string;
     fathersName: string;
     classSection: string;
-    groupRollNo: string;
+    rollNo: string;
     branchName: string;
     academicYear: string;
 }
@@ -128,10 +128,10 @@ export interface ProgressReportData {
     reportTitle: string;
     student: StudentDetails;
     gradingScales: GradingScale[];
-    hifzData: HifzDataItem[];
+    DeeniyathData: DeeniyathDataItem[];
     academicPerformance: AcademicPerformanceItem[];
     attendance: Attendance;
-    hifzTargetLevel: any[];
+    DeeniyathTargetLevel: any[];
     teacherRemark: string;
     academicHistory: AcademicHistoryRecord[];
     historicalPerformance: HistoricalPerformance[];

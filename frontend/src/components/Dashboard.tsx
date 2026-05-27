@@ -29,6 +29,7 @@ import RolePermissions from './RolePermissions';
 import ControlPanel from './ControlPanel';
 import SchoolManagement from './SchoolManagement';
 import { useNavigationHistory } from '../hooks/useNavigationHistory';
+import StaffSupport from './StaffSupport';
 
 
 
@@ -80,6 +81,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
           {currentPage === 'classes-management' && <ClassesManagement navigateTo={navigateTo} />}
           {currentPage === 'student-attendance' && <StudentAttendance navigateTo={navigateTo} />}
           {currentPage === 'attendance-report' && <StudentAttendance navigateTo={navigateTo} defaultTab="absent-report" />}
+          {currentPage === 'staffsupport' && <StaffSupport />}
           {currentPage === 'student-administration' && <StudentAdministration navigateTo={navigateTo} />}
           {currentPage === 'concession-master' && <ConcessionMaster />}
           {currentPage === 'student-concession' && <StudentConcession />}

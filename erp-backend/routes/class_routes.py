@@ -438,6 +438,9 @@ def get_class_summary(current_user):
         # Apply Branch Filter & allowed branch boundaries
         allowed = get_user_allowed_branches(current_user)
         if not allowed['is_unlimited']:
+             
+
+             
              allowed_ids = list(allowed['ids'])
              if branch_id_param and branch_id_param != 'all':
                   if int(branch_id_param) in allowed_ids:

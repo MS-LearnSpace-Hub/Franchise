@@ -65,9 +65,13 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar, navigateTo, cu
             </a>
           )}
 
-          <a href="#" className="flex items-center p-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900">
+          <a
+            href="#"
+            onClick={(e) => { e.preventDefault(); navigateTo('staffsupport'); }}
+            className={`flex items-center p-2 text-sm font-medium rounded-md ${currentPage === 'staffsupport' ? 'bg-green-100 text-green-800' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
+          >
             <HeadphoneIcon className="w-5 h-5" />
-            <span className="ml-3">Staff Support</span>
+            <span className="ml-3">StaffSupport</span>
           </a>
           <a href="#" onClick={(e) => { e.preventDefault(); navigateTo('profile'); }} className="flex items-center p-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900">
             <UserIcon className="w-5 h-5" />
