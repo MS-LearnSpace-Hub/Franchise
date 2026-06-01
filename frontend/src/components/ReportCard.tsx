@@ -166,7 +166,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ data }) => {
  
   // Title
   const titleParts = (data.reportTitle ?? '').split(' OF ');
-  const mainTitle  = titleParts[0] || 'PROGRESS REPORT';
+  const mainTitle  = titleParts[0] || 'Performance Dashboard';
   const subTitle   = titleParts.slice(1).join(' OF ') || '';
  
   return (
@@ -195,7 +195,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ data }) => {
         justifyContent: 'space-between',
         padding: '8px 16px',
         borderBottom: `3px solid ${COLOR.navy}`,
-        background: 'linear-gradient(135deg, #f0f4ff 0%, #ffffff 50%, #f0f4ff 100%)',
+        background: 'linear-gradient(135deg, #f0f4ff 0%, #91a5c4 50%, #fefffe 100%)',
       }}>
         {/* ── LEFT: branch-specific logo (from BRANCH_LOGO_MAP, key = student.branchName) ── */}
         <img
@@ -215,7 +215,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ data }) => {
           </div>
           {subTitle && (
             <div style={{
-              fontSize: '13px', fontWeight: 700, color: COLOR.red,
+              fontSize: '18px', fontWeight: 700, fontFamily: 'bold', color: 'black',
               letterSpacing: '1.5px', textDecoration: 'underline',
               marginTop: '3px', textTransform: 'uppercase',
             }}>
@@ -228,7 +228,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ data }) => {
         <img
           src={STATIC_RIGHT_LOGO}
           alt="MS LearnSpace"
-          style={{ height: '62px', width: 'auto', objectFit: 'contain' }}
+          style={{ height: '42px', width: 'auto', objectFit: 'cover' }}
           onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
         />
       </div>

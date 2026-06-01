@@ -572,7 +572,7 @@ def get_student_report(current_user):
         
         # ========== Build Final Response ==========
         response = {
-            'reportTitle': f"PROGRESS REPORT OF {current_test_name.upper()}",
+            'reportTitle': f"Performance Dashboard OF {current_test_name.upper()}",
             'student': {
                 'studentName': student['student_name'].strip(),
                 'fathersName': student['father_name'] or '',
