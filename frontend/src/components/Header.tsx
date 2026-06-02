@@ -332,7 +332,7 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, navigateTo, onLogout, go
               <img
                 src={schoolLogo}
                 alt={schoolName}
-                className="h-16 w-auto max-w-[140px] object-contain rounded-sm"
+                className="h-14 w-auto max-w-[140px] object-contain rounded-sm"
                 onError={(e) => { (e.target as HTMLImageElement).src = Learnspacelogo1; }}
               />
               <div className="hidden md:block leading-tight">

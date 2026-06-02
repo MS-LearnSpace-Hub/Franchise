@@ -40,18 +40,24 @@ const styles: Record<string, React.CSSProperties> = {
 
   /* ── Right login panel ── */
   rightPanel: {
-    flex: '0 0 58%',
+    flex: '0 0 60%',
     display: 'flex',
     flexDirection: 'column',
-    justifyContent: 'center',
+    justifyContent: 'center', 
     alignItems: 'center',
     backgroundColor: '#f5faf9',
-    padding: '40px 48px 32px 56px',
+    padding: '20px 48px 70px 56px', /* 1. Slightly reduced top padding and increased bottom padding to nudge contents up */
     position: 'relative',
     overflow: 'visible',
     height: '100vh',
     marginLeft: '-32px',
     zIndex: 2,
+  },
+
+  /* ── Logo block ── */
+  logoBlock: {
+    textAlign: 'center',
+    marginBottom: '30px', /* 2. Reduced from 40px to pull the inputs closer to the logo */
   },
 
   /* decorative green/blue wave at bottom-right */
@@ -105,7 +111,7 @@ const styles: Record<string, React.CSSProperties> = {
     zIndex: 1,
   },
 
-  /* ── Logo block ── */
+  /* ── Logo block ──
   logoBlock: {
     textAlign: 'center',
     marginBottom: '40px',
@@ -113,7 +119,7 @@ const styles: Record<string, React.CSSProperties> = {
   logoImg: {
     width: '500px',
     objectFit: 'contain',
-  },
+  }, */
 
   /* ── Input field row ── */
   inputRow: {
