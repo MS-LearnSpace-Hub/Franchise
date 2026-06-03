@@ -33,7 +33,7 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundSize: '100%',
     backgroundPosition: 'center center',
     backgroundRepeat: 'no-repeat',
-    backgroundColor: '#ffffffff',
+    backgroundColor: '#ffffff',
     height: '100vh',
     position: 'relative',
   },
@@ -45,8 +45,8 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: 'column',
     justifyContent: 'center', 
     alignItems: 'center',
-    backgroundColor: '#f5faf9',
-    padding: '20px 48px 70px 56px', /* 1. Slightly reduced top padding and increased bottom padding to nudge contents up */
+    backgroundColor: '#ffffff',
+    padding: '500px 48px 70px 56px', /* 1. Slightly reduced top padding and increased bottom padding to nudge contents up */
     position: 'relative',
     overflow: 'visible',
     height: '100vh',
@@ -93,7 +93,7 @@ const styles: Record<string, React.CSSProperties> = {
     left: 0,
     width: '100px',
     height: '100%',
-    filter: 'drop-shadow(-8px 0 8px rgba(170, 21, 21, 0.08))',
+    filter: 'drop-shadow(-8px 0 8px rgba(170, 21, 21, 0.08))',  
   },
   solidWhiteBg: {
     position: 'absolute',
@@ -101,7 +101,7 @@ const styles: Record<string, React.CSSProperties> = {
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgb(237, 243, 242)',
+    backgroundColor: 'rgb(255, 255, 255)',
   },
 
   /* ── Content block inside right panel ── */
@@ -240,7 +240,7 @@ const styles: Record<string, React.CSSProperties> = {
     marginTop: '14px',
   },
 
-  /* ── DE logo bottom-right of right panel ── */
+  /* ── DE logo bottom-right of right panel ── 
   deLogoWrapper: {
     position: 'absolute',
     bottom: '80px',
@@ -251,7 +251,7 @@ const styles: Record<string, React.CSSProperties> = {
     height: '52px',
     objectFit: 'contain',
     opacity: 1,
-  },
+  },*/
 
   /* ── dots decoration top-right ── 
   dotsDecor: {

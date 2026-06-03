@@ -952,8 +952,8 @@ const CreateStudent: React.FC<CreateStudentProps> = ({
               disabled={isViewMode}
             >
               <option value="">-- Select --</option>
-              <option value="Hifz">Hifz</option>
-              <option value="Nazira">Hifz+Nazira</option>
+              <option value="Regular">Regular</option>
+              <option value="Day-Scholar">Day-Scholar</option>
             </FormField>
             <FormField
               label="Admission Class"

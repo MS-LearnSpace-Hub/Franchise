@@ -67,14 +67,6 @@ const AcademicManagement: React.FC<AcademicManagementProps> = ({ navigateTo }) =
             comingSoon: true
         },
         {
-            id: 'time-table-2',
-            name: 'Time Table',
-            icon: <TimeIcon className="w-8 h-8" />,
-            iconBg: 'bg-green-50',
-            iconColor: 'text-green-600',
-            comingSoon: true
-        },
-        {
             id: 'online-exam',
             name: 'Online Exam',
             icon: <DocumentReportIcon className="w-8 h-8" />,
