@@ -14,6 +14,7 @@ interface StudentRecord {
     last_name?: string;
     admNo?: string;
     admission_no?: string;
+    enrollment_no?: string;
     rollNo?: number | string;
     class?: string;
     section?: string;
@@ -86,6 +87,7 @@ const MONTH_LOOKUP = MONTHS.reduce<Record<string, number>>((acc, month, index) =
 const SEARCH_FIELD_OPTIONS = [
     { value: 'name', label: 'Student Name' },
     { value: 'admission', label: 'Admission No' },
+    { value: 'enrollment', label: 'Enrollment No' },
     { value: 'father', label: 'Father Name' },
 ];
 
@@ -247,6 +249,9 @@ const SearchStudent: React.FC = () => {
                 result = result.filter((student) => {
                     if (searchField === 'admission') {
                         return `${student.admNo || student.admission_no || ''}`.toLowerCase().includes(needle);
+                    }
+                    if (searchField === 'enrollment') {
+                        return `${student.enrollment_no || ''}`.toLowerCase().includes(needle);
                     }
                     if (searchField === 'father') {
                         return `${student.father || student.Fatherfirstname || ''}`.toLowerCase().includes(needle);

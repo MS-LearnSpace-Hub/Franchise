@@ -223,6 +223,7 @@ class Student(db.Model, AuditMixin):
     
     # Basic Information
     admission_no = db.Column(db.String(50), unique=True)
+    enrollment_no = db.Column(db.String(50))
     first_name = db.Column(db.String(100))
     StudentMiddleName = db.Column(db.String(100))
     last_name = db.Column(db.String(100))

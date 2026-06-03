@@ -277,9 +277,10 @@ const UpdateStudentDetails: React.FC<UpdateStudentDetailsProps> = ({ onBack }) =
     const filteredStudents = students.filter(s => {
         const name = (s.name || '').toLowerCase();
         const admNo = (s.admission_no || s.admNo || '').toLowerCase();
+        const enrollNo = (s.enrollment_no || '').toLowerCase();
         const rollNo = s.Roll_Number ? s.Roll_Number.toString().toLowerCase() : '';
         const term = searchTerm.toLowerCase();
-        return name.includes(term) || admNo.includes(term) || rollNo.includes(term);
+        return name.includes(term) || admNo.includes(term) || enrollNo.includes(term) || rollNo.includes(term);
     });
 
     const totalStudents = filteredStudents.length;

@@ -1619,6 +1619,7 @@ export const DueReport: React.FC = () => {
                 (s.name?.toLowerCase() || '').includes(term) ||
                 (s.admission_no?.toLowerCase() || '').includes(term) ||
                 (s.adm_no?.toLowerCase() || '').includes(term) || // Fallback
+                (s.enrollment_no?.toLowerCase() || '').includes(term) ||
                 (s.father_mobile?.includes(term))
             );
         }
@@ -1961,6 +1962,7 @@ export const LateFeeDueReport: React.FC = () => {
                 (s.name?.toLowerCase() || '').includes(term) ||
                 (s.admission_no?.toLowerCase() || '').includes(term) ||
                 (s.adm_no?.toLowerCase() || '').includes(term) || // Fallback
+                (s.enrollment_no?.toLowerCase() || '').includes(term) ||
                 (s.father_mobile?.includes(term))
             );
         }

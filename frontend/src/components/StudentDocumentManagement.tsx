@@ -292,7 +292,7 @@ const StudentDocumentManagement: React.FC = () => {
                         </div>
 
                         <div>
-                            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Admission No</label>
+                            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Admission No /Enrollment No</label>
                             <input
                                 type="text"
                                 value={admissionNo}

@@ -5,6 +5,7 @@ import { Page } from '../App';
 interface Student {
     student_id: number;
     admission_no: string;
+    enrollment_no:string;
     name: string;
     class: string;
     section: string;
@@ -184,7 +185,8 @@ const AssignSpecialFee: React.FC<AssignSpecialFeeProps> = ({ navigateTo }) => {
     // ... (handlers remain same)
     const filteredStudents = students.filter(student =>
         student.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        student.admission_no.toLowerCase().includes(searchQuery.toLowerCase())
+        student.admission_no.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        student.enrollment_no.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
     const handleSelectAllStudents = (e: React.ChangeEvent<HTMLInputElement>) => {

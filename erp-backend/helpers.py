@@ -705,6 +705,7 @@ def student_to_dict(s):
         "student_id": s.student_id,
         "admission_no": s.admission_no, # Explicit key for frontend
         "admNo": s.admission_no,
+        "enrollment_no":s.enrollment_no,
         "Roll_Number": s.Roll_Number, # Explicit key for frontend
         "rollNo": s.Roll_Number,
         "name": name,

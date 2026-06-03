@@ -233,6 +233,7 @@ const CreateStudent: React.FC<CreateStudentProps> = ({
 
   const initialFormData: Record<string, any> = {
     admissionNo: "",
+    enrollment_no:"",
     first_name: "",
     last_name: "",
     gender: "",
@@ -708,6 +709,7 @@ const CreateStudent: React.FC<CreateStudentProps> = ({
   const buildPayload = () => {
     return {
       admission_no: formData.admissionNo,
+      enrollment_no:formData.enrollment_no,
       first_name: formData.first_name,
       last_name: formData.last_name,
       gender: formData.gender,
@@ -821,9 +823,7 @@ const CreateStudent: React.FC<CreateStudentProps> = ({
         !formData.section ||
         !formData.Fatherfirstname ||
         !formData.FatherPhone ||
-        !formData.Motherfirstname ||
-        !formData.SchoolName ||
-        !formData.PreviousSchoolClass)
+        !formData.Motherfirstname )
     ) {
       alert("Fill required fields");
       return;
@@ -924,6 +924,12 @@ const CreateStudent: React.FC<CreateStudentProps> = ({
               value={formData.admissionNo}
               onChange={handleInputChange}
               disabled={true}
+            />           
+            <FormField
+              label="Enrollment No"
+              name="enrollment_no"
+              value={formData.enrollment_no}
+              onChange={handleInputChange}
             />
             <FormField
               label="Admission Date"
@@ -932,7 +938,6 @@ const CreateStudent: React.FC<CreateStudentProps> = ({
               required
               value={formData.admission_date}
               onChange={handleInputChange}
-              disabled={true}
             />
             <FormField
               label="Roll Number"
@@ -952,7 +957,7 @@ const CreateStudent: React.FC<CreateStudentProps> = ({
               disabled={isViewMode}
             >
               <option value="">-- Select --</option>
-              <option value="Regular">Regular</option>
+              <option value="Regular">Regular</option> 
               <option value="Day-Scholar">Day-Scholar</option>
             </FormField>
             <FormField
@@ -1429,7 +1434,6 @@ const CreateStudent: React.FC<CreateStudentProps> = ({
               label="School Name"
               name="SchoolName"
               value={formData.SchoolName}
-              required
               onChange={handleInputChange}
               disabled={isViewMode}
             />
@@ -1437,7 +1441,6 @@ const CreateStudent: React.FC<CreateStudentProps> = ({
               label="School Class"
               name="PreviousSchoolClass"
               value={formData.PreviousSchoolClass}
-              required
               onChange={handleInputChange}
               disabled={isViewMode}
             />
@@ -1449,7 +1452,7 @@ const CreateStudent: React.FC<CreateStudentProps> = ({
               disabled={isViewMode}
             />
             <FormField
-              label="Enrollment Number"
+              label="Previous Admission Number"
               name="PreviousAdmissionNumber"
               value={formData.PreviousAdmissionNumber}
               onChange={handleInputChange}

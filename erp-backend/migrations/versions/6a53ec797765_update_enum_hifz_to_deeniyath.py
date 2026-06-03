@@ -23,7 +23,8 @@ def upgrade():
                existing_type=mysql.ENUM('Hifz', 'Academic'),
                type_=sa.Enum('Deeniyath', 'Academic'),
                existing_nullable=True)
-
+    with op.batch_alter_table('students',schema=None) as batch_op:
+        batch_op.add_column(sa.Column('enrollment_no',sa.String(),nullable = True))
     # ### end Alembic commands ###
 
 
@@ -34,5 +35,7 @@ def downgrade():
                existing_type=sa.Enum('Deeniyath', 'Academic'),
                type_=mysql.ENUM('Hifz', 'Academic'),
                existing_nullable=True)
+    with op.batch_alter_table('students',schema=None) as batch_op:
+        batch_op.drop_column('enrollment_no')
 
     # ### end Alembic commands ###

@@ -82,6 +82,7 @@ interface FeeStudent {
     student_id: number;
     name: string;
     admNo: string;
+    enrollment_no?: string;
     class: string;
     section: string;
     total_fee: number;
@@ -713,7 +714,7 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                                     <input
                                         type="text"
-                                        placeholder="Search Adm No or Name..."
+                                        placeholder="Search Adm No, Enrollment No or Name..."
                                         value={searchTerm}
                                         onChange={e => setSearchTerm(e.target.value)}
                                         className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-violet-500 focus:border-violet-500 text-sm"

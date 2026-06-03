@@ -203,6 +203,7 @@ def get_students(current_user):
                 (Student.StudentMiddleName.like(like)) |
                 (Student.last_name.like(like)) |
                 (Student.admission_no.like(like)) |
+                (Student.enrollment_no.like(like)) |
                 (Student.Fatherfirstname.like(like)) |
                 (Student.phone.like(like)) |
                 (Student.FatherPhone.like(like))
@@ -352,7 +353,8 @@ def update_student(current_user, student_id):
         # Map frontend field names to backend model attributes
         field_mapping = {
             'admission_no': 'admission_no',
-            'admissionNo': 'admission_no',
+            'admissionNo' : 'admission_no',
+            'enrollment_no': 'enrollment_no',
             'first_name': 'first_name',
             'last_name': 'last_name',
             'StudentMiddleName': 'StudentMiddleName',
@@ -617,7 +619,7 @@ def create_student(current_user):
         
         s.admission_no = new_admission_no
         # -------------------------------------------------------------
-        
+        s.enrollment_no = data.get("enrollment_no")
         s.first_name = data.get("first_name")
         s.StudentMiddleName = data.get("StudentMiddleName")
         s.last_name = data.get("last_name")
@@ -910,6 +912,7 @@ def upload_students_csv(current_user):
                     school_id=b_obj.school_id,
                     academic_year=academic_year,
                     admission_no=row.get('admission_no'),
+                    enrollment_no=row.get('enrollment_no'),
                     first_name=row.get('first_name'),
                     StudentMiddleName=row.get('StudentMiddleName'),
                     last_name=row.get('last_name'),
@@ -1574,6 +1577,7 @@ def download_student_template():
     """Download student import template"""
     template_data = {
         "admission_no": ["ADM001"],
+        "enrollment_no": ["VDK003"],
         "first_name": ["John"],
         "StudentMiddleName": ["Mark"],
         "last_name": ["Doe"],

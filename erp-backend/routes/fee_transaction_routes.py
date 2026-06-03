@@ -100,6 +100,7 @@ def get_fee_students(current_user):
                 Student.StudentMiddleName.like(like),
                 Student.last_name.like(like),
                 Student.admission_no.like(like),
+                Student.enrollment_no.like(like),
             )
         )
     
@@ -113,6 +114,7 @@ def get_fee_students(current_user):
             "fatherName": s.Fatherfirstname,
             "fatherPhone": s.FatherPhone or s.SmsNo or s.phone,
             "admNo": s.admission_no,
+            "enrollment_no": s.enrollment_no,
             "branch": s.branch,
             "class": record.class_name,
             "section": record.section,
