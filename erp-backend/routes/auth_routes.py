@@ -372,12 +372,12 @@ def debug_user(current_user, username):
 @token_required
 def list_users(current_user):
     """List users. SuperAdmin sees all; Admin sees only their school."""
-    if not _can_manage_users(current_user, "read"):
-        return jsonify({"error": "Unauthorized"}), 403
-
     query = User.query
 
-    if current_user.role == 'Admin':
+    if not _can_manage_users(current_user, "read"):
+        # Standard users can only see themselves
+        query = query.filter_by(user_id=current_user.user_id)
+    elif current_user.role == 'Admin':
         # Admin can only see users in their own school
         if current_user.school_id:
             query = query.filter_by(school_id=current_user.school_id)
