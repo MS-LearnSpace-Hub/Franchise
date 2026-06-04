@@ -404,6 +404,9 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
     const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
     const [transactionId, setTransactionId] = useState('');
     const [transactionIdDescription, setTransactionIdDescription] = useState('');
+    const [chequeNo, setChequeNo] = useState('');
+    const [bankName, setBankName] = useState('');
+    const [chequeDate, setChequeDate] = useState('');
 
     useEffect(() => {
         const fetchClasses = async () => {
@@ -594,6 +597,9 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
         setPaymentDate(new Date().toISOString().split('T')[0]);
         setTransactionId('');
         setTransactionIdDescription('');
+        setChequeNo('');
+        setBankName('');
+        setChequeDate('');
     };
 
     const handleTakeFee = async () => {
@@ -631,6 +637,9 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
                 receipt_no: schoolReceiptNo,
                 transaction_id: transactionId,
                 transaction_id_description: transactionIdDescription,
+                cheque_no: chequeNo,
+                bank_name: bankName,
+                cheque_date: chequeDate,
                 fee_allocations: feeAllocations
             });
 
@@ -662,6 +671,9 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
                 paymentDate,
                 paymentMode,
                 paymentNote,
+                chequeNo,
+                bankName,
+                chequeDate,
                 items: groupedReceiptItems,
                 amount,
                 concession: appliedConcession,
@@ -1077,6 +1089,22 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
                                             </div>
                                         </>
                                     )}
+                                    {(paymentMode === 'Cheque') && (
+                                        <>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700">Cheque No*</label>
+                                                <input type="text" value={chequeNo} onChange={e => setChequeNo(e.target.value)} required className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-violet-500 focus:border-violet-500" placeholder="Enter Cheque No" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700">Bank Name*</label>
+                                                <input type="text" value={bankName} onChange={e => setBankName(e.target.value)} required className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-violet-500 focus:border-violet-500" placeholder="Enter Bank Name" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700">Cheque Date*</label>
+                                                <input type="date" value={chequeDate} onChange={e => setChequeDate(e.target.value)} required className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-violet-500 focus:border-violet-500" />
+                                            </div>
+                                        </>
+                                    )}
                                 </div>
                                 <div className="flex items-center">
                                     <input
@@ -1229,13 +1257,13 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
                                                     </button>
 
                                                     {/* ── Cancel – ADMIN ONLY ─────────────────────────── */}
-                                                            <button
-                                                                onClick={() => handleDeleteReceipt(first.receipt_no)}
-                                                                title="Cancel Receipt"
-                                                                className="text-red-600 hover:text-red-800"
-                                                            >
-                                                                <TrashIcon className="w-5 h-5" />
-                                                            </button>
+                                                    <button
+                                                        onClick={() => handleDeleteReceipt(first.receipt_no)}
+                                                        title="Cancel Receipt"
+                                                        className="text-red-600 hover:text-red-800"
+                                                    >
+                                                        <TrashIcon className="w-5 h-5" />
+                                                    </button>
                                                     {/* ────────────────────────────────────────────────── */}
                                                 </div>
                                             </td>

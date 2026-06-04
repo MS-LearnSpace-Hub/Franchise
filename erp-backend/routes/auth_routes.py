@@ -168,6 +168,10 @@ def login_user():
             })
     except Exception as e:
         current_app.logger.warning("Error fetching schools for user %s: %s", username, e)
+    
+    # Fetch current school/branch for this user (if set)
+    current_school_id = getattr(user, 'school_id', None)
+    current_branch_id = getattr(user, 'branch_id', None)
 
     # Build school/branch context
     ctx = _build_user_context(user)

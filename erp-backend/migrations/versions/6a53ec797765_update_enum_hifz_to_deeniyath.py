@@ -5,6 +5,7 @@ Revises: af6528073d91
 Create Date: 2026-05-26 11:23:06.897757
 
 """
+# pyrefly: ignore [missing-import]
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import mysql
@@ -25,6 +26,10 @@ def upgrade():
                existing_nullable=True)
     with op.batch_alter_table('students',schema=None) as batch_op:
         batch_op.add_column(sa.Column('enrollment_no',sa.String(),nullable = True))
+    with op.batch_alter_table('fee_payments', schema=None) as batch_op:
+        batch_op.add_column(sa.Column('cheque_no', sa.String(length=50), nullable=True))
+        batch_op.add_column(sa.Column('bank_name', sa.String(length=100), nullable=True))
+        batch_op.add_column(sa.Column('cheque_date', sa.Date(), nullable=True))
     # ### end Alembic commands ###
 
 
@@ -37,5 +42,10 @@ def downgrade():
                existing_nullable=True)
     with op.batch_alter_table('students',schema=None) as batch_op:
         batch_op.drop_column('enrollment_no')
+    with op.batch_alter_table('fee_payments', schema=None) as batch_op:
+        batch_op.drop_column('cheque_date')
+        batch_op.drop_column('bank_name')
+        batch_op.drop_column('cheque_no')
+
 
     # ### end Alembic commands ###
