@@ -818,7 +818,6 @@ const CreateStudent: React.FC<CreateStudentProps> = ({
         !formData.gender ||
         !formData.dob ||
         !formData.phone ||
-        !formData.email ||
         !formData.Adharcardno ||
         !formData.section ||
         !formData.Fatherfirstname ||
@@ -1186,7 +1185,6 @@ const CreateStudent: React.FC<CreateStudentProps> = ({
               label="Email"
               name="email"
               type="email"
-              required
               value={formData.email}
               onChange={handleInputChange}
               disabled={isViewMode}
