@@ -454,7 +454,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ data }) => {
                                 (Number(h.securedMarks) / h.totalMarks) * 100
                             )
                             : 0,
-                        color: h.color ?? '#0fbe53',
+                        color: (h as any).color ?? '#0fbe53',
                     }))}
                     cx="50%"
                     cy="50%"
@@ -468,7 +468,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ data }) => {
                         <Cell
                         key={i}
                         fill={
-                            h.color ??
+                            (h as any).color ??
                             ['#7c3aed', '#16a34a', '#ea580c', '#2563eb', '#dc2626', '#0fbe53'][i % 6]
                         }
                         />
@@ -521,7 +521,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ data }) => {
                         : 0;
  
                     const clr =
-                    h.color ??
+                    (h as any).color ??
                     ['#7c3aed', '#16a34a', '#ea580c', '#2563eb', '#dc2626', '#0fbe53'][i % 6  ];
  
                     return (
@@ -803,4 +803,4 @@ const GradeBadge: React.FC<{ grade?: string }> = ({ grade }) => {
  
 export default ReportCard;
  
- 
+         

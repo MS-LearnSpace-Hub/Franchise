@@ -11,6 +11,8 @@ build/
 # Python
 # =========================
 .venv/
+myenv312/
+.myenv312/
 venv/
 __pycache__/
 *.pyc

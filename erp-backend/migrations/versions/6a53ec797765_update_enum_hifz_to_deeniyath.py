@@ -25,7 +25,7 @@ def upgrade():
                type_=sa.Enum('Deeniyath', 'Academic'),
                existing_nullable=True)
     with op.batch_alter_table('students',schema=None) as batch_op:
-        batch_op.add_column(sa.Column('enrollment_no',sa.String(),nullable = True))
+        batch_op.add_column(sa.Column('enrollment_no',sa.String(50),nullable = True))
     with op.batch_alter_table('fee_payments', schema=None) as batch_op:
         batch_op.add_column(sa.Column('cheque_no', sa.String(length=50), nullable=True))
         batch_op.add_column(sa.Column('bank_name', sa.String(length=100), nullable=True))

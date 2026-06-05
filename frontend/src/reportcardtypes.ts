@@ -38,6 +38,7 @@ export interface DeeniyathDataItem {
     securedMarks: number;
     classMarks: number;
     grade: string;
+    color?: string;
 }
 
 export interface AcademicPerformanceItem {
