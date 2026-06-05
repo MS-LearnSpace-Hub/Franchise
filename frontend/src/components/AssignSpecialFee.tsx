@@ -5,7 +5,7 @@ import { Page } from '../App';
 interface Student {
     student_id: number;
     admission_no: string;
-    enrollment_no:string;
+    enrollment_no: string;
     name: string;
     class: string;
     section: string;

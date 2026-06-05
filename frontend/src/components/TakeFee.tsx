@@ -274,7 +274,20 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
         }
 
         const paymentsToDelete = paymentHistory.filter(p => p.receipt_no === receiptNo);
+        const userRole =
+            (localStorage.getItem('role') ||
+                localStorage.getItem('userRole') ||
+                '').toLowerCase();
+        const canDeleteReceipt = [
+            'admin',
+            'superadmin',
+            'branch admin'
+        ].includes(userRole);
 
+        if (!canDeleteReceipt) {
+            alert('You do not have permission to cancel receipts.');
+            return;
+        }
         try {
             for (const p of paymentsToDelete) {
                 await api.delete(`/fees/payment/${p.payment_id}`, {

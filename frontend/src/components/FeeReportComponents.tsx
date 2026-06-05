@@ -2299,9 +2299,6 @@ export const SearchStudentReport: React.FC<ReportProps> = ({ onViewReceipt }) =>
     const userRole = getUserRole();
     const isAdmin = userRole === 'admin' || userRole === 'superadmin' || userRole === 'branch admin';
 
-    // DEBUG: Remove after testing
-    console.log('Detected user role:', userRole, '| isAdmin:', isAdmin);
-
     const paymentModes = ["Cash", "UPI", "Card", "Bank Transfer", "Cheque"];
 
     // Search students by name or admission no
