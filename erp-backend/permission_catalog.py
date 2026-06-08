@@ -54,6 +54,9 @@ PERMISSION_CATALOG = [
     permission("Fees", "Fee", "Concession Master", "fees.fee.concession-master"),
     permission("Fees", "Fee", "Fee Reports", "fees.fee.fee-reports"),
     permission("Fees", "Fee", "Fee Report Components", "fees.fee.fee-report-components"),
+    permission("Fees", "Fee", "Petty Cash", "fees.fee.petty-cash"),
+    permission("Fees", "Fee", "Petty Cash Report", "fees.fee.petty-cash-report"),
+    permission("Fees", "Fee", "Reports", "fees.fee.reports"),
 
     permission("Academics", "Academic", "Academic Management", "academics.academic.academic-management"),
     permission("Academics", "Academic", "Academics", "academics.academic.academics"),

@@ -30,7 +30,8 @@ import ControlPanel from './ControlPanel';
 import SchoolManagement from './SchoolManagement';
 import { useNavigationHistory } from '../hooks/useNavigationHistory';
 import StaffSupport from './StaffSupport';
-
+import PettyCash from './PettyCash';
+import PettyCashReport from './PettyCashReport';
 
 
 interface DashboardProps {
@@ -95,6 +96,8 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
           {currentPage === 'franchise-management' && <FranchiseManagement />}
           {currentPage === 'school-management' && <SchoolManagement />}
           {currentPage === 'control-panel' && <ControlPanel navigateTo={navigateTo} />}
+          {currentPage === 'petty-cash' && <PettyCash />}
+          {currentPage === 'petty-cash-report' && <PettyCashReport />}
         </main>
       </div>
     </div>

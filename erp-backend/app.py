@@ -36,7 +36,8 @@ from routes.test_attendance_routes import test_attendance_bp
 from routes.config_routes import bp as config_bp
 from routes.document_routes import document_routes
 from routes.rbac_routes import bp as rbac_bp
-
+from routes.petty_cash_routes import petty_cash_bp
+from routes.petty_cash_report_routes import petty_cash_report_bp
 
   
 
@@ -116,6 +117,13 @@ def create_app():
     })
     db.init_app(app)
     migrate.init_app(app, db)
+    # Auto-sync permission catalog on every server start
+    from routes.rbac_routes import _sync_permission_catalog
+    with app.app_context():
+        try:
+            _sync_permission_catalog()
+        except Exception as e:
+            print(f"[WARN] Permission sync failed: {e}")
 
     limiter.init_app(app)  
     cache.init_app(app, config={'CACHE_TYPE': 'SimpleCache', 'CACHE_DEFAULT_TIMEOUT': 300})
@@ -144,6 +152,9 @@ def create_app():
     app.register_blueprint(config_bp)
     app.register_blueprint(document_routes, url_prefix="/api/documents")
     app.register_blueprint(rbac_bp)
+    app.register_blueprint(petty_cash_bp, url_prefix="/api/petty-cash")
+    app.register_blueprint(petty_cash_report_bp, url_prefix="/api/petty-cash-report")
+    
 
     # -----------------------------
     # SERVE UPLOADS (legacy - kept for backward compatibility)

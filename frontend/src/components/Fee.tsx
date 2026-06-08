@@ -33,7 +33,10 @@ const Fee: React.FC<FeeProps> = ({ navigateTo }) => {
             navigateTo('update-student-fee-structure');
         } else if (item === 'Update Rebate Date') {
             navigateTo('update-rebate-date');
+        } else if (item === 'Petty-Cash Report') {
+            navigateTo('petty-cash-report');
         }
+
         setOpenDropdown(null);
     };
 
@@ -55,7 +58,7 @@ const Fee: React.FC<FeeProps> = ({ navigateTo }) => {
             { name: 'Paid Concession Report', action: () => console.log('Paid Concession Report') },
             { name: 'Expected Concession Report', action: () => console.log('Expected Concession Report') },
         ],
-        refund: ['Refund/TC Requests', 'Refund Fee', 'Refundable Fees Refund Report', 'Refundable Fees Deposit Report', 'Refund Report', 'Refund Cancel Report', 'Adjust Fee', 'Adjust Fee Report', 'Nullify Fee', 'Nullify Fee Report'],
+        reports: ['Fee Report', 'Fee Summary Report', 'Fee Due Report', 'Fee Concession Report', 'Deleted Receipts', 'Petty-Cash Report', 'Adjust Fee Report', 'Nullify Fee', 'Nullify Fee Report'],
         voucher: ['Create Voucher', 'Voucher List', 'Transport Voucher'],
     };
 
@@ -101,6 +104,9 @@ const Fee: React.FC<FeeProps> = ({ navigateTo }) => {
     const canUpdateStudentFee = hasPermission('fees.fee.update-student-fee-structure', 'read');
     const canUpdateRebateDate = hasPermission('fees.fee.update-rebate-date', 'read');
     const canConcession = hasPermission('fees.fee.concession-master', 'read');
+    const canPettyCash = hasPermission('fees.fee.petty-cash', 'read');
+    const canPettyCashReport = hasPermission('fees.fee.petty-cash-report', 'read');
+    const canReports = hasPermission('fees.fee.reports', 'read');
 
     const feeMasterItems: (string | DropdownItem)[] = [
         ...(canFeeType ? ['Fee Type' as string] : []),
@@ -117,6 +123,14 @@ const Fee: React.FC<FeeProps> = ({ navigateTo }) => {
         { name: 'Paid Concession Report', action: () => console.log('Paid Concession Report') },
         { name: 'Expected Concession Report', action: () => console.log('Expected Concession Report') },
     ] : [];
+
+    const reportItems: (string | DropdownItem)[] = [
+        ...(canReports ? [
+            'Fee Report', 'Fee Summary Report', 'Fee Due Report', 'Fee Concession Report', 'Deleted Receipts',
+            'Adjust Fee Report', 'Nullify Fee', 'Nullify Fee Report'
+        ] : []),
+        ...((canReports || canPettyCashReport) ? ['Petty-Cash Report'] : [])
+    ];
 
     return (
         <div>
@@ -135,6 +149,7 @@ const Fee: React.FC<FeeProps> = ({ navigateTo }) => {
                             >
                                 Fee Reports
                             </button>
+
                         )}
                         {canTakeFee && (
                             <button
@@ -144,7 +159,16 @@ const Fee: React.FC<FeeProps> = ({ navigateTo }) => {
                                 Collect Fee
                             </button>
                         )}
+                        {canPettyCash && (
+                            <button
+                                className="px-4 py-2 text-sm border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-green-500 transition-colors"
+                                onClick={() => navigateTo('petty-cash')}
+                            >
+                                Petty Cash
+                            </button>
+                        )}
                         {concessionItems.length > 0 && renderDropdown('concession', concessionItems)}
+                        {(canReports || canPettyCashReport) && reportItems.length > 0 && renderDropdown('reports', reportItems)}
                     </div>
                 </div>
             </div>
