@@ -36,7 +36,8 @@ export type Page =
   | "role-permissions"
   | "franchise-management"
   | "school-management"
-  | "control-panel";
+  | "control-panel"
+  | 'sms-center';
 
 // Inner component that can access AuthContext
 const AppInner: React.FC = () => {

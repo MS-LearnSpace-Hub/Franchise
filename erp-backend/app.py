@@ -36,6 +36,7 @@ from routes.test_attendance_routes import test_attendance_bp
 from routes.config_routes import bp as config_bp
 from routes.document_routes import document_routes
 from routes.rbac_routes import bp as rbac_bp
+from routes.sms_routes import bp as sms_bp
 
 
   
@@ -144,6 +145,7 @@ def create_app():
     app.register_blueprint(config_bp)
     app.register_blueprint(document_routes, url_prefix="/api/documents")
     app.register_blueprint(rbac_bp)
+    app.register_blueprint(sms_bp)
 
     # -----------------------------
     # SERVE UPLOADS (legacy - kept for backward compatibility)

@@ -30,6 +30,7 @@ import ControlPanel from './ControlPanel';
 import SchoolManagement from './SchoolManagement';
 import { useNavigationHistory } from '../hooks/useNavigationHistory';
 import StaffSupport from './StaffSupport';
+import SmsCenter from './SmsCenter';
 
 
 
@@ -95,6 +96,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
           {currentPage === 'franchise-management' && <FranchiseManagement />}
           {currentPage === 'school-management' && <SchoolManagement />}
           {currentPage === 'control-panel' && <ControlPanel navigateTo={navigateTo} />}
+          {currentPage === 'sms-center' && <SmsCenter navigateTo={navigateTo} />}
         </main>
       </div>
     </div>

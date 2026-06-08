@@ -180,6 +180,15 @@ const Administration: React.FC<AdministrationProps> = ({ navigateTo }) => {
             iconBg: 'bg-sky-50',
             iconColor: 'text-sky-600',
             comingSoon: true
+        },
+        {
+            id: 'sms-center',
+            name: 'SMS Center',
+            icon: <DocumentReportIcon className="w-8 h-8" />,
+            iconBg: 'bg-orange-50',
+            iconColor: 'text-orange-600',
+            page: 'sms-center',
+            permission: 'administration.sms.sms-center',
         }
     ];
 
