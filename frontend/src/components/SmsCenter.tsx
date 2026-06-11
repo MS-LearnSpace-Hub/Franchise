@@ -193,10 +193,12 @@ const FeeDueSmsTab: React.FC = () => {
         setResult(null);
         try {
             const branch = localStorage.getItem('currentBranch') || 'All';
-            const res = await api.get('/fee-transactions/due-list', {
-                params: { branch, min_due: minDue }
+            const res = await api.get('/reports/fees/due', {
+                params: { branch }
             });
-            const list = res.data.students || [];
+            const list = (res.data || []).filter((s: any) =>
+                !minDue || s.due_amount >= Number(minDue)
+            );
             setStudents(list);
             setSelected(new Set(list.map((s: any) => s.student_id)));
         } catch (e) {
@@ -267,7 +269,9 @@ const FeeDueSmsTab: React.FC = () => {
                             <tr>
                                 <th className="px-3 py-2 w-8"></th>
                                 <th className="px-3 py-2 text-left font-medium text-gray-500">Name</th>
+                                <th className="px-3 py-2 text-left font-medium text-gray-500">Adm No</th>
                                 <th className="px-3 py-2 text-left font-medium text-gray-500">Class</th>
+                                <th className="px-3 py-2 text-left font-medium text-gray-500">Father</th>
                                 <th className="px-3 py-2 text-left font-medium text-gray-500">Phone</th>
                                 <th className="px-3 py-2 text-right font-medium text-gray-500">Due Amount</th>
                             </tr>
@@ -286,8 +290,10 @@ const FeeDueSmsTab: React.FC = () => {
                                             className="h-4 w-4 accent-violet-600 cursor-pointer" />
                                     </td>
                                     <td className="px-3 py-2 font-medium">{s.name}</td>
-                                    <td className="px-3 py-2">{s.class}</td>
-                                    <td className="px-3 py-2 text-gray-500">{s.smsNo || s.fatherMobile || '—'}</td>
+                                    <td className="px-3 py-2 text-blue-600">{s.admission_no}</td>
+                                    <td className="px-3 py-2">{s.class} {s.section}</td>
+                                    <td className="px-3 py-2 text-gray-500">{s.father_name || '—'}</td>
+                                    <td className="px-3 py-2 text-gray-500">{s.father_mobile || '—'}</td>
                                     <td className="px-3 py-2 text-right font-semibold text-red-600">
                                         ₹{s.due_amount?.toLocaleString()}
                                     </td>
