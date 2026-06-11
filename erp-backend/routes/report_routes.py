@@ -1,7 +1,7 @@
 # pyrefly: ignore [missing-import]
 from flask import Blueprint, jsonify, request
 from extensions import db, to_local_time
-from models import FeePayment, Student, StudentFee
+from models import FeePayment, Student, StudentFee, User
 from helpers import token_required, require_academic_year, get_user_allowed_branches
 from datetime import date, datetime
 from sqlalchemy import func, or_
@@ -678,3 +678,159 @@ def get_receipt_data(current_user, receipt_no):
         
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@bp.route("/api/reports/fees/deleted-receipts", methods=["GET"])
+@token_required
+def report_deleted_receipts(current_user):
+    h_year, err, code = require_academic_year()
+    if err: 
+        return err, code
+    
+    req_branch = request.headers.get("X-Branch") or request.args.get("branch")
+    branch_val, allowed_names, is_unlimited = get_report_allowed_branches(current_user, req_branch)
+
+    try:
+        query = FeePayment.query.options(
+            selectinload(FeePayment.student)
+        ).filter(
+            FeePayment.status == 'I',
+            FeePayment.academic_year == h_year
+        )
+
+        # Apply branch filtering based on user's access rights
+        if not is_unlimited:
+            if branch_val == "AllowedOnly":
+                query = query.filter(FeePayment.branch.in_(list(allowed_names)))
+            else:
+                query = query.filter(FeePayment.branch == branch_val)
+        else:
+            if branch_val != "All":
+                query = query.filter(FeePayment.branch == branch_val)
+
+        payments = query.order_by(FeePayment.updated_at.desc()).all()
+        
+        from models import User
+        users = {u.user_id: u.username for u in User.query.all()}
+        
+        receipt_map = {}
+        for p in payments:
+            key = f"{p.branch}_{p.receipt_no}"
+            if key not in receipt_map:
+                receipt_map[key] = {
+                    "receipt_no": p.receipt_no,
+                    "student_name": (p.student.first_name if p.student else "Unknown") + " " + (p.student.last_name if p.student and p.student.last_name else ""),
+                    "admission_no": p.student.admission_no if p.student else "",
+                    "class": p.class_name,
+                    "section": p.section,
+                    "branch": p.branch,
+                    "amount_paid": 0.0,
+                    "gross_amount": 0.0,
+                    "date": p.payment_date.isoformat() if p.payment_date else "",
+                    "mode": p.payment_mode,
+                    "collected_by": p.collected_by_name,
+                    "deleted_by": users.get(p.updated_by, "Unknown"),
+                    "deleted_at": to_local_time(p.updated_at).strftime("%d-%m-%Y %I:%M %p") if p.updated_at else "",
+                    "cancel_reason": p.cancel_reason or "No reason provided",
+                    "fee_types": []
+                }
+            item = receipt_map[key]
+            item["amount_paid"] += float(p.amount_paid or 0)
+            item["gross_amount"] += float(p.gross_amount or 0)
+            f_name = f"{p.fee_type or ''} {p.installment_name or ''}".strip()
+            if f_name and f_name not in item["fee_types"]:
+                item["fee_types"].append(f_name)
+        
+        final_receipts = []
+        for r in receipt_map.values():
+            final_receipts.append({
+                **r,
+                "fee_type_str": ", ".join(r["fee_types"]) 
+            })
+            
+        return jsonify({"receipts": final_receipts}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+@bp.route("/api/reports/fees/concession-report", methods=["GET"])
+@token_required
+def report_concession(current_user):
+    h_year, err, code = require_academic_year()
+    if err: return err, code
+    
+    req_branch = request.headers.get("X-Branch") or request.args.get("branch")
+    branch_val, allowed_names, is_unlimited = get_report_allowed_branches(current_user, req_branch)
+
+    query = db.session.query(
+        Student,
+        StudentFee,
+        User
+    ).join(StudentFee, StudentFee.student_id == Student.student_id)\
+     .outerjoin(User, StudentFee.updated_by == User.user_id)\
+     .filter(
+        StudentFee.academic_year == h_year,
+        Student.academic_year == h_year,
+        StudentFee.concession > 0,
+        StudentFee.is_active == True
+    )
+
+    if not is_unlimited:
+        if branch_val == "AllowedOnly":
+            query = query.filter(Student.branch.in_(list(allowed_names)))
+        else:
+            query = query.filter(Student.branch == branch_val)
+    else:
+        if branch_val != "All":
+            query = query.filter(Student.branch == branch_val)
+
+    results = query.all()
+
+    concessions_map = {}
+    for s, sf, u in results:
+        key = f"{s.student_id}_{sf.fee_type.feetype if sf.fee_type else 'Unknown'}"
+        if key not in concessions_map:
+            concessions_map[key] = {
+                "student_id": s.student_id,
+                "student_name": f"{s.first_name} {s.StudentMiddleName or ''} {s.last_name or ''}".strip(),
+                "admission_no": s.admission_no,
+                "class": s.clazz,
+                "section": s.section,
+                "branch": s.branch,
+                "contact": s.FatherPhone or s.phone or s.SmsNo or "-",
+                "total_gross": 0,
+                "total_concession": 0,
+                "total_paid": 0,
+                "assigned_by": u.username if u else "Unknown",
+                "fee_type_name": sf.fee_type.feetype if sf.fee_type else 'Unknown'
+            }
+        
+        concessions_map[key]["total_gross"] += float(sf.total_fee or 0)
+        concessions_map[key]["total_concession"] += float(sf.concession or 0)
+        concessions_map[key]["total_paid"] += float(sf.paid_amount or 0)
+
+    return jsonify({"concessions": list(concessions_map.values())}), 200
+
+@bp.route("/api/reports/fees/concession-details/<int:student_id>", methods=["GET"])
+@token_required
+def report_concession_details(current_user, student_id):
+    h_year, err, code = require_academic_year()
+    if err: return err, code
+    
+    query = StudentFee.query.filter(
+        StudentFee.student_id == student_id,
+        StudentFee.academic_year == h_year,
+        StudentFee.concession > 0,
+        StudentFee.is_active == True
+    )
+    
+    details = query.all()
+    output = []
+    for d in details:
+        output.append({
+            "installment": d.month,
+            "fee_type": d.fee_type.feetype if d.fee_type else "",
+            "total_fee": float(d.total_fee or 0),
+            "paid": float(d.paid_amount or 0),
+            "concession": float(d.concession or 0),
+            "status": d.status
+        })
+
+    return jsonify({"details": output}), 200

@@ -340,6 +340,18 @@ def update_student(current_user, student_id):
             return jsonify({"error": "Unauthorized"}), 403
 
         data = request.json or {}
+        # Aadhar number duplication check
+        aadhar = data.get("Adharcardno")
+        if aadhar:
+            aadhar = str(aadhar).strip()
+            if aadhar:
+                #Validate Aadhar number format
+                if not aadhar.isdigit() or len(aadhar) !=12:
+                    return jsonify({"error":"Aadhar Number must be exactly 12 digits."}),400 
+                existing_student = Student.query.filter_by(Adharcardno=aadhar).first()
+                if existing_student and existing_student.student_id != student_id:
+                    return jsonify({"error": f"A student with Aadhar number {aadhar} already exists."}), 400
+
         new_branch = data.get('branch')
         b_obj = None
         if new_branch:

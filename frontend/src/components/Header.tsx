@@ -315,7 +315,7 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, navigateTo, onLogout, go
 
   return (
     <header
-      className="text-white shadow-lg z-10 transition-colors duration-500"
+      className="text-white shadow-lg z-50 relative transition-colors duration-500"
       style={{
         backgroundColor: themeColor,
         '--hover-bg': `color-mix(in srgb, ${themeColor} 80%, black)`

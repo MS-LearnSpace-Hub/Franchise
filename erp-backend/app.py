@@ -103,7 +103,7 @@ def create_app():
     else:
         allowed_origins = [
             r"https://.*\.vercel\.app",
-            "http://localhost:5173",
+            "http://localhost:8000",
             "http://localhost:3000",
             r"http://192\.168\.[0-9]+\.[0-9]+:[0-9]+"
         ]

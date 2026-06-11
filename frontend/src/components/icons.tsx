@@ -163,3 +163,7 @@ export const ShieldCheckIcon: React.FC<{ className?: string }> = ({ className })
     <path fillRule="evenodd" d="M12.516 2.17a.75.75 0 00-1.032 0 11.209 11.209 0 01-7.877 3.08.75.75 0 00-.722.515A12.74 12.74 0 008.38 21.05a.75.75 0 00.6.024 11.583 11.583 0 003.02-1.56l.02-.016a11.583 11.583 0 003.02 1.56.75.75 0 00.6-.024 12.74 12.74 0 005.495-15.285.75.75 0 00-.722-.515 11.209 11.209 0 01-7.877-3.08zm-3.284 8.79a.75.75 0 111.036-1.084l2.213 2.115 3.843-3.66a.75.75 0 111.032 1.084l-4.36 4.15a.75.75 0 01-1.036 0l-2.728-2.605z" clipRule="evenodd" />
   </svg>
 );
+
+export const DocumentIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"></path></svg>
+);
