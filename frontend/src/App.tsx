@@ -42,6 +42,7 @@ export type Page =
   | "deleted-receipts"
   | "fee-concession-report"
   | "adjust-fee-report"
+  | 'sms-center';
 
 // Inner component that can access AuthContext
 const AppInner: React.FC = () => {

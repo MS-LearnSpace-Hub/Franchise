@@ -36,6 +36,7 @@ import StaffSupport from './StaffSupport';
 import PettyCash from './PettyCash';
 import PettyCashReport from './PettyCashReport';
 import FinancialLayout from './FinancialLayout';
+import SmsCenter from './SmsCenter';
 
 const financialPages = [
   'fee', 'fee-type', 'class-fee-structure', 'assign-special-fee',
@@ -116,8 +117,11 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
               {currentPage === 'school-management' && <SchoolManagement />}
               {currentPage === 'control-panel' && <ControlPanel navigateTo={navigateTo} />}
               {currentPage === 'staffsupport' && <StaffSupport />}
+              {currentPage === 'sms-center' && <SmsCenter navigateTo={navigateTo} />}
             </>
           )}
+
+          
         </main>
       </div>
     </div>

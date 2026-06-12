@@ -87,6 +87,7 @@ interface FeeStudent {
     section: string;
     total_fee: number;
     paid_amount: number;
+    due_amount: number;
     concession: number;
     balance: number;
     status: string;
@@ -657,6 +658,24 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
             });
 
             const realReceiptNo = response.data.receipt_no;
+
+            // Send fee receipt SMS
+            try {
+                const phone = selectedStudent.fatherPhone;
+                if (phone) {
+                    await api.post('/sms/send-fee-receipt', {
+                        phone: String(phone).replace('+91', '').trim(),
+                        paid_amount: Number(paidInput),
+                        total_amount: selectedStudent.total_fee,
+                        admission_no: selectedStudent.admNo,
+                        balance: selectedStudent.due_amount - Number(paidInput),
+                        branch_name: selectedStudent.branch || 'School'
+                    });
+                }
+            } catch (smsErr) {
+                // SMS failure should not block the receipt
+                console.warn('Fee SMS failed (non-blocking):', smsErr);
+            }
 
             const receiptLineItemsRaw = selectedItems.map((item: FeeInstallment, index: number) => {
                 const alloc = feeAllocations[index];

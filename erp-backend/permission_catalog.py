@@ -30,7 +30,7 @@ PERMISSION_CATALOG = [
     permission("Home", "Dashboard", "Report Card", "home.dashboard.report-card", "View report card dashboard"),
     permission("Home", "Dashboard", "Student Report Card", "home.dashboard.student-report-card", "View student report cards"),
 
-    permission("Administration", "Student", "Student Administration", "administration.student.student-administration"),
+    permission("Administration", "SMS", "SMS Center", "administration.sms.sms-center", "Access to SMS Center for attendance, fee and announcement SMS"),
     permission("Administration", "Student", "Search Student", "administration.student.search-student"),
     permission("Administration", "Student", "Create Student", "administration.student.create-student"),
     permission("Administration", "Student", "Update Student Details", "administration.student.update-student-details"),
