@@ -1055,7 +1055,7 @@ class PettyCash(db.Model, AuditMixin):
         db.Index('idx_petty_cash_date', 'transaction_date'),
     )
 
-    # Relationships
+    # Relationships of branches
     branch = db.relationship("Branch")
     ledger = db.relationship("PettyCashLedger")
     items = db.relationship("PettyCashVoucherItem", backref="petty_cash_voucher", cascade="all, delete-orphan", lazy=True)
