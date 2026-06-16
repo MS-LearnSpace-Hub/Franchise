@@ -66,16 +66,33 @@ def _build_message(student_name: str, date_str: str) -> str:
     return f"Dear parent ur ward is absent today {formatted}, send her regularly to college PRIN, MSDC.Asif Nagar-MS Educational and Welfare Trust."
 
 
+def _log_sms(sms_type: str, phone: str, message: str, status: str,
+             student_id=None, reason=None, sent_by=None,
+             school_id=None, branch_id=None):
+    try:
+        from models import SmsLog
+        log = SmsLog(
+            sms_type   = sms_type,
+            phone      = phone,
+            message    = message,
+            status     = status,
+            reason     = reason,
+            student_id = student_id,
+            sent_at    = datetime.utcnow(),
+            sent_by    = sent_by,
+            school_id  = school_id,
+            branch_id  = branch_id,
+        )
+        db.session.add(log)
+    except Exception as e:
+        print(f"[SMS LOG ERROR] {e}")
+
+
 @bp.route("/api/attendance/send-sms", methods=["POST"])
 @token_required
 def send_absent_sms(current_user):
-    """
-    Body: {
-        "date": "2024-11-15",
-        "student_ids": [1, 2, 3]   <- only the checked ones from frontend
-    }
-    """
     try:
+        from flask import g
         data = request.json or {}
         date_str    = data.get("date")
         student_ids = data.get("student_ids", [])
@@ -88,7 +105,6 @@ def send_absent_sms(current_user):
 
         target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
 
-        # Verify these are actually absent on that date (safety check)
         confirmed_absent = {
             r.student_id for r in
             Attendance.query.filter(
@@ -98,25 +114,28 @@ def send_absent_sms(current_user):
             ).all()
         }
 
-        students = Student.query.filter(
-            Student.student_id.in_(confirmed_absent)
-        ).all()
+        students = Student.query.filter(Student.student_id.in_(confirmed_absent)).all()
 
-        # Branch guard
         allowed = get_user_allowed_branches(current_user)
         if not allowed["is_unlimited"]:
             students = [s for s in students if s.branch in allowed["names"]]
 
         sent, failed, skipped = 0, 0, 0
         results = []
+        school_id = getattr(g, 'school_id', None)
+        branch_id = getattr(g, 'branch_id', None)
+        sent_by   = getattr(g, 'user_id',   None)
 
         for s in students:
-            # Your Student model uses sms_no / father_mobile — adjust field names if different
             raw_phone = s.FatherPhone or ""
             phone = str(raw_phone).strip().replace(" ", "").replace("+91", "").lstrip("0")
 
             if len(phone) != 10 or not phone.isdigit():
                 skipped += 1
+                _log_sms("ATTENDANCE", phone or raw_phone, "", "skipped",
+                         student_id=s.student_id, reason="No valid phone number",
+                         sent_by=sent_by, school_id=school_id,
+                         branch_id=s.branch_id or branch_id)
                 results.append({
                     "student_id": s.student_id,
                     "name": f"{s.first_name} {s.last_name}",
@@ -131,6 +150,13 @@ def send_absent_sms(current_user):
             )
 
             result = _send_sms(phone, msg)
+            status = "sent" if result["ok"] else "failed"
+            _log_sms("ATTENDANCE", phone, msg, status,
+                     student_id=s.student_id,
+                     reason=None if result["ok"] else result.get("reason"),
+                     sent_by=sent_by, school_id=school_id,
+                     branch_id=s.branch_id or branch_id)
+
             if result["ok"]:
                 sent += 1
                 results.append({
@@ -148,6 +174,7 @@ def send_absent_sms(current_user):
                     "reason": result.get("reason", "")
                 })
 
+        db.session.commit()
         return jsonify({
             "message": f"Done. Sent: {sent}, Failed: {failed}, Skipped: {skipped}",
             "sent": sent, "failed": failed, "skipped": skipped,
@@ -204,6 +231,8 @@ def send_fee_receipt_sms(current_user):
         sender      = os.environ.get("SMS_FEE_SENDER_ID", os.environ.get("SMS_SENDER_ID", "SCHOOL"))
         template_id = os.environ.get("SMS_FEE_TEMPLATE_ID", "")
 
+        student_id = data.get("student_id")
+
         if not username or not password:
             return jsonify({"error": "SMS credentials not configured"}), 500
 
@@ -216,6 +245,12 @@ def send_fee_receipt_sms(current_user):
             "TemplateId": template_id
         }
 
+        from flask import g
+        school_id  = getattr(g, 'school_id', None)
+        branch_id  = getattr(g, 'branch_id', None)
+        sent_by    = getattr(g, 'user_id',   None)
+        student_id = data.get("student_id")
+
         print(f"[FEE SMS] Sending to {phone_with_code}...")
         r = requests.post(
             f"https://restapi.smscountry.com/v0.1/Accounts/{username}/SMSes/",
@@ -225,7 +260,14 @@ def send_fee_receipt_sms(current_user):
         )
         print(f"[FEE SMS] Response: {r.status_code} — {r.text}")
 
-        if r.status_code in (200, 201, 202):
+        status = "sent" if r.status_code in (200, 201, 202) else "failed"
+        _log_sms("FEE_RECEIPT", phone, message, status,
+                 student_id=student_id,
+                 reason=None if status == "sent" else r.text,
+                 sent_by=sent_by, school_id=school_id, branch_id=branch_id)
+        db.session.commit()
+
+        if status == "sent":
             return jsonify({"ok": True, "message": "SMS sent"}), 200
         else:
             return jsonify({"ok": False, "message": r.text}), 200
@@ -268,6 +310,11 @@ def send_fee_due_sms(current_user):
         sender   = os.environ.get("SMS_SENDER_ID", "SCHOOL")
         template_id = os.environ.get("SMS_DUE_TEMPLATE_ID", "")
 
+        from flask import g
+        school_id = getattr(g, 'school_id', None)
+        branch_id = getattr(g, 'branch_id', None)
+        sent_by   = getattr(g, 'user_id',   None)
+
         sent, failed, skipped = 0, 0, 0
         results = []
 
@@ -306,7 +353,13 @@ def send_fee_due_sms(current_user):
                     timeout=10
                 )
                 print(f"[FEE DUE SMS] {phone_with_code} → {r.status_code} {r.text}")
-                if r.status_code in (200, 201, 202):
+                sms_status = "sent" if r.status_code in (200, 201, 202) else "failed"
+                _log_sms("FEE_DUE", phone, message, sms_status,
+                         student_id=s.student_id,
+                         reason=None if sms_status == "sent" else r.text,
+                         sent_by=sent_by, school_id=school_id,
+                         branch_id=s.branch_id or branch_id)
+                if sms_status == "sent":
                     sent += 1
                     results.append({
                         "student_id": s.student_id,
@@ -324,6 +377,10 @@ def send_fee_due_sms(current_user):
                     })
             except Exception as e:
                 failed += 1
+                _log_sms("FEE_DUE", phone, message, "failed",
+                         student_id=s.student_id, reason=str(e),
+                         sent_by=sent_by, school_id=school_id,
+                         branch_id=s.branch_id or branch_id)
                 results.append({
                     "student_id": s.student_id,
                     "name": f"{s.first_name} {s.last_name}",
@@ -331,6 +388,7 @@ def send_fee_due_sms(current_user):
                     "reason": str(e)
                 })
 
+        db.session.commit()
         return jsonify({
             "message": f"Done. Sent: {sent}, Failed: {failed}, Skipped: {skipped}",
             "sent": sent, "failed": failed, "skipped": skipped,
@@ -341,63 +399,168 @@ def send_fee_due_sms(current_user):
         import traceback; traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
-@bp.route("/api/sms/send-announcement", methods=["POST"])
+@bp.route("/api/sms/reports", methods=["GET"])
 @token_required
-def send_announcement_sms(current_user):
+def sms_reports(current_user):
     try:
-        data        = request.json or {}
-        student_ids = data.get("student_ids", [])
-        message     = data.get("message", "").strip()
+        from flask import g
+        from models import SmsLog
+        from sqlalchemy import func, case
 
-        if not student_ids or not message:
-            return jsonify({"error": "student_ids and message are required"}), 400
+        from_date_str = request.args.get("from_date")
+        to_date_str   = request.args.get("to_date")
+        sms_type      = request.args.get("sms_type", "")
+        status_filter = request.args.get("status", "")
+        page          = int(request.args.get("page", 1))
+        per_page      = min(int(request.args.get("per_page", 50)), 200)
 
-        students = Student.query.filter(Student.student_id.in_(student_ids)).all()
+        if not from_date_str or not to_date_str:
+            return jsonify({"error": "from_date and to_date are required"}), 400
 
-        allowed = get_user_allowed_branches(current_user)
-        if not allowed["is_unlimited"]:
-            students = [s for s in students if s.branch in allowed["names"]]
+        from_dt = datetime.strptime(from_date_str, "%Y-%m-%d")
+        to_dt   = datetime.strptime(to_date_str, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
 
-        sent, failed, skipped = 0, 0, 0
-        for s in students:
-            raw = s.FatherPhone or ""
-            phone = str(raw).strip().replace(" ", "").replace("+91", "").lstrip("0")
-            if len(phone) != 10 or not phone.isdigit():
-                skipped += 1
-                continue
-            ok = _send_sms(phone, message)
-            if ok["ok"]: sent += 1
-            else:        failed += 1
+        q = db.session.query(SmsLog).filter(
+            SmsLog.sent_at >= from_dt,
+            SmsLog.sent_at <= to_dt
+        )
 
-        return jsonify({"message": "Done", "sent": sent, "failed": failed, "skipped": skipped}), 200
+        from helpers import get_effective_role_name
+        role  = get_effective_role_name(current_user)
+        s_id  = getattr(g, 'school_id', None)
+        b_id  = getattr(g, 'branch_id', None)
 
-    except Exception as e:
-        import traceback; traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+        # Explicit branch/school filter from query param takes priority over g context
+        filter_branch_id = request.args.get("branch_id", "").strip()
+        filter_school_id = request.args.get("school_id", "").strip()
 
+        # Resolve effective branch: explicit param > g context
+        effective_branch_id = int(filter_branch_id) if filter_branch_id else b_id
+        effective_school_id = int(filter_school_id) if filter_school_id else s_id
 
-@bp.route("/api/sms/send-custom", methods=["POST"])
-@token_required
-def send_custom_sms(current_user):
-    try:
-        data    = request.json or {}
-        phones  = data.get("phones", [])
-        message = data.get("message", "").strip()
+        if role != 'SuperAdmin':
+            # Always scope to school
+            if effective_school_id:
+                q = q.filter(SmsLog.school_id == effective_school_id)
+            # Always scope to branch when resolved
+            if effective_branch_id:
+                q = q.filter(SmsLog.branch_id == effective_branch_id)
+        else:
+            # SuperAdmin: still respect explicit param if provided
+            if effective_branch_id:
+                q = q.filter(SmsLog.branch_id == effective_branch_id)
+            if effective_school_id:
+                q = q.filter(SmsLog.school_id == effective_school_id)
 
-        if not phones or not message:
-            return jsonify({"error": "phones and message are required"}), 400
+        if sms_type:
+            q = q.filter(SmsLog.sms_type == sms_type)
+        if status_filter:
+            q = q.filter(SmsLog.status == status_filter)
 
-        sent, failed, skipped = 0, 0, 0
-        for raw in phones:
-            phone = str(raw).strip().replace(" ", "").replace("+91", "").lstrip("0")
-            if len(phone) != 10 or not phone.isdigit():
-                skipped += 1
-                continue
-            ok = _send_sms(phone, message)
-            if ok["ok"]: sent += 1
-            else:        failed += 1
+        # Summary stats per type
+        stats_q = db.session.query(
+            SmsLog.sms_type,
+            func.count().label("total"),
+            func.sum(case((SmsLog.status == "sent",    1), else_=0)).label("sent"),
+            func.sum(case((SmsLog.status == "failed",  1), else_=0)).label("failed"),
+            func.sum(case((SmsLog.status == "skipped", 1), else_=0)).label("skipped"),
+        ).filter(SmsLog.sent_at >= from_dt, SmsLog.sent_at <= to_dt)
 
-        return jsonify({"message": "Done", "sent": sent, "failed": failed, "skipped": skipped}), 200
+        if role != 'SuperAdmin':
+            if s_id:
+                stats_q = stats_q.filter((SmsLog.school_id == s_id) | (SmsLog.school_id.is_(None)))
+            if b_id:
+                stats_q = stats_q.filter((SmsLog.branch_id == b_id) | (SmsLog.branch_id.is_(None)))
+        if effective_branch_id:
+            stats_q = stats_q.filter(SmsLog.branch_id == effective_branch_id)
+        if effective_school_id:
+            stats_q = stats_q.filter(SmsLog.school_id == effective_school_id)
+        if sms_type:
+            stats_q = stats_q.filter(SmsLog.sms_type == sms_type)
+
+        stats_rows = stats_q.group_by(SmsLog.sms_type).all()
+        summary = {
+            r.sms_type: {
+                "total": r.total, "sent": r.sent or 0,
+                "failed": r.failed or 0, "skipped": r.skipped or 0,
+            }
+            for r in stats_rows
+        }
+
+        grand_total = sum(v["total"]   for v in summary.values())
+        grand_sent  = sum(v["sent"]    for v in summary.values())
+        grand_fail  = sum(v["failed"]  for v in summary.values())
+        grand_skip  = sum(v["skipped"] for v in summary.values())
+
+        # Daily breakdown for chart
+        daily_q = db.session.query(
+            func.date(SmsLog.sent_at).label("day"),
+            func.count().label("total"),
+            func.sum(case((SmsLog.status == "sent", 1), else_=0)).label("sent"),
+        ).filter(SmsLog.sent_at >= from_dt, SmsLog.sent_at <= to_dt)
+
+        if role != 'SuperAdmin':
+            if s_id:
+                daily_q = daily_q.filter((SmsLog.school_id == s_id) | (SmsLog.school_id.is_(None)))
+            if b_id:
+                daily_q = daily_q.filter((SmsLog.branch_id == b_id) | (SmsLog.branch_id.is_(None)))
+        if effective_branch_id:
+            daily_q = daily_q.filter(SmsLog.branch_id == effective_branch_id)
+        if effective_school_id:
+            daily_q = daily_q.filter(SmsLog.school_id == effective_school_id)
+        if sms_type:
+            daily_q = daily_q.filter(SmsLog.sms_type == sms_type)
+
+        daily_rows = daily_q.group_by(func.date(SmsLog.sent_at)).order_by("day").all()
+        daily = [{"day": str(r.day), "total": r.total, "sent": r.sent or 0} for r in daily_rows]
+
+        # Paginated detail
+        total_records = q.count()
+        records = (
+            q.order_by(SmsLog.sent_at.desc())
+             .offset((page - 1) * per_page)
+             .limit(per_page)
+             .all()
+        )
+
+        from models import Branch
+        branch_map = {b.id: b.branch_name for b in Branch.query.all()}
+
+        rows = []
+        for rec in records:
+            s_name = ""
+            if rec.student:
+                s_name = f"{rec.student.first_name or ''} {rec.student.last_name or ''}".strip()
+            rows.append({
+                "id":           rec.id,
+                "sms_type":     rec.sms_type,
+                "phone":        f"XXXXXX{rec.phone[-4:]}" if rec.phone and len(rec.phone) >= 4 else rec.phone,
+                "status":       rec.status,
+                "reason":       rec.reason,
+                "sent_at":      rec.sent_at.strftime("%Y-%m-%d %H:%M") if rec.sent_at else "",
+                "student_id":   rec.student_id,
+                "student_name": s_name,
+                "school_id":    rec.school_id,
+                "branch_id":    rec.branch_id,
+                "branch_name":  branch_map.get(rec.branch_id, "—"),
+            })
+
+        return jsonify({
+            "summary":       summary,
+            "grand": {
+                "total":         grand_total,
+                "sent":          grand_sent,
+                "failed":        grand_fail,
+                "skipped":       grand_skip,
+                "delivery_rate": round((grand_sent / grand_total * 100) if grand_total else 0, 1)
+            },
+            "daily":         daily,
+            "records":       rows,
+            "total_records": total_records,
+            "page":          page,
+            "per_page":      per_page,
+            "total_pages":   (total_records + per_page - 1) // per_page,
+        }), 200
 
     except Exception as e:
         import traceback; traceback.print_exc()

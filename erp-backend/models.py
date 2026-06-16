@@ -1018,6 +1018,10 @@ class StudentDocument(db.Model, AuditMixin):
         db.UniqueConstraint('student_id', 'document_type_id', name='uq_student_doc_type'),
     )
 
+#SMS Log #
+
+
+
 # ----------------------------------------------------------
 # PETTY CASH
 # ----------------------------------------------------------
@@ -1070,6 +1074,33 @@ class PettyCashVoucherItem(db.Model, AuditMixin):
     item_name = db.Column(db.String(255), nullable=False)
     amount = db.Column(db.Numeric(12, 2), nullable=False)
 
+
+# ----------------------------------------------------------
+# SMS LOG MODEL
+# ----------------------------------------------------------
+
+class SmsLog(db.Model, AuditMixin):
+    __tablename__ = "sms_logs"
+    __audit_module__ = "SMS"
+    id         = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    sms_type   = db.Column(db.String(50),  nullable=False)   # ATTENDANCE | FEE_RECEIPT | FEE_DUE
+    phone      = db.Column(db.String(20),  nullable=False)
+    message    = db.Column(db.Text,        nullable=False)
+    status     = db.Column(db.String(10),  nullable=False)   # sent | failed | skipped
+    reason     = db.Column(db.String(255), nullable=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('students.student_id'), nullable=True)
+    sent_at    = db.Column(db.DateTime,    nullable=False)
+    sent_by    = db.Column(db.Integer, db.ForeignKey('users.user_id'), nullable=True)
+    school_id  = db.Column(db.Integer, db.ForeignKey('schools.id',  ondelete='SET NULL'), nullable=True)
+    branch_id  = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
+
+    student = db.relationship('Student', foreign_keys=[student_id])
+
+    __table_args__ = (
+        db.Index('idx_sms_log_sent_at',        'sent_at'),
+        db.Index('idx_sms_log_type',            'sms_type'),
+        db.Index('idx_sms_log_school_branch',   'school_id', 'branch_id'),
+    )
 
 # ----------------------------------------------------------
 # GLOBAL AUDIT EVENT LISTENERS

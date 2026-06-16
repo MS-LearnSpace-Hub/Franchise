@@ -6,6 +6,7 @@ from flask_migrate import Migrate
 from extensions import db, limiter, cache
 import os
 import logging
+from models import SmsLog
 
 # -----------------------------
 # EXTENSIONS
@@ -101,7 +102,7 @@ def create_app():
     else:
         allowed_origins = [
             r"https://.*\.vercel\.app",
-            "http://localhost:8000",
+            "http://localhost:8001",
             "http://localhost:3000",
             r"http://192\.168\.[0-9]+\.[0-9]+:[0-9]+"
         ]
