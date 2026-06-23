@@ -3,7 +3,7 @@ import json
 import random
 import time
 
-BASE_URL = "http://127.0.0.1:5001/api"
+BASE_URL = "http://127.0.0.1:5000/api"
 ADMIN_USER = "Admin"
 ADMIN_PASS = "temp123"
 
