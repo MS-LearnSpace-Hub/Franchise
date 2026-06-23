@@ -1018,10 +1018,6 @@ class StudentDocument(db.Model, AuditMixin):
         db.UniqueConstraint('student_id', 'document_type_id', name='uq_student_doc_type'),
     )
 
-#SMS Log #
-
-
-
 # ----------------------------------------------------------
 # PETTY CASH
 # ----------------------------------------------------------
@@ -1051,6 +1047,7 @@ class PettyCash(db.Model, AuditMixin):
     payment_mode = db.Column(db.Enum('Cash', 'UPI'), nullable=False)
     academic_year = db.Column(db.String(20), nullable=False)
     description = db.Column(db.Text, nullable=True)
+    approval_status = db.Column(db.Enum('Pending', 'Approved', 'Rejected'), server_default='Pending', default='Pending')
     approved_by = db.Column(db.String(100), nullable=True)
     is_active = db.Column(db.Boolean, nullable=False, server_default=db.text('1'), default=True)
 
@@ -1074,6 +1071,22 @@ class PettyCashVoucherItem(db.Model, AuditMixin):
     item_name = db.Column(db.String(255), nullable=False)
     amount = db.Column(db.Numeric(12, 2), nullable=False)
 
+class PettyCashFundAllocation(db.Model, AuditMixin):
+    __tablename__ = "petty_cash_fund_allocation"
+    __audit_module__ = "PETTY_CASH" 
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    branch_id = db.Column(db.Integer, db.ForeignKey('branches.id'), nullable=False)
+    allocation_date = db.Column(db.Date, nullable=False)
+    amount = db.Column(db.Numeric(12,2),nullable=False)
+    remark = db.Column(db.String(100),nullable = True)
+    approval_status = db.Column(db.Enum('Pending', 'Approved', 'Rejected'), server_default='Pending', default='Pending')
+    approved_by = db.Column(db.Integer, db.ForeignKey('users.user_id'), nullable=True)
+    approved_at = db.Column(db.DateTime, nullable=True)
+    academic_year=db.Column(db.String(20),nullable=False)
+    is_active = db.Column(db.Boolean, nullable=False, server_default=db.text('1'), default=True)
+
+    branch =db.relationship("Branch")
 
 # ----------------------------------------------------------
 # SMS LOG MODEL

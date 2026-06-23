@@ -42,7 +42,10 @@ export type Page =
   | "deleted-receipts"
   | "fee-concession-report"
   | "adjust-fee-report"
-  | 'sms-center';
+  | 'sms-center'
+  | 'fund-allocation'
+  | 'month-wise-ledger'
+  | 'petty-cash-approval';
 
 // Inner component that can access AuthContext
 const AppInner: React.FC = () => {

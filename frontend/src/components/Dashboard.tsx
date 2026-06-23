@@ -35,6 +35,9 @@ import { useNavigationHistory } from '../hooks/useNavigationHistory';
 import StaffSupport from './StaffSupport';
 import PettyCash from './PettyCash';
 import PettyCashReport from './PettyCashReport';
+import FundAllocation from './FundAllocation';
+import MonthWiseLedger from './MonthWiseLedger';
+import PettyCashApproval from './PettyCashApproval';
 import FinancialLayout from './FinancialLayout';
 import SmsCenter from './SmsCenter';
 
@@ -43,7 +46,7 @@ const financialPages = [
   'fee-installments', 'take-fee', 'concession-master', 'student-concession',
   'update-student-fee-structure', 'update-rebate-date', 'fee-reports',
   'deleted-receipts', 'fee-concession-report', 'adjust-fee-report',
-  'petty-cash', 'petty-cash-report'
+  'petty-cash', 'petty-cash-report', 'fund-allocation', 'month-wise-ledger', 'petty-cash-approval'
 ];
 
 interface DashboardProps {
@@ -99,6 +102,9 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
               {currentPage === 'adjust-fee-report' && <AdjustFeeReport />}
               {currentPage === 'petty-cash' && <PettyCash />}
               {currentPage === 'petty-cash-report' && <PettyCashReport />}
+              {currentPage === 'fund-allocation' && <FundAllocation />}
+              {currentPage === 'month-wise-ledger' && <MonthWiseLedger />}
+              {currentPage === 'petty-cash-approval' && <PettyCashApproval />}
             </FinancialLayout>
           ) : (
             <>
@@ -107,7 +113,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
               {currentPage === 'academics' && <Academics />}
               {currentPage === 'setup' && <SetupSchool navigateTo={navigateTo} />}
               {currentPage === 'classes-management' && <ClassesManagement />}
-              {currentPage === 'student-attendance' && <StudentAttendance />} 
+              {currentPage === 'student-attendance' && <StudentAttendance />}
               {currentPage === 'student-administration' && <StudentAdministration />}
               {currentPage === 'configuration' && <Configuration navigateTo={navigateTo} />}
               {currentPage === 'document-management' && <DocumentManagement />}
@@ -121,7 +127,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
             </>
           )}
 
-          
+
         </main>
       </div>
     </div>
