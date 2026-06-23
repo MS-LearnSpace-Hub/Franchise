@@ -3,10 +3,46 @@ from flask import Blueprint, request, jsonify, g
 from models import db, PettyCash, PettyCashLedger, User, Branch, PettyCashVoucherItem
 from helpers import token_required, has_permission
 from datetime import datetime
-from sqlalchemy import extract
+from sqlalchemy import extract, func
 
 petty_cash_bp = Blueprint('petty_cash', __name__)
 logger = logging.getLogger(__name__)
+
+def get_available_petty_cash_fund(branch_id, academic_year, exclude_txn_id=None):
+    from models import PettyCashFundAllocation, PettyCash, db
+    # Total Allocated
+    allocations = db.session.query(func.coalesce(func.sum(PettyCashFundAllocation.amount), 0)).filter(
+        PettyCashFundAllocation.branch_id == branch_id,
+        PettyCashFundAllocation.academic_year == academic_year,
+        PettyCashFundAllocation.is_active == True,
+        PettyCashFundAllocation.approval_status == 'Approved'
+    ).scalar() or 0
+
+    # Total Received
+    received_query = db.session.query(func.coalesce(func.sum(PettyCash.amount), 0)).filter(
+        PettyCash.branch_id == branch_id,
+        PettyCash.academic_year == academic_year,
+        PettyCash.is_active == True,
+        PettyCash.voucher_type == 'Received',
+        PettyCash.approval_status == 'Approved'
+    )
+    if exclude_txn_id:
+        received_query = received_query.filter(PettyCash.id != exclude_txn_id)
+    received = received_query.scalar() or 0
+
+    # Total Payments
+    payments_query = db.session.query(func.coalesce(func.sum(PettyCash.amount), 0)).filter(
+        PettyCash.branch_id == branch_id,
+        PettyCash.academic_year == academic_year,
+        PettyCash.is_active == True,
+        PettyCash.voucher_type == 'Payment',
+        PettyCash.approval_status == 'Approved'
+    )
+    if exclude_txn_id:
+        payments_query = payments_query.filter(PettyCash.id != exclude_txn_id)
+    payments = payments_query.scalar() or 0
+
+    return float(allocations) + float(received) - float(payments)
 
 # -----------------------------
 # LEDGERS
@@ -17,7 +53,7 @@ logger = logging.getLogger(__name__)
 def get_ledgers(current_user):
     try:
         # Permission check - only allow petty cash access
-        if current_user.role not in ("SuperAdmin", "Admin", "Branch Admin", "branch admin") and not has_permission(current_user, "fees.fee.petty-cash", "read"):
+        if current_user.role and current_user.role.lower() not in ("superadmin", "admin", "branch admin") and not has_permission(current_user, "fees.fee.petty-cash", "read"):
             return jsonify({"message": "Unauthorized access to petty cash"}), 403
         
         ledger_type = request.args.get('type')
@@ -42,7 +78,7 @@ def get_ledgers(current_user):
 def create_ledger(current_user):
     try:
         # Permission check - only SuperAdmin, Admin, and Branch Admin can create ledgers
-        if current_user.role not in ("SuperAdmin", "Admin", "Branch Admin", "branch admin"):
+        if current_user.role and current_user.role.lower() not in ("superadmin", "admin", "branch admin"):
             return jsonify({"message": "Only Admin, SuperAdmin, or Branch Admin can create ledgers"}), 403
         
         data = request.json
@@ -81,7 +117,7 @@ def create_ledger(current_user):
 def update_ledger(current_user, ledger_id):
     try:
         # Permission check - only SuperAdmin, Admin, and Branch Admin can update ledgers
-        if current_user.role not in ("SuperAdmin", "Admin", "Branch Admin", "branch admin"):
+        if current_user.role and current_user.role.lower() not in ("superadmin", "admin", "branch admin"):
             return jsonify({"message": "Only Admin, SuperAdmin, or Branch Admin can update ledgers"}), 403
         
         data = request.json
@@ -137,7 +173,7 @@ def get_transactions(current_user):
         
         # User branch enforcement
         # If normal user, force their branch
-        if current_user.role != "Admin" and current_user.role != "Accountant":
+        if current_user.role and current_user.role.lower() not in ("superadmin", "admin", "branch admin", "accountant"):
             branch_id = resolve_branch_id(current_user.branch)
         else:
             # Frontend passes it via query or header
@@ -173,6 +209,7 @@ def get_transactions(current_user):
                 "academic_year": t.academic_year,
                 "description": t.description or "",
                 "approved_by": t.approved_by or "",
+                "approval_status": t.approval_status,
                 "created_by": User.query.get(t.created_by).username if t.created_by else "",
                 "items": [{"item_name": item.item_name, "amount": float(item.amount)} for item in t.items]
             })
@@ -191,7 +228,7 @@ def get_transactions_summary(current_user):
         year = request.args.get("year")
         
         # User branch enforcement
-        if current_user.role != "Admin" and current_user.role != "Accountant":
+        if current_user.role and current_user.role.lower() not in ("superadmin", "admin", "branch admin", "accountant"):
             branch_id = resolve_branch_id(current_user.branch)
         else:
             branch_val = request.args.get('branch_id') or request.args.get('branch') or request.headers.get('X-Branch') or current_user.branch
@@ -209,13 +246,28 @@ def get_transactions_summary(current_user):
         
         transactions = query.all()
         
-        total_payment = sum(float(t.amount) for t in transactions if t.voucher_type == 'Payment')
-        total_received = sum(float(t.amount) for t in transactions if t.voucher_type == 'Received')
+        from models import PettyCashFundAllocation
+        alloc_query = db.session.query(func.coalesce(func.sum(PettyCashFundAllocation.amount), 0)).filter(
+            PettyCashFundAllocation.branch_id == branch_id,
+            PettyCashFundAllocation.academic_year == academic_year,
+            PettyCashFundAllocation.is_active == True,
+            PettyCashFundAllocation.approval_status == 'Approved'
+        )
+        if month:
+            alloc_query = alloc_query.filter(extract('month', PettyCashFundAllocation.allocation_date) == int(month))
+        if year:
+            alloc_query = alloc_query.filter(extract('year', PettyCashFundAllocation.allocation_date) == int(year))
+            
+        total_allocated = float(alloc_query.scalar() or 0)
+        
+        total_payment = sum(float(t.amount) for t in transactions if t.voucher_type == 'Payment' and t.approval_status == 'Approved')
+        total_received = sum(float(t.amount) for t in transactions if t.voucher_type == 'Received' and t.approval_status == 'Approved')
         
         return jsonify({
+            "total_allocated": total_allocated,
             "total_payment": total_payment,
             "total_received": total_received,
-            "net_amount": total_received - total_payment
+            "net_amount": total_allocated + total_received - total_payment
         }), 200
     except Exception as e:
         logger.error(f"Error getting petty cash summary: {str(e)}")
@@ -244,6 +296,7 @@ def get_transaction(current_user, txn_id):
             "academic_year": t.academic_year,
             "description": t.description or "",
             "approved_by": t.approved_by or "",
+                "approval_status": t.approval_status,
             "created_by": User.query.get(t.created_by).username if t.created_by else "",
             "items": [{"item_name": item.item_name, "amount": float(item.amount)} for item in t.items]
         }), 200
@@ -258,7 +311,7 @@ def create_transaction(current_user):
         data = request.json
         academic_year = request.headers.get("X-Academic-Year", "2024-2025")
         
-        if current_user.role != "Admin" and current_user.role != "Accountant":
+        if current_user.role and current_user.role.lower() not in ("superadmin", "admin", "branch admin", "accountant"):
             branch_id = resolve_branch_id(current_user.branch)
         else:
             # We don't trust the body for branch anymore, checking headers or user object is better.
@@ -296,6 +349,12 @@ def create_transaction(current_user):
         voucher_type = data.get('voucher_type')
         if voucher_type not in ('Payment','Received'):
             return jsonify({"message":"Voucher type must be Payment or Received"}),400
+            
+        if voucher_type == 'Payment':
+            available_fund = get_available_petty_cash_fund(branch_id, academic_year)
+            if total_amount > available_fund:
+                return jsonify({"message": f"Insufficient funds. Available fund is {available_fund:,.2f}"}), 400
+
         payment_mode = data.get('payment_mode')
         if payment_mode not in ('Cash','UPI'):
             return jsonify({"message":"Payment mode must be Cash or UPI"}),400    
@@ -311,9 +370,7 @@ def create_transaction(current_user):
         if not description or not str(description).strip():
             return jsonify({"message": "Description is required"}), 400
             
-        approved_by = data.get('approved_by')
-        if not approved_by or not str(approved_by).strip():
-            return jsonify({"message": "Approved By is required"}), 400
+        approved_by = data.get('approved_by', '')
 
         txn = PettyCash(
             branch_id=branch_id,
@@ -435,6 +492,19 @@ def update_transaction(current_user, txn_id):
                 return jsonify({"message": "Approved By is required"}), 400
             txn.approved_by = data['approved_by']
             
+        new_voucher_type = txn.voucher_type
+        if 'voucher_type' in data:
+            new_voucher_type = data['voucher_type']
+            
+        new_amount = float(txn.amount)
+        if 'items' in data:
+            new_amount = total_amount
+
+        if new_voucher_type == 'Payment':
+            available_fund = get_available_petty_cash_fund(txn.branch_id, txn.academic_year, exclude_txn_id=txn.id)
+            if new_amount > available_fund:
+                return jsonify({"message": f"Insufficient funds. Available fund is {available_fund:,.2f}"}), 400
+
         db.session.commit()
         return jsonify({"message": "Transaction updated successfully"}), 200
     except ValueError as ve:
@@ -455,4 +525,132 @@ def delete_transaction(current_user, txn_id):
     except Exception as e:
         db.session.rollback()
         logger.error(f"Error deleting transaction: {str(e)}")
+        return jsonify({"message": str(e)}), 500
+
+
+@petty_cash_bp.route('/<int:txn_id>/approve', methods=['PUT'])
+@token_required
+def approve_petty_cash(current_user, txn_id):
+    try:
+        from helpers import has_permission
+        if current_user.role and current_user.role.lower() not in ("superadmin", "admin", "branch admin") and not has_permission(current_user, "fees.fee.petty-cash-approval", "write"):
+            return jsonify({"message": "Unauthorized to approve petty cash"}), 403
+
+        data = request.json
+        txn = PettyCash.query.get_or_404(txn_id)
+        
+        status = data.get('approval_status')
+        if status not in ('Approved', 'Rejected'):
+            return jsonify({"message": "Invalid approval status"}), 400
+            
+        txn.approval_status = status
+        txn.approved_by = current_user.user_id
+        
+        db.session.commit()
+        return jsonify({"message": f"Transaction marked as {status}"}), 200
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error approving transaction: {str(e)}")
+        return jsonify({"message": str(e)}), 500
+
+@petty_cash_bp.route('/fund-allocation/<int:allocation_id>/approve', methods=['PUT'])
+@token_required
+def approve_fund_allocation(current_user, allocation_id):
+    try:
+        from helpers import has_permission
+        from datetime import datetime
+        if current_user.role and current_user.role.lower() not in ("superadmin", "admin", "branch admin") and not has_permission(current_user, "fees.fee.petty-cash-approval", "write"):
+            return jsonify({"message": "Unauthorized to approve fund allocations"}), 403
+
+        data = request.json
+        from models import PettyCashFundAllocation
+        allocation = PettyCashFundAllocation.query.get_or_404(allocation_id)
+        
+        status = data.get('approval_status')
+        if status not in ('Approved', 'Rejected'):
+            return jsonify({"message": "Invalid approval status"}), 400
+            
+        allocation.approval_status = status
+        if status == 'Approved':
+            allocation.approved_by = current_user.user_id
+            allocation.approved_at = datetime.utcnow()
+        
+        db.session.commit()
+        return jsonify({"message": f"Fund allocation marked as {status}"}), 200
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error approving fund allocation: {str(e)}")
+        return jsonify({"message": str(e)}), 500
+
+@petty_cash_bp.route('/allocations', methods=['GET'])
+@token_required
+def get_allocations(current_user):
+    try:
+        from models import PettyCashFundAllocation, Branch
+        academic_year = request.headers.get("X-Academic-Year", "2024-2025")
+        
+        if current_user.role and current_user.role.lower() not in ("superadmin", "admin", "branch admin", "accountant"):
+            branch_id = resolve_branch_id(current_user.branch)
+        else:
+            branch_val = request.args.get('branch_id') or request.args.get('branch') or request.headers.get('X-Branch') or current_user.branch
+            branch_id = resolve_branch_id(branch_val)
+            
+        query = PettyCashFundAllocation.query.filter_by(academic_year=academic_year, is_active=True)
+        if branch_id:
+            query = query.filter_by(branch_id=branch_id)
+            
+        allocations = query.order_by(PettyCashFundAllocation.allocation_date.desc()).all()
+        result = []
+        for a in allocations:
+            b = Branch.query.get(a.branch_id)
+            result.append({
+                "id": a.id,
+                "branch_id": a.branch_id,
+                "branch_name": b.branch_name if b else "",
+                "allocation_date": a.allocation_date.isoformat(),
+                "amount": float(a.amount),
+                "remarks": a.remark or "",
+                "approval_status": a.approval_status or "Pending",
+                "approved_by": User.query.get(a.approved_by).username if a.approved_by else ""
+            })
+        return jsonify(result), 200
+    except Exception as e:
+        logger.error(f"Error getting allocations: {str(e)}")
+        return jsonify({"message": str(e)}), 500
+
+@petty_cash_bp.route('/allocations', methods=['POST'])
+@token_required
+def create_allocation(current_user):
+    try:
+        from models import PettyCashFundAllocation
+        from datetime import datetime
+        data = request.json
+        academic_year = request.headers.get("X-Academic-Year", "2024-2025")
+        
+        new_alloc = PettyCashFundAllocation(
+            branch_id=data['branch_id'],
+            academic_year=academic_year,
+            allocation_date=datetime.strptime(data['allocation_date'], "%Y-%m-%d").date(),
+            amount=float(data['amount']),
+            remark=data.get('remarks', ''),
+            created_by=current_user.user_id,
+            approval_status='Approved', # Auto approve for now or set to Pending based on logic
+            is_active=True
+        )
+        
+        # If approval_status is set to Pending by default in your system, leave it, but here we set to Approved or Pending.
+        # It seems the frontend shows "Status", so maybe it should be "Pending" by default unless created by SuperAdmin
+        if current_user.role and current_user.role.lower() in ("superadmin", "admin", "branch admin"):
+            new_alloc.approval_status = 'Approved'
+            new_alloc.approved_by = current_user.user_id
+            new_alloc.approved_at = datetime.utcnow()
+        else:
+            new_alloc.approval_status = 'Pending'
+
+        db.session.add(new_alloc)
+        db.session.commit()
+        return jsonify({"message": "Allocation created successfully"}), 201
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error creating allocation: {str(e)}")
         return jsonify({"message": str(e)}), 500
