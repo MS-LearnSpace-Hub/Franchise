@@ -1,9 +1,10 @@
+# pyrefly: ignore [missing-import]
 from flask import Blueprint, jsonify, request
 from extensions import db, to_local_time
 from models import ClassMaster, ClassSection, Branch, Student, OrgMaster, User
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func
-from helpers import token_required
+from helpers import token_required, get_user_allowed_branches, validate_cross_branch_access, skip_scoping
               
 bp = Blueprint("class_routes", __name__)
 
@@ -35,6 +36,15 @@ def create_class_with_sections(current_user):
         if not sections:
             return jsonify({"error": "At least one section is required"}), 400
 
+        # Resolve branch and check permissions
+        branch_obj = Branch.query.get(branch_id)
+        if not branch_obj:
+             return jsonify({"error": f"Invalid Branch ID: {branch_id}"}), 400
+
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited'] and branch_obj.branch_name not in allowed['names']:
+             return jsonify({"error": "Unauthorized branch access"}), 403
+
         # Normalize Class Name
         class_name = class_name_raw.strip() # Could add .title() if desired
 
@@ -64,6 +74,18 @@ def create_class_with_sections(current_user):
             sections_to_delete = existing_section_names - payload_section_names
             
             if sections_to_delete:
+                for del_sec in sections_to_delete:
+                    # Count active students in this section before allowing deletion
+                    occupancy = db.session.query(func.count(Student.student_id)).filter(
+                        Student.clazz == class_name,
+                        Student.section == del_sec,
+                        Student.branch == branch_obj.branch_name,
+                        Student.academic_year == academic_year,
+                        Student.status == "Active"
+                    ).scalar()
+                    if occupancy > 0:
+                        raise ValueError(f"Cannot delete section '{del_sec}' as it has {occupancy} active students.")
+
                 ClassSection.query.filter(
                     ClassSection.class_id == class_obj.id,
                     ClassSection.branch_id == branch_id,
@@ -181,7 +203,7 @@ def copy_class_structure(current_user):
     data = request.json
     try:
         class_name_raw = data.get("class_name")
-        target_branch_ids = data.get("target_branch_ids", [])
+        target_branch_ids = list(set([int(x) for x in data.get("target_branch_ids", []) if x is not None]))
         academic_year = data.get("academic_year")
         sections = data.get("sections", [])  # List of {name, strength}
 
@@ -191,6 +213,14 @@ def copy_class_structure(current_user):
         if not sections:
             return jsonify({"error": "At least one section is required to copy"}), 400
 
+        # Centralized permission check for target branches
+        is_valid, perm_error = validate_cross_branch_access(
+            current_user,
+            target_branch_ids=target_branch_ids
+        )
+        if not is_valid:
+            return jsonify({"error": perm_error}), 403
+
         class_name = class_name_raw.strip()
         
         # We need to make sure the ClassMaster exists (it likely does if we are copying, but handling just in case)
@@ -198,56 +228,63 @@ def copy_class_structure(current_user):
         # Ideally, we should reuse the existing logic or just query it.
         
         with db.session.begin():
-            # 1. Ensure ClassMaster exists
-            class_obj = ClassMaster.query.filter(
-                func.lower(ClassMaster.class_name) == func.lower(class_name)
-            ).first()
+            with skip_scoping():
+                # 1. Ensure ClassMaster exists
+                class_obj = ClassMaster.query.filter(
+                    func.lower(ClassMaster.class_name) == func.lower(class_name)
+                ).first()
 
-            if not class_obj:
-                class_obj = ClassMaster(class_name=class_name)
-                db.session.add(class_obj)
-                db.session.flush() # Get ID
+                if not class_obj:
+                    class_obj = ClassMaster(class_name=class_name)
+                    db.session.add(class_obj)
+                    db.session.flush() # Get ID
 
-            total_copied = 0
-            skipped_count = 0
+                total_copied = 0
+                skipped_count = 0
 
-            # 2. Iterate over target branches
-            for branch_id in target_branch_ids:
-                # Verify branch exists (optional, but good for data integrity)
-                branch = Branch.query.get(branch_id)
-                if not branch:
-                    print(f"Skipping invalid branch_id: {branch_id}")
-                    continue
-
-                for sec in sections:
-                    sec_name = sec.get("name", "").strip().upper()
-                    strength = int(sec.get("strength", 0))
-
-                    if not sec_name:
+                # 2. Iterate over target branches
+                for branch_id in target_branch_ids:
+                    # Verify branch exists (optional, but good for data integrity)
+                    branch = Branch.query.get(branch_id)
+                    if not branch:
+                        print(f"Skipping invalid branch_id: {branch_id}")
                         continue
 
-                    # Check if exists
-                    existing_sec = ClassSection.query.filter_by(
-                        class_id=class_obj.id,
-                        branch_id=branch_id,
-                        academic_year=academic_year,
-                        section_name=sec_name
-                    ).first()
+                    for sec in sections:
+                        sec_name = sec.get("name", "").strip().upper()
+                        strength = int(sec.get("strength", 0))
 
-                    if existing_sec:
-                        skipped_count += 1
-                        continue # Skip existing
-                    
-                    # Create new section for this branch
-                    new_sec = ClassSection(
-                        class_id=class_obj.id,
-                        branch_id=branch_id,
-                        academic_year=academic_year,
-                        section_name=sec_name,
-                        student_strength=strength
-                    )
-                    db.session.add(new_sec)
-                    total_copied += 1
+                        if not sec_name:
+                            continue
+
+                        try:
+                            with db.session.begin_nested():
+                                # Check if exists
+                                existing_sec = ClassSection.query.filter_by(
+                                    class_id=class_obj.id,
+                                    branch_id=branch_id,
+                                    academic_year=academic_year,
+                                    section_name=sec_name
+                                ).first()
+
+                                if existing_sec:
+                                    skipped_count += 1
+                                    continue # Skip existing
+                                
+                                # Create new section for this branch
+                                new_sec = ClassSection(
+                                    class_id=class_obj.id,
+                                    branch_id=branch_id,
+                                    school_id=branch.school_id,
+                                    academic_year=academic_year,
+                                    section_name=sec_name,
+                                    student_strength=strength
+                                )
+                                db.session.add(new_sec)
+                                db.session.flush()
+                                total_copied += 1
+                        except IntegrityError:
+                            skipped_count += 1
 
         return jsonify({
             "message": "Copy operation completed",
@@ -268,15 +305,39 @@ def copy_branch_structure(current_user):
     """
     data = request.json
     try:
-        source_branch_id = data.get("source_branch_id")
-        target_branch_ids = data.get("target_branch_ids", [])
+        source_branch_id = int(data.get("source_branch_id")) if data.get("source_branch_id") is not None else None
+        target_branch_ids = list(set([int(x) for x in data.get("target_branch_ids", []) if x is not None]))
         academic_year = data.get("academic_year")
 
         if not all([source_branch_id, target_branch_ids, academic_year]):
             return jsonify({"error": "Missing required fields"}), 400
 
-        if not all([source_branch_id, target_branch_ids, academic_year]):
-            return jsonify({"error": "Missing required fields"}), 400
+        # Fetch and validate source branch
+        src_branch = Branch.query.get(source_branch_id)
+        if not src_branch:
+             return jsonify({"error": f"Source branch with ID {source_branch_id} not found"}), 400
+
+        # Fetch and validate target branches
+        target_branches = Branch.query.filter(Branch.id.in_(target_branch_ids)).all()
+        retrieved_ids = {tb.id for tb in target_branches}
+        missing_ids = set(target_branch_ids) - retrieved_ids
+        if missing_ids:
+             return jsonify({"error": f"Invalid or non-existent target branch IDs: {list(missing_ids)}"}), 400
+
+        for tb in target_branches:
+            if tb.school_id is None:
+                return jsonify({"error": f"Target branch '{tb.branch_name}' (ID: {tb.id}) lacks a school_id"}), 400
+
+        target_br_map = {tb.id: tb.school_id for tb in target_branches}
+
+        # Centralized permission check for source + target branches
+        is_valid, perm_error = validate_cross_branch_access(
+            current_user,
+            source_branch_id=source_branch_id,
+            target_branch_ids=target_branch_ids
+        )
+        if not is_valid:
+            return jsonify({"error": perm_error}), 403
 
         # 1. Fetch Source Sections
         # We need ClassMaster info too
@@ -294,36 +355,47 @@ def copy_branch_structure(current_user):
         skipped_count = 0
 
         try:
-            # 2. Iterate Targets
-            for target_id in target_branch_ids:
-                if str(target_id) == str(source_branch_id):
-                    continue
-                
-                for section, class_master in source_sections:
-                    # Check if exists in target
-                    existing = ClassSection.query.filter_by(
-                        class_id=section.class_id, # Same ClassMaster ID (Global)
-                        branch_id=target_id,
-                        academic_year=academic_year,
-                        section_name=section.section_name
-                    ).first()
-
-                    if existing:
-                        skipped_count += 1
+            with skip_scoping():
+                # 2. Iterate Targets
+                for target_id in target_branch_ids:
+                    if str(target_id) == str(source_branch_id):
                         continue
                     
-                    # Create Copy
-                    new_sec = ClassSection(
-                        class_id=section.class_id,
-                        branch_id=target_id,
-                        academic_year=academic_year,
-                        section_name=section.section_name,
-                        student_strength=section.student_strength
-                    )
-                    db.session.add(new_sec)
-                    total_copied += 1
-            
-            db.session.commit()
+                    target_school_id = target_br_map.get(target_id)
+                    if target_school_id is None:
+                        return jsonify({"error": f"Target branch {target_id} does not have a valid school_id"}), 400
+
+                    for section, class_master in source_sections:
+                        try:
+                            with db.session.begin_nested():
+                                # Check if exists in target
+                                existing = ClassSection.query.filter_by(
+                                    class_id=section.class_id, # Same ClassMaster ID (Global)
+                                    branch_id=target_id,
+                                    academic_year=academic_year,
+                                    section_name=section.section_name
+                                ).first()
+
+                                if existing:
+                                    skipped_count += 1
+                                    continue
+                                
+                                # Create Copy
+                                new_sec = ClassSection(
+                                    class_id=section.class_id,
+                                    branch_id=target_id,
+                                    school_id=target_school_id,
+                                    academic_year=academic_year,
+                                    section_name=section.section_name,
+                                    student_strength=section.student_strength
+                                )
+                                db.session.add(new_sec)
+                                db.session.flush()
+                                total_copied += 1
+                        except IntegrityError:
+                            skipped_count += 1
+                
+                db.session.commit()
 
         except Exception as e:
             db.session.rollback()
@@ -339,25 +411,7 @@ def copy_branch_structure(current_user):
         print(f"Error copying branch structure: {e}")
         return jsonify({"error": str(e)}), 500
 
-@bp.route("/api/classes", methods=["GET"])
-def get_classes():
-    """
-    Get all classes (ClassMaster).
-    """
-    classes = ClassMaster.query.all()
-    # Sort nicely if possible (custom sort/numeric)
-    # Simple sort by ID or Name
-    classes.sort(key=lambda x: x.id) 
-    return jsonify([
-        {
-            "id": c.id,
-            "class_name": c.class_name,
-            "created_at": to_local_time(c.created_at).isoformat() if c.created_at else None,
-            "updated_at": to_local_time(c.updated_at).isoformat() if c.updated_at else None,
-            "created_by": c.created_by,
-            "updated_by": c.updated_by
-        } for c in classes
-    ])
+
 
 
 @bp.route("/api/classes/summary", methods=["GET"])
@@ -381,9 +435,23 @@ def get_class_summary(current_user):
             ClassSection.academic_year == academic_year
         )
 
-        # Apply Branch Filter if provided
-        if branch_id_param and branch_id_param != 'all':
-             query = query.filter(ClassSection.branch_id == branch_id_param)
+        # Apply Branch Filter & allowed branch boundaries
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited']:
+             
+
+             
+             allowed_ids = list(allowed['ids'])
+             if branch_id_param and branch_id_param != 'all':
+                  if int(branch_id_param) in allowed_ids:
+                       query = query.filter(ClassSection.branch_id == int(branch_id_param))
+                  else:
+                       query = query.filter(ClassSection.branch_id.in_(allowed_ids))
+             else:
+                  query = query.filter(ClassSection.branch_id.in_(allowed_ids))
+        else:
+             if branch_id_param and branch_id_param != 'all':
+                  query = query.filter(ClassSection.branch_id == int(branch_id_param))
 
         results = query.order_by(ClassMaster.class_name, ClassSection.section_name).all()
 

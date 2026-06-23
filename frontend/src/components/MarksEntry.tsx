@@ -50,22 +50,9 @@ const MarksEntry: React.FC<MarksEntryProps> = () => {
         if (userStr) {
             try {
                 const user = JSON.parse(userStr);
-                // Fix: If user is Admin or has 'All' access, prioritize the SELECTED branch from localStorage
-                // Otherwise use their assigned branch.
-                if (user.role === 'Admin' || user.branch === 'All' || user.branch === 'AllBranches') {
-                    const selected = localStorage.getItem("currentBranch");
-                    if (selected && selected !== "All" && selected !== "All Locations") {
-                        storedBranch = selected;
-                    }
-                } else {
-                    // Specific Branch User
-                    storedBranch = user.branch || "All";
-                }
-
-                // Set available branches for dropdown if needed (simplified)
-                if (user.role === 'Admin') {
-                    // In a real app we might fetch all branches, but for now we set the selected one + All
-                    // Or just rely on the storedBranch current value
+                const selected = localStorage.getItem("currentBranch");
+                if (selected && selected !== "All Locations") {
+                    storedBranch = selected;
                 }
             } catch (e) {
                 console.error("Error parsing user", e);

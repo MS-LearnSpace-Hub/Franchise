@@ -19,12 +19,16 @@ def get_assignments():
             return jsonify({'error': 'Missing required filters'}), 400
 
         # 1. Fetch ClassTests (Columns)
-        tests = ClassTest.query.filter_by(
+        is_all_branches = branch in ("All", "All Locations", "All Branches")
+        
+        tests_query = ClassTest.query.filter_by(
             academic_year=academic_year,
-            branch=branch,
             class_id=class_id,
             status=True
-        ).order_by(ClassTest.test_order).all()
+        )
+        if not is_all_branches:
+            tests_query = tests_query.filter_by(branch=branch)
+        tests = tests_query.order_by(ClassTest.test_order).all()
 
         # Fetch Test Names efficiently
         if tests:
@@ -62,10 +66,11 @@ def get_assignments():
             Student.admission_no
         ).join(StudentAcademicRecord, Student.student_id == StudentAcademicRecord.student_id)\
          .filter(
-             StudentAcademicRecord.academic_year == academic_year,
-             StudentAcademicRecord.class_name == class_name_str,
-             Student.branch == branch
-         )
+              StudentAcademicRecord.academic_year == academic_year,
+              StudentAcademicRecord.class_name == class_name_str
+          )
+        if not is_all_branches:
+            students_query = students_query.filter(Student.branch == branch)
          
         students = students_query.order_by(StudentAcademicRecord.section, StudentAcademicRecord.roll_number).all()
         
@@ -81,10 +86,12 @@ def get_assignments():
 
         # 3. Fetch Assignments (Matrix Data)
         if tests:
-            assignments = StudentTestAssignment.query.filter_by(
-                academic_year=academic_year,
-                branch=branch
-            ).filter(StudentTestAssignment.class_test_id.in_([t.id for t in tests])).all()
+            assignments_query = StudentTestAssignment.query.filter_by(
+                academic_year=academic_year
+            ).filter(StudentTestAssignment.class_test_id.in_([t.id for t in tests]))
+            if not is_all_branches:
+                assignments_query = assignments_query.filter_by(branch=branch)
+            assignments = assignments_query.all()
         else:
             assignments = []
         
@@ -139,11 +146,18 @@ def save_assignments(current_user):
             if existing:
                 existing.status = status
             else:
+                if branch in ("All", "All Locations", "All Branches"):
+                    student_obj = Student.query.get(student_id)
+                    if not student_obj:
+                        raise ValueError(f"Student {student_id} not found")
+                    actual_branch = student_obj.branch
+                else:
+                    actual_branch = branch                    
                 new_assign = StudentTestAssignment(
                     student_id=student_id,
                     class_test_id=class_test_id,
                     academic_year=academic_year,
-                    branch=branch,
+                    branch=actual_branch,
                     status=status
                 )
                 db.session.add(new_assign)

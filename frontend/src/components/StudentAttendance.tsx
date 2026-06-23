@@ -6,6 +6,14 @@ import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 import api from '../api';
 
+const getNormalizedBranch = (): string => {
+    const b = localStorage.getItem('currentBranch') || 'All';
+    if (b === 'All Locations' || b === 'All Branches' || b === 'All') {
+        return 'All';
+    }
+    return b;
+};
+
 
 interface StudentAttendanceProps {
     navigateTo: (page: Page) => void;
@@ -18,9 +26,10 @@ interface AttendanceHeaderProps {
     activeTab: AttendanceTab;
     onTabChange: (tab: AttendanceTab) => void;
     onAction: (action: string) => void;
+    navigateTo?: (page: Page) => void;
 }
 
-const AttendanceHeader: React.FC<AttendanceHeaderProps> = ({ activeTab, onTabChange, onAction }) => {
+const AttendanceHeader: React.FC<AttendanceHeaderProps> = ({ activeTab, onTabChange, onAction, navigateTo }) => {
     const [openDropdown, setOpenDropdown] = useState<string | null>(null);
     const buttonStyle = "px-3 py-1.5 text-sm border border-gray-300 bg-white text-gray-700 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-violet-500";
     const activeButtonStyle = "px-3 py-1.5 text-sm border border-transparent bg-sky-600 text-white rounded-md";
@@ -74,7 +83,7 @@ const AttendanceHeader: React.FC<AttendanceHeaderProps> = ({ activeTab, onTabCha
                     </h2>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-
+                    <button className={buttonStyle} onClick={() => navigateTo?.('student-administration')}>Student Directory</button>
                     <button className={activeTab === 'take' ? activeButtonStyle : buttonStyle} onClick={() => onTabChange('take')}>Take Attendance</button>
                     <button className={activeTab === 'register' ? activeButtonStyle : buttonStyle} onClick={() => onTabChange('register')}>Register View</button>
                     <Dropdown title="Reports">
@@ -101,7 +110,10 @@ const TakeAttendanceForm: React.FC = () => {
     const [isUpdateMode, setIsUpdateMode] = useState(false);
     const [updateCount, setUpdateCount] = useState<number>(0);
     const [lastModified, setLastModified] = useState<string | null>(null);
-    const [dateBlocked, setDateBlocked] = useState<{ blocked: boolean; reason: string }>({ blocked: false, reason: '' });
+   const [dateBlocked, setDateBlocked] = useState<{ blocked: boolean; reason: string }>({ blocked: false, reason: '' });
+// const [smsSelected, setSmsSelected] = useState<Set<number>>(new Set());
+// const [sendingSms, setSendingSms]   = useState(false);
+// const [smsResult,  setSmsResult]    = useState<{sent:number;failed:number;skipped:number}|null>(null);
     useEffect(() => {
         api.get('/classes')
             .then(res => setClassOptions(res.data.classes || []))
@@ -115,7 +127,7 @@ const TakeAttendanceForm: React.FC = () => {
             return;
         }
 
-        const branch = localStorage.getItem('currentBranch') || 'All';
+        const branch = getNormalizedBranch();
         const academicYear = localStorage.getItem('academicYear') || '';
         api.get('/sections', {
             params: {
@@ -140,7 +152,7 @@ const TakeAttendanceForm: React.FC = () => {
         setLoading(true);
         setDateBlocked({ blocked: false, reason: '' });
         try {
-            const globalBranch = localStorage.getItem('currentBranch') || 'All';
+            const globalBranch = getNormalizedBranch();
             const branchParam = globalBranch === "All Branches" || globalBranch === "All" ? "All" : globalBranch;
 
             // Pre-check: Is this date a holiday or weekoff?
@@ -214,6 +226,41 @@ const TakeAttendanceForm: React.FC = () => {
         }, {} as { [key: number]: string });
         setAttendance(updated);
     };
+
+    // const absentIds = students
+    //     .filter(s => attendance[s.student_id!] === 'Absent')
+    //     .map(s => s.student_id!);
+
+    // const toggleSmsSelect = (id: number) => {
+    //     setSmsSelected(prev => {
+    //         const next = new Set(prev);
+    //         next.has(id) ? next.delete(id) : next.add(id);
+    //         return next;
+    //     });
+    // };
+
+    // const toggleSelectAllAbsent = (checked: boolean) => {
+    //     setSmsSelected(checked ? new Set(absentIds) : new Set());
+    // };
+
+    // const handleSendSms = async () => {
+    //     if (smsSelected.size === 0) return;
+    //     if (!window.confirm(`Send SMS to parents of ${smsSelected.size} student(s)?`)) return;
+    //     setSendingSms(true);
+    //     setSmsResult(null);
+    //     try {
+    //         const res = await api.post('/attendance/send-sms', {
+    //             date: attendanceDate,
+    //             student_ids: Array.from(smsSelected)
+    //         });
+    //         setSmsResult(res.data);
+    //         setSmsSelected(new Set());
+    //     } catch (err: any) {
+    //         alert(`SMS error: ${err.response?.data?.error || err.message}`);
+    //     } finally {
+    //         setSendingSms(false);
+    //     }
+    // };
 
     const handleSave = async () => {
         setLoading(true);
@@ -300,10 +347,40 @@ const TakeAttendanceForm: React.FC = () => {
                             <div className="p-2 bg-gray-50 border-b flex gap-2">
                                 <button onClick={() => markAll('Present')} className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded border border-green-200 hover:bg-green-200">Mark All Present</button>
                                 <button onClick={() => markAll('Absent')} className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded border border-red-200 hover:bg-red-200">Mark All Absent</button>
+                                {/* <div className="h-4 w-px bg-gray-300" />
+                                <label className="flex items-center gap-1.5 cursor-pointer text-xs text-gray-600 select-none">
+                                    <input
+                                        type="checkbox"
+                                        checked={absentIds.length > 0 && smsSelected.size === absentIds.length}
+                                        ref={el => { if (el) el.indeterminate = smsSelected.size > 0 && smsSelected.size < absentIds.length; }}
+                                        onChange={e => toggleSelectAllAbsent(e.target.checked)}
+                                        className="h-3.5 w-3.5 accent-violet-600"
+                                    />
+                                    Select all absent
+                                </label>
+                                {smsSelected.size > 0 && (
+                                    <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                                        {smsSelected.size} selected
+                                    </span>
+                                )}
+                                <button
+                                    onClick={handleSendSms}
+                                    disabled={smsSelected.size === 0 || sendingSms}
+                                    className="ml-auto text-xs bg-orange-500 hover:bg-orange-600 disabled:bg-gray-300 text-white px-3 py-1 rounded font-medium flex items-center gap-1"
+                                >
+                                    {sendingSms ? 'Sending…' : `📱 Send SMS (${smsSelected.size})`}
+                                </button>
+                                {smsResult && (
+                                    <span className="text-xs text-gray-500">
+                                        ✅ {smsResult.sent} sent · ⏭ {smsResult.skipped} skipped
+                                        {smsResult.failed > 0 && <> · ❌ {smsResult.failed} failed</>}
+                                    </span>
+                                )} */}
                             </div>
                             <table className="min-w-full divide-y divide-gray-200 text-m">
                                 <thead className="bg-gray-50">
                                     <tr>
+                                        {/* <th className="px-4 py-2 w-8"></th> */}
                                         <th className="px-4 py-2 text-left font-medium text-gray-500">Roll No.</th>
                                         <th className="px-4 py-2 text-left font-medium text-gray-500">Adm No.</th>
                                         <th className="px-4 py-2 text-left font-medium text-gray-500">Student Name</th>
@@ -315,6 +392,18 @@ const TakeAttendanceForm: React.FC = () => {
                                 <tbody className="bg-white divide-y divide-gray-200">
                                     {students.map(student => (
                                         <tr key={student.student_id}>
+                                            {/* <td className="px-4 py-2">
+                                                {attendance[student.student_id!] === 'Absent' ? (
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={smsSelected.has(student.student_id!)}
+                                                        onChange={() => toggleSmsSelect(student.student_id!)}
+                                                        className="h-4 w-4 accent-violet-600 cursor-pointer"
+                                                    />
+                                                ) : (
+                                                    <span className="block w-4" />
+                                                )}
+                                            </td> */}
                                             <td className="px-4 py-2 whitespace-nowrap">{student.rollNo}</td>
                                             <td className="px-4 py-2 whitespace-nowrap">{student.admNo}</td>
                                             <td className="px-4 py-2 whitespace-nowrap font-medium text-gray-900">{student.name}</td>
@@ -409,7 +498,7 @@ const RegisterViewTab: React.FC = () => {
             return;
         }
 
-        const branch = localStorage.getItem('currentBranch') || 'All';
+        const branch = getNormalizedBranch();
         const academicYear = localStorage.getItem('academicYear') || '';
         api.get('/sections', {
             params: {
@@ -432,7 +521,7 @@ const RegisterViewTab: React.FC = () => {
         }
         setLoading(true);
         try {
-            const globalBranch = localStorage.getItem('currentBranch') || 'All';
+            const globalBranch = getNormalizedBranch();
             const branchParam = globalBranch === "All Branches" || globalBranch === "All" ? "All" : globalBranch;
             const res = await api.get('/attendance', {
                 params: {
@@ -770,7 +859,7 @@ const MonthlyAttendanceEntryTab: React.FC = () => {
             return;
         }
 
-        const branch = localStorage.getItem('currentBranch') || 'All';
+        const branch = getNormalizedBranch();
         const academicYear = localStorage.getItem('academicYear') || '';
         api.get('/sections', {
             params: {
@@ -793,7 +882,7 @@ const MonthlyAttendanceEntryTab: React.FC = () => {
         }
         setLoading(true);
         try {
-            const globalBranch = localStorage.getItem('currentBranch') || 'All';
+            const globalBranch = getNormalizedBranch();
             const branchParam = globalBranch === "All Branches" || globalBranch === "All" ? "All" : globalBranch;
             const res = await api.get('/attendance', {
                 params: {
@@ -880,7 +969,7 @@ const MonthlyAttendanceEntryTab: React.FC = () => {
         if (!selectedClass) return alert("Select a class first");
 
         try {
-            const globalBranch = localStorage.getItem('currentBranch') || 'All';
+            const globalBranch = getNormalizedBranch();
             const branchParam = globalBranch === "All Branches" || globalBranch === "All" ? "All" : globalBranch;
             const academicYear = localStorage.getItem('academicYear') || '';
 
@@ -1234,6 +1323,40 @@ const AbsentReport: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [classOptions, setClassOptions] = useState<{ id: number, class_name: string }[]>([]);
     const [sectionOptions, setSectionOptions] = useState<string[]>([]);
+    // const [smsSelected, setSmsSelected] = useState<Set<number>>(new Set());
+    // const [sendingSms, setSendingSms] = useState(false);
+    // const [smsResult, setSmsResult] = useState<{sent:number;failed:number;skipped:number}|null>(null);
+
+    // const toggleSmsSelect = (id: number) => {
+    //     setSmsSelected(prev => {
+    //         const next = new Set(prev);
+    //         next.has(id) ? next.delete(id) : next.add(id);
+    //         return next;
+    //     });
+    // };
+
+    // const toggleSelectAll = (checked: boolean) => {
+    //     setSmsSelected(checked ? new Set(results.map((r: any) => r.student_id)) : new Set());
+    // };
+
+    // const handleSendSms = async () => {
+    //     if (smsSelected.size === 0) return;
+    //     if (!window.confirm(`Send SMS to parents of ${smsSelected.size} student(s)?`)) return;
+    //     setSendingSms(true);
+    //     setSmsResult(null);
+    //     try {
+    //         const res = await api.post('/attendance/send-sms', {
+    //             date: date,
+    //             student_ids: Array.from(smsSelected)
+    //         });
+    //         setSmsResult(res.data);
+    //         setSmsSelected(new Set());
+    //     } catch (err: any) {
+    //         alert(`SMS error: ${err.response?.data?.error || err.message}`);
+    //     } finally {
+    //         setSendingSms(false);
+    //     }
+    // };
 
     useEffect(() => {
         api.get('/classes')
@@ -1247,7 +1370,7 @@ const AbsentReport: React.FC = () => {
             return;
         }
 
-        const branch = localStorage.getItem('currentBranch') || 'All';
+        const branch = getNormalizedBranch();
         const academicYear = localStorage.getItem('academicYear') || '';
         api.get('/sections', {
             params: {
@@ -1270,7 +1393,7 @@ const AbsentReport: React.FC = () => {
         }
         setLoading(true);
         try {
-            const globalBranch = localStorage.getItem('currentBranch') || 'All';
+            const globalBranch = getNormalizedBranch();
             const branchParam = globalBranch === "All Branches" || globalBranch === "All" ? "All" : globalBranch;
             const res = await api.get('/students', { params: { search: searchQuery, branch: branchParam } });
             const students = res.data.students || [];
@@ -1323,7 +1446,7 @@ const AbsentReport: React.FC = () => {
         setLoading(true);
         setResults([]);
         try {
-            const globalBranch = localStorage.getItem('currentBranch') || 'All';
+            const globalBranch = getNormalizedBranch();
             const branchParam = globalBranch === "All Branches" || globalBranch === "All" ? "All" : globalBranch;
             const params: any = { date: date, branch: branchParam };
             if (selectedClass) params.class = selectedClass;
@@ -1341,6 +1464,8 @@ const AbsentReport: React.FC = () => {
             }));
 
             setResults(absentStudents);
+            // setSmsSelected(new Set());
+            // setSmsResult(null);
         } catch (error) {
             console.error("Error fetching report:", error);
             alert("Failed to fetch report");
@@ -1427,7 +1552,7 @@ const AbsentReport: React.FC = () => {
                                                 }
                                                 setLoading(true);
                                                 try {
-                                                    const globalBranch = localStorage.getItem('currentBranch') || 'All';
+                                                    const globalBranch = getNormalizedBranch();
                                                     const branchParam = globalBranch === "All Branches" || globalBranch === "All" ? "All" : globalBranch;
                                                     const params: any = { class: selectedClass, branch: branchParam };
                                                     if (selectedSection) params.section = selectedSection;
@@ -1596,11 +1721,44 @@ const AbsentReport: React.FC = () => {
 
                     {results.length > 0 ? (
                         <div className="overflow-x-auto border rounded-lg mt-4">
+                            {/* {reportType === 'today' && (
+                                <div className="p-2 bg-gray-50 border-b flex items-center gap-3 flex-wrap">
+                                    <label className="flex items-center gap-1.5 cursor-pointer text-xs text-gray-600 select-none">
+                                        <input
+                                            type="checkbox"
+                                            checked={results.length > 0 && smsSelected.size === results.length}
+                                            ref={el => { if (el) el.indeterminate = smsSelected.size > 0 && smsSelected.size < results.length; }}
+                                            onChange={e => toggleSelectAll(e.target.checked)}
+                                            className="h-3.5 w-3.5 accent-violet-600"
+                                        />
+                                        Select all
+                                    </label>
+                                    {smsSelected.size > 0 && (
+                                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                                            {smsSelected.size} selected
+                                        </span>
+                                    )}
+                                    <button
+                                        onClick={handleSendSms}
+                                        disabled={smsSelected.size === 0 || sendingSms}
+                                        className="ml-auto text-xs bg-orange-500 hover:bg-orange-600 disabled:bg-gray-300 text-white px-3 py-1 rounded font-medium flex items-center gap-1"
+                                    >
+                                        {sendingSms ? 'Sending…' : `📱 Send SMS (${smsSelected.size})`}
+                                    </button>
+                                    {smsResult && (
+                                        <span className="text-xs text-gray-500">
+                                            ✅ {smsResult.sent} sent · ⏭ {smsResult.skipped} skipped
+                                            {smsResult.failed > 0 && <> · ❌ {smsResult.failed} failed</>}
+                                        </span>
+                                    )}
+                                </div>
+                            )} */}
                             <table className="min-w-full divide-y divide-gray-200 text-sm">
                                 <thead className="bg-gray-50">
                                     <tr>
                                         {reportType === 'today' ? (
                                             <>
+                                                {/* <th className="px-4 py-2 w-8"></th> */}
                                                 <th className="px-4 py-2 text-left font-medium text-gray-500">Class</th>
                                                 <th className="px-4 py-2 text-left font-medium text-gray-500">Roll No</th>
                                                 <th className="px-4 py-2 text-left font-medium text-gray-500">Adm No</th>
@@ -1622,6 +1780,14 @@ const AbsentReport: React.FC = () => {
                                         <tr key={idx}>
                                             {reportType === 'today' ? (
                                                 <>
+                                                    {/* <td className="px-4 py-2">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={smsSelected.has(item.student_id)}
+                                                            onChange={() => toggleSmsSelect(item.student_id)}
+                                                            className="h-4 w-4 accent-violet-600 cursor-pointer"
+                                                        />
+                                                    </td> */}
                                                     <td className="px-4 py-2 whitespace-nowrap">{item.class}</td>
                                                     <td className="px-4 py-2 whitespace-nowrap">{item.rollNo}</td>
                                                     <td className="px-4 py-2 whitespace-nowrap">{item.admNo}</td>
@@ -1662,7 +1828,7 @@ const AbsentReport: React.FC = () => {
     );
 };
 
-const StudentAttendance: React.FC<StudentAttendanceProps> = ({ defaultTab = 'take' }) => {
+const StudentAttendance: React.FC<StudentAttendanceProps> = ({ navigateTo, defaultTab = 'take' }) => {
     const [activeTab, setActiveTab] = useState<AttendanceTab>(defaultTab);
 
     // Handle dropdown actions
@@ -1702,6 +1868,7 @@ const StudentAttendance: React.FC<StudentAttendanceProps> = ({ defaultTab = 'tak
                 activeTab={activeTab}
                 onTabChange={setActiveTab}
                 onAction={handleDropdownAction}
+                navigateTo={navigateTo}
             />
             {renderContent()}
         </div>

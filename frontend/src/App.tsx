@@ -22,6 +22,8 @@ export type Page =
   | "concession-master"
   | "student-concession"
   | "update-student-fee-structure"
+  | "update-rebate-date"
+  | "staffsupport"
   | "create-student"
   | "import-student-data"
   | "fee-reports"
@@ -33,7 +35,17 @@ export type Page =
   | "user-management"
   | "role-permissions"
   | "franchise-management"
-  | "control-panel";
+  | "school-management"
+  | "control-panel"
+  | "petty-cash"
+  | "petty-cash-report"
+  | "deleted-receipts"
+  | "fee-concession-report"
+  | "adjust-fee-report"
+  | 'sms-center'
+  | 'fund-allocation'
+  | 'month-wise-ledger'
+  | 'petty-cash-approval';
 
 // Inner component that can access AuthContext
 const AppInner: React.FC = () => {

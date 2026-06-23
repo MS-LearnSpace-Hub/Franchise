@@ -77,15 +77,7 @@ const ConcessionMaster: React.FC = () => {
 
     // Fetch Data on load
     useEffect(() => {
-        const user = JSON.parse(localStorage.getItem('user') || '{}');
-        const isBranchUser = user.role !== 'Admin';
-
-        let initialBranch = "All";
-        if (isBranchUser && user.branch) {
-            initialBranch = user.branch;
-        } else {
-            initialBranch = localStorage.getItem('currentBranch') || 'All';
-        }
+        let initialBranch = localStorage.getItem('currentBranch') || 'All';
 
 
         setBranch(initialBranch);
@@ -138,14 +130,9 @@ const ConcessionMaster: React.FC = () => {
             // If User: Show all returned (Backend filters strictly)
 
             let filtered = allConcessions;
-            if (user.role === 'Admin') {
-                filtered = globalBranch === 'All' || globalBranch === 'All Branches'
-                    ? allConcessions
-                    : allConcessions.filter((c: ConcessionGroup) => c.branch === globalBranch || c.branch === 'All');
-            } else {
-                // For Branch User, just show what backend returned (which is their branch + All)
-                filtered = allConcessions;
-            }
+            filtered = globalBranch === 'All' || globalBranch === 'All Branches' || globalBranch === 'All Locations'
+                ? allConcessions
+                : allConcessions.filter((c: ConcessionGroup) => c.branch === globalBranch || c.branch === 'All');
 
             setConcessions(filtered);
         } catch (error) {
@@ -317,12 +304,7 @@ const ConcessionMaster: React.FC = () => {
         setGlobalAmount('');
         setAcademicYear(localStorage.getItem('academicYear') || '');
 
-        const user = JSON.parse(localStorage.getItem('user') || '{}');
-        if (user.role !== 'Admin' && user.branch) {
-            setBranch(user.branch);
-        } else {
-            setBranch(localStorage.getItem('currentBranch') || 'All');
-        }
+        setBranch(localStorage.getItem('currentBranch') || 'All');
 
         setShowInPayment(false);
         setIsEditing(false);

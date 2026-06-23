@@ -13,7 +13,7 @@ interface BranchOption extends Option {
 interface Subject {
     id: number;
     name: string;
-    type: string; // 'Academic' or 'Hifz'
+    type: string; // 'Academic' or 'Deeniyath' 
 }
 
 interface ClassItem {
@@ -457,7 +457,7 @@ const ClassSubjectAssignment: React.FC = () => {
                             onChange={e => setSelectedSubjectType(e.target.value)}
                         >
                             <option value="Academic">Academic</option>
-                            <option value="Hifz">Hifz</option>
+                            <option value="Deeniyath">Deeniyath</option>
                             <option value="All">All Types</option>
                         </select>
                     </div>

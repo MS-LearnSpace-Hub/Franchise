@@ -4,7 +4,7 @@ import random
 import time
 
 BASE_URL = "http://127.0.0.1:5001/api"
-ADMIN_USER = "admin"
+ADMIN_USER = "Admin"
 ADMIN_PASS = "temp123"
 
 # Global token variable

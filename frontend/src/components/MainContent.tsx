@@ -52,19 +52,31 @@ const WelcomeBar: React.FC<WelcomeBarProps> = ({ navigateTo }) => {
 };
 
 const DashboardHome: React.FC = () => {
-    return (
-        <div className="p-2 md:p-2 space-y-1">
-            <SummaryBar />
-            <img
-                src={dashboardImg}
-                alt="Dashboard Illustration"
-                className="w-full h-auto rounded-lg shadow-sm"
-                style={{ maxHeight: '58vh', objectFit: 'cover' }}
-            />
-        </div>
-    );
-};
+  return (
+    <div className="p-4 md:p-4 space-y-4">
+      {/* This style block is *not* needed for image_4.png, 
+        as the curve is baked into the image itself.
+        If you want to apply a curve with CSS to a square image,
+        you can use the approach from my previous response.
+      */}
 
+      <div>
+        <SummaryBar />
+
+        {/* Wrapped the image in a flex container to center it perfectly */}
+        <div className="flex justify-center w-full mt-10">
+          <img
+            src={dashboardImg}
+            alt="Dashboard Illustration"
+            // The existing shadow and border-radius are sufficient
+            className="w-full h-auto rounded-lg shadow-sm"
+            style={{ maxHeight: '60vh', objectFit: 'contain' }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const MainContent: React.FC<MainContentProps> = ({ navigateTo }) => {
     return (

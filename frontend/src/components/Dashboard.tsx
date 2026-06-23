@@ -19,16 +19,35 @@ import StudentAdministration from './StudentAdministration';
 import ConcessionMaster from './ConcessionMaster';
 import StudentConcession from './StudentConcession';
 import UpdateStudentFeeStructure from './UpdateStudentFeeStructure';
+import UpdateRebateDate from './UpdateRebateDate';
 import FeeReports from './FeeReports';
+import DeletedReceiptsReport from './DeletedReceiptsReport';
+import FeeConcessionReport from './FeeConcessionReport';
+import AdjustFeeReport from './AdjustFeeReport';
 import Configuration from './Configuration';
 import DocumentManagement from './DocumentManagement';
 import UserManagement from './UserManagement';
 import FranchiseManagement from './FranchiseManagement';
 import RolePermissions from './RolePermissions';
 import ControlPanel from './ControlPanel';
+import SchoolManagement from './SchoolManagement';
 import { useNavigationHistory } from '../hooks/useNavigationHistory';
+import StaffSupport from './StaffSupport';
+import PettyCash from './PettyCash';
+import PettyCashReport from './PettyCashReport';
+import FundAllocation from './FundAllocation';
+import MonthWiseLedger from './MonthWiseLedger';
+import PettyCashApproval from './PettyCashApproval';
+import FinancialLayout from './FinancialLayout';
+import SmsCenter from './SmsCenter';
 
-
+const financialPages = [
+  'fee', 'fee-type', 'class-fee-structure', 'assign-special-fee',
+  'fee-installments', 'take-fee', 'concession-master', 'student-concession',
+  'update-student-fee-structure', 'update-rebate-date', 'fee-reports',
+  'deleted-receipts', 'fee-concession-report', 'adjust-fee-report',
+  'petty-cash', 'petty-cash-report', 'fund-allocation', 'month-wise-ledger', 'petty-cash-approval'
+];
 
 interface DashboardProps {
   onLogout: () => void;
@@ -65,30 +84,50 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
         <main className="flex-1">
           {currentPage === 'dashboard' && <MainContent navigateTo={navigateTo} />}
           {currentPage === 'profile' && <Profile />}
-          {currentPage === 'fee' && <Fee navigateTo={navigateTo} />}
-          {currentPage === 'fee-type' && <FeeType />}
-          {currentPage === 'class-fee-structure' && <ClassFeeStructure />}
-          {currentPage === 'assign-special-fee' && <AssignSpecialFee />}
-          {currentPage === 'fee-installments' && <FeeInstallments />}
-          {currentPage === 'take-fee' && <TakeFee navigateTo={navigateTo} />}
-          {currentPage === 'administration' && <Administration navigateTo={navigateTo} />}
-          {currentPage === 'academic' && <AcademicManagement navigateTo={navigateTo} />}
-          {currentPage === 'academics' && <Academics />}
-          {currentPage === 'setup' && <SetupSchool navigateTo={navigateTo} />}
-          {currentPage === 'classes-management' && <ClassesManagement navigateTo={navigateTo} />}
-          {currentPage === 'student-attendance' && <StudentAttendance navigateTo={navigateTo} />}
-          {currentPage === 'attendance-report' && <StudentAttendance navigateTo={navigateTo} defaultTab="absent-report" />}
-          {currentPage === 'student-administration' && <StudentAdministration navigateTo={navigateTo} />}
-          {currentPage === 'concession-master' && <ConcessionMaster />}
-          {currentPage === 'student-concession' && <StudentConcession />}
-          {currentPage === 'update-student-fee-structure' && <UpdateStudentFeeStructure />}
-          {currentPage === 'fee-reports' && <FeeReports />}
-          {currentPage === 'configuration' && <Configuration navigateTo={navigateTo} />}
-          {currentPage === 'document-management' && <DocumentManagement />}
-          {currentPage === 'user-management' && <UserManagement />}
-          {currentPage === 'role-permissions' && <RolePermissions />}
-          {currentPage === 'franchise-management' && <FranchiseManagement />}
-          {currentPage === 'control-panel' && <ControlPanel navigateTo={navigateTo} />}
+          {financialPages.includes(currentPage) ? (
+            <FinancialLayout currentPage={currentPage} navigateTo={navigateTo}>
+              {currentPage === 'fee' && <Fee navigateTo={navigateTo} />}
+              {currentPage === 'fee-type' && <FeeType />}
+              {currentPage === 'class-fee-structure' && <ClassFeeStructure />}
+              {currentPage === 'assign-special-fee' && <AssignSpecialFee />}
+              {currentPage === 'fee-installments' && <FeeInstallments />}
+              {currentPage === 'take-fee' && <TakeFee navigateTo={navigateTo} />}
+              {currentPage === 'concession-master' && <ConcessionMaster />}
+              {currentPage === 'student-concession' && <StudentConcession />}
+              {currentPage === 'update-student-fee-structure' && <UpdateStudentFeeStructure />}
+              {currentPage === 'update-rebate-date' && <UpdateRebateDate />}
+              {currentPage === 'fee-reports' && <FeeReports />}
+              {currentPage === 'deleted-receipts' && <DeletedReceiptsReport />}
+              {currentPage === 'fee-concession-report' && <FeeConcessionReport />}
+              {currentPage === 'adjust-fee-report' && <AdjustFeeReport />}
+              {currentPage === 'petty-cash' && <PettyCash />}
+              {currentPage === 'petty-cash-report' && <PettyCashReport />}
+              {currentPage === 'fund-allocation' && <FundAllocation />}
+              {currentPage === 'month-wise-ledger' && <MonthWiseLedger />}
+              {currentPage === 'petty-cash-approval' && <PettyCashApproval />}
+            </FinancialLayout>
+          ) : (
+            <>
+              {currentPage === 'administration' && <Administration navigateTo={navigateTo} />}
+              {currentPage === 'academic' && <AcademicManagement navigateTo={navigateTo} />}
+              {currentPage === 'academics' && <Academics />}
+              {currentPage === 'setup' && <SetupSchool navigateTo={navigateTo} />}
+              {currentPage === 'classes-management' && <ClassesManagement />}
+              {currentPage === 'student-attendance' && <StudentAttendance />}
+              {currentPage === 'student-administration' && <StudentAdministration />}
+              {currentPage === 'configuration' && <Configuration navigateTo={navigateTo} />}
+              {currentPage === 'document-management' && <DocumentManagement />}
+              {currentPage === 'user-management' && <UserManagement />}
+              {currentPage === 'role-permissions' && <RolePermissions />}
+              {currentPage === 'franchise-management' && <FranchiseManagement />}
+              {currentPage === 'school-management' && <SchoolManagement />}
+              {currentPage === 'control-panel' && <ControlPanel navigateTo={navigateTo} />}
+              {currentPage === 'staffsupport' && <StaffSupport />}
+              {currentPage === 'sms-center' && <SmsCenter navigateTo={navigateTo} />}
+            </>
+          )}
+
+
         </main>
       </div>
     </div>

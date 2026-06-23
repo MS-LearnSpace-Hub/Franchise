@@ -1,9 +1,10 @@
+# pyrefly: ignore [missing-import]
 from flask import Blueprint, request, jsonify, current_app
 from extensions import db
-from models import ClassTest, ClassMaster, TestType, OrgMaster, Branch, User, ClassTestSubject, SubjectMaster
+from models import ClassTest, ClassMaster, ClassSection, TestType, OrgMaster, Branch, User, ClassTestSubject, SubjectMaster
 import sqlalchemy
 from datetime import datetime
-from helpers import token_required
+from helpers import token_required, validate_cross_branch_access, get_user_allowed_branches, skip_scoping
  
 class_test_bp = Blueprint('class_test_bp', __name__)
 
@@ -21,8 +22,21 @@ def get_matrix():
         if not academic_year or not branch:
              return jsonify({'error': 'Missing academic_year or branch'}), 400
 
-        # Get Classes 
-        classes = ClassMaster.query.all()
+        # Resolve branch to get branch_id
+        branch_obj = Branch.query.filter_by(branch_name=branch).first()
+        if not branch_obj:
+            branch_obj = Branch.query.filter_by(branch_code=branch).first()
+
+        if not branch_obj:
+            return jsonify({'error': f'Branch not found: {branch}'}), 404
+
+        # Get Classes having sections in this branch and academic year
+        classes = db.session.query(ClassMaster).join(
+            ClassSection, ClassSection.class_id == ClassMaster.id
+        ).filter(
+            ClassSection.branch_id == branch_obj.id,
+            ClassSection.academic_year == academic_year
+        ).distinct().order_by(ClassMaster.id).all()
         
         # Get Test Types for this academic year
         # Note: TestType uses 'academic_year' string column too.
@@ -135,7 +149,30 @@ def copy_assignments(current_user):
         if not from_branch or not to_branch or not academic_year or not to_location:
             return jsonify({'error': 'Missing required fields'}), 400
 
+        # Resolve branch objects for permission check
+        from_br_obj = Branch.query.filter_by(branch_name=from_branch).first()
+        if not from_br_obj:
+            from_br_obj = Branch.query.filter_by(branch_code=from_branch).first()
 
+        # Resolve target branch object
+        to_br_obj = Branch.query.filter_by(branch_name=to_branch).first()
+        if not to_br_obj:
+            to_br_obj = Branch.query.filter_by(branch_code=to_branch).first()
+
+        # Centralized permission check
+        if from_br_obj and to_br_obj:
+            is_valid, perm_error = validate_cross_branch_access(
+                current_user,
+                source_branch_id=from_br_obj.id,
+                target_branch_ids=[to_br_obj.id]
+            )
+            if not is_valid:
+                return jsonify({'error': perm_error}), 403
+        elif not to_br_obj:
+            return jsonify({'error': f'Target branch not found: {to_branch}'}), 404
+
+        to_branch_id = to_br_obj.id if to_br_obj else None
+        to_school_id = to_br_obj.school_id if to_br_obj else None
 
         # Fetch source assignments
         source_assignments = ClassTest.query.filter_by(
@@ -147,30 +184,33 @@ def copy_assignments(current_user):
             return jsonify({'message': 'No assignments found in source branch'}), 404
 
         count = 0
-        for src in source_assignments:
-            # Check collision
-            existing = ClassTest.query.filter_by(
-                academic_year=academic_year,
-                branch=to_branch,
-                class_id=src.class_id,
-                test_id=src.test_id
-            ).first()
-
-            if not existing:
-                # Copy
-                new_entry = ClassTest(
+        with skip_scoping():
+            for src in source_assignments:
+                # Check collision
+                existing = ClassTest.query.filter_by(
                     academic_year=academic_year,
-                    branch=to_branch, # Target Branch Name
-                    location=to_location, # Target Location Name
+                    branch=to_branch,
                     class_id=src.class_id,
-                    test_id=src.test_id,
-                    test_order=src.test_order,
-                    status=src.status
-                )
-                db.session.add(new_entry)
-                count += 1
-        
-        db.session.commit()
+                    test_id=src.test_id
+                ).first()
+
+                if not existing:
+                    # Copy
+                    new_entry = ClassTest(
+                        academic_year=academic_year,
+                        branch=to_branch, # Target Branch Name
+                        location=to_location, # Target Location Name
+                        class_id=src.class_id,
+                        test_id=src.test_id,
+                        test_order=src.test_order,
+                        status=src.status,
+                        branch_id=to_branch_id,
+                        school_id=to_school_id or src.school_id
+                    )
+                    db.session.add(new_entry)
+                    count += 1
+            
+            db.session.commit()
         return jsonify({'message': f'Copied {count} assignments successfully'}), 200
 
     except Exception as e:

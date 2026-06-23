@@ -4,6 +4,7 @@ import {
 } from './icons';
 import { Page } from "../App";
 import { useAuth } from '../contexts/AuthContext';
+import Learnspacelogo from '../images/Learnspacelogo.png';
 
 
 interface SidebarProps {
@@ -34,11 +35,17 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar, navigateTo, cu
         </button>
       </div>
 
-      <div className="p-4">
-        <p className={`font-bold text-lg text-center text-white bg-green-500 px-2 py-1 rounded ${!isOpen && 'md:hidden'}`}>
-          {user?.school_name || 'MS Hifz Academy'}
-        </p>
-      </div>
+      <div className="p-2 border-b">
+  <div className="flex items-center gap-2 justify-center">
+    
+    {/* Permanent Logo */}
+    <img
+      src={Learnspacelogo}
+      alt="LearnSpace Logo"
+      className="w-18 h-12 object-contain flex-shrink-0"
+    />
+  </div>
+</div>
       <nav className="flex-1 px-2 space-y-1 overflow-y-auto">
         {navCategories.filter(cat => canAccess(cat.permission)).map((cat) => (
           <a
@@ -54,7 +61,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar, navigateTo, cu
 
         <div className={`pt-4 mt-4 border-t border-gray-200 ${!isOpen && 'md:hidden'}`}>
           {/* Control Panel – Admin & SuperAdmin */}
-          {(hasPermission('system.users.management', 'read') || hasPermission('system.roles.permissions', 'read') || hasPermission('system.franchise.management', 'read')) && (
+          {(hasPermission('system.users.management', 'read') || hasPermission('system.roles.permissions', 'read') || hasPermission('system.franchise.management', 'read') || hasPermission('system.school.school-management', 'read')) && (
             <a href="#"
               onClick={(e) => { e.preventDefault(); navigateTo('control-panel'); }}
               className={`flex items-center p-2 text-sm font-medium rounded-md hover:bg-gray-100 hover:text-gray-900 ${currentPage === 'control-panel' ? 'bg-indigo-100 text-indigo-800' : 'text-gray-600'
@@ -65,9 +72,13 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar, navigateTo, cu
             </a>
           )}
 
-          <a href="#" className="flex items-center p-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900">
+          <a
+            href="#"
+            onClick={(e) => { e.preventDefault(); navigateTo('staffsupport'); }}
+            className={`flex items-center p-2 text-sm font-medium rounded-md ${currentPage === 'staffsupport' ? 'bg-green-100 text-green-800' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
+          >
             <HeadphoneIcon className="w-5 h-5" />
-            <span className="ml-3">Staff Support</span>
+            <span className="ml-3">StaffSupport</span>
           </a>
           <a href="#" onClick={(e) => { e.preventDefault(); navigateTo('profile'); }} className="flex items-center p-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-900">
             <UserIcon className="w-5 h-5" />

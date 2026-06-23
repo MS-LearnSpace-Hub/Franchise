@@ -22,76 +22,116 @@ const StudentReportCard: React.FC = () => {
     const style = document.createElement('style');
     style.id = 'student-report-print-styles';
     style.textContent = `
-      @media print {
-        @page {
-          margin: 5mm;
-        }
+  @media print {
+    @page {
+      margin: 8mm;
+      size: A4;
+    }
 
-        /* 1. RESET OUTER APP SHELL (Allow scrolling/flow) */
-        html, body, #root, #app, .h-screen, .min-h-screen, .student-reports-wrapper {
-          margin: 0 !important;
-          padding: 0 !important;
-          height: auto !important;
-          min-height: 0 !important;
-          overflow: visible !important;
-        }
+    /* ── 1. Kill the Dashboard layout scrollbar (the culprit) ── */
+    .flex.h-screen.overflow-hidden,
+    .flex.flex-col.flex-1.overflow-y-auto,
+    .flex.flex-col.flex-1.overflow-x-hidden {
+      overflow: visible !important;
+      height: auto !important;
+    }
 
-        /* 2. HIDE UI CHROME (Sidebar, Header, Menu, Back Buttons) */
-        .no-print, 
-        aside, nav, header, footer,
-        button, a[href*="back"], 
-        .sidebar, .menu,
-        /* Explicitly hide the sidebar/menu container based on the screenshot artifact */
-        [class*="sidebar-container"],
-        [class*="nav-container"] {
-          display: none !important;
-        }
+    /* ── 2. Reset html/body ── */
+    html, body {
+      margin: 0 !important;
+      padding: 0 !important;
+      height: auto !important;
+      width: 100% !important;
+      overflow: visible !important;
+      background: white !important;
+    }
 
-        /* 3. REPORT CARD CONTAINER (Preserve internal layout) */
-        .report-card-container {
-          /* Important: Do NOT reset display to block if it needs to be flex/grid 
-             But usually the container itself is a block. 
-             We just ensure it has width and no shadow. */
-          width: 100% !important;
-          margin: 0 !important;
-          padding: 15px !important;
-          box-shadow: none !important;
-          border: none !important;
-          
-          /* Separation between reports */
-          margin-bottom: 20px !important; 
-          page-break-after: always; /* Re-introducing clean page break per report */
-        }
-        
-        /* 4. PRESERVE INTERNAL LAYOUT */
-        /* Avoid resetting visibility globally on all children as it unhides tooltips */
-        
-        /* Explicitly hide recharts tooltip in print */
-        .recharts-tooltip-wrapper {
-          display: none !important;
-          visibility: hidden !important;
-        }
+    /* ── 3. Kill ALL scrollbars from every element ── */
+    * {
+      scrollbar-width: none !important;
+    }
+    *::-webkit-scrollbar {
+      display: none !important;
+      width: 0 !important;
+      height: 0 !important;
+    }
 
-        /* 5. FIX CHARTS AND IMAGES */
-        svg, img {
-          max-width: 100% !important;
-          /* height: auto !important; <--- Removed this as it might squash fixed-height charts */
-          display: block; 
-          overflow: visible !important;
-        }
-          margins{
-          left: 0;
-          right:0;
-          top:0;
-          bottom:99;
-          }
+    /* ── 4. Hide UI chrome ── */
+    .no-print,
+    aside,
+    nav,
+    header,
+    .sidebar {
+      display: none !important;
+    }
 
-        /* 6. HIDE PARENT BACKGROUNDS used for screens */
-        body {
-          background: white !important;
-        }
-      }
-    `;
+    /* ── 5. Main content area ── */
+    main.flex-1 {
+      overflow: visible !important;
+      height: auto !important;
+      padding: 0 !important;
+    }
+
+    /* ── 6. Student reports wrapper ── */
+    .student-reports-wrapper {
+      padding: 0 !important;
+      margin: 0 !important;
+      overflow: visible !important;
+      height: auto !important;
+      width: 100% !important;
+    }
+
+    /* ── 7. Report card container ── */
+    .report-card-container {
+      width: 100% !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      box-shadow: none !important;
+      border: 1px solid #1e3a5f !important;
+      display: block !important;
+      overflow: visible !important;
+    }
+
+    /* ── 8. Page breaks — NOT after last report ── */
+    .report-card-container:not(:last-child) {
+      page-break-after: always !important;
+      break-after: page !important;
+    }
+    .report-card-container:last-child {
+      page-break-after: avoid !important;
+      break-after: avoid !important;
+    }
+
+    /* ── 9. Prevent content cutting inside rows ── */
+    .report-card-container table {
+      page-break-inside: auto !important;
+    }
+    .report-card-container tr {
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
+    }
+
+    /* ── 10. Hide recharts tooltip ── */
+    .recharts-tooltip-wrapper {
+      display: none !important;
+      visibility: hidden !important;
+    }
+
+    /* ── 11. SVG / images ── */
+    svg, img {
+      max-width: 100% !important;
+      overflow: visible !important;
+      display: block !important;
+    }
+
+    /* ── 12. All reports container ── */
+    .all-reports-container {
+      overflow: visible !important;
+      width: 100% !important;
+      height: auto !important;
+    }
+  }
+`;
     document.head.appendChild(style);
 
     return () => {
@@ -187,14 +227,9 @@ const StudentReportCard: React.FC = () => {
 
     if (userStr) {
       try {
-        const user = JSON.parse(userStr);
-        if (user.role === 'Admin' || user.branch === 'All' || user.branch === 'AllBranches') {
-          const selected = localStorage.getItem("currentBranch");
-          if (selected && selected !== "All" && selected !== "All Locations") {
+        const selected = localStorage.getItem("currentBranch");
+        if (selected && selected !== "All Locations") {
             storedBranch = selected;
-          }
-        } else {
-          storedBranch = user.branch || "All";
         }
       } catch (e) {
         console.error("Error parsing user", e);

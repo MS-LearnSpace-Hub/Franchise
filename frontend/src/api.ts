@@ -21,7 +21,8 @@ interface CustomHeaders {
   'Authorization'?: string;
   'X-Branch'?: string;
   'X-Location'?: string;
-  'X-School-Id'?: string;
+  'X-School-ID'?: string;
+  'X-Branch-ID'?: string;
   'X-Academic-Year'?: string;
   'X-Requested-With'?: string;
   [key: string]: string | undefined;
@@ -41,6 +42,7 @@ const clearStoredAuth = (): void => {
   localStorage.removeItem('token');
   localStorage.removeItem('user');
   localStorage.removeItem('currentBranch');
+  localStorage.removeItem('currentBranchId');
   localStorage.removeItem('currentSchoolId');
   localStorage.removeItem('currentSchool');
   localStorage.removeItem('academicYear');
@@ -67,6 +69,7 @@ api.interceptors.request.use(
     const savedUser: string | null = localStorage.getItem('user');
     const academicYear: string | null = localStorage.getItem('academicYear');
     const currentBranch: string | null = localStorage.getItem('currentBranch');
+    const currentBranchId: string | null = localStorage.getItem('currentBranchId');
     const currentSchoolId: string | null = localStorage.getItem('currentSchoolId');
     const token: string | null = getStoredToken();
 
@@ -82,12 +85,21 @@ api.interceptors.request.use(
         const user: UserData = JSON.parse(savedUser);
 
         // Add branch header
-        if (currentBranch && !currentBranch.toLowerCase().startsWith('all')) {
+        if (currentBranch) {
           config.headers = config.headers || {};
           config.headers['X-Branch'] = currentBranch;
-        } else if (!currentBranch && user.branch && !user.branch.toLowerCase().startsWith('all')) {
+        } else if (!currentBranch && user.branch) {
           config.headers = config.headers || {};
           config.headers['X-Branch'] = user.branch;
+        }
+
+        // Add branch ID header
+        if (currentBranchId) {
+          config.headers = config.headers || {};
+          config.headers['X-Branch-ID'] = currentBranchId;
+        } else if (currentBranch === 'All') {
+          config.headers = config.headers || {};
+          config.headers['X-Branch-ID'] = 'All';
         }
 
         // Add location header
@@ -96,9 +108,9 @@ api.interceptors.request.use(
           config.headers['X-Location'] = user.location;
         }
         // Add school header for SuperAdmin cross-school filtering
-        if (currentSchoolId && !currentSchoolId.toLowerCase().startsWith('all')) {
+        if (currentSchoolId) {
           config.headers = config.headers || {};
-          config.headers['X-School-Id'] = currentSchoolId;
+          config.headers['X-School-ID'] = currentSchoolId;
         }
       } catch (error) {
         console.error('Error parsing user data from localStorage:', error);

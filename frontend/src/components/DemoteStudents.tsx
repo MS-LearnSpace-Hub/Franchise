@@ -98,6 +98,7 @@ const DemoteStudents: React.FC<DemoteStudentsProps> = ({ onBack }) => {
         const q = search.toLowerCase();
         return (
             (s.admNo || '').toLowerCase().includes(q) ||
+            (s.enrollment_no || '').toLowerCase().includes(q) ||
             (s.first_name || s.name || '').toLowerCase().includes(q) ||
             (s.last_name || '').toLowerCase().includes(q)
         );

@@ -1,4 +1,6 @@
-from flask import request, jsonify, current_app
+# pyrefly: ignore [missing-import]
+from flask import request, jsonify, current_app, abort
+# pyrefly: ignore [missing-import]
 import jwt
 from functools import wraps
 import traceback
@@ -8,9 +10,11 @@ import os
 import hmac
 import hashlib
 from models import Branch, OrgMaster, Student, FeeInstallment, StudentFee, User, FeeType
+# pyrefly: ignore [missing-import]
 from werkzeug.security import generate_password_hash, check_password_hash
 import smtplib
 from email.message import EmailMessage
+# pyrefly: ignore [missing-import]
 from flask import current_app
 import logging
 
@@ -134,8 +138,25 @@ def get_default_location():
         return "Hyderabad"
 
 
+# pyrefly: ignore [missing-import]
 from flask import g
+from contextlib import contextmanager
 
+@contextmanager
+def skip_scoping():
+    """
+    Context manager to temporarily disable automatic query scoping.
+    Useful for cross-branch operations where the user has already
+    been explicitly validated for access to target branches, but
+    the standard scoping would block queries to those targets.
+    """
+    was_scoping = getattr(g, '_in_scoping', False)
+    g._in_scoping = True
+    try:
+        yield
+    finally:
+        g._in_scoping = was_scoping
+        
 def token_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -154,8 +175,34 @@ def token_required(f):
             if not current_user:
                  return jsonify({'error': 'User invalid!'}), 401
                  
-            # Store user_id in global context for AuditMixin event listener
+            # Store user_id and tenant context in global context
             g.user_id = current_user.user_id
+            
+            # Support header overrides for active switching, fallback to token data or user default
+            header_school_id = request.headers.get('X-School-ID')
+            header_branch_id = request.headers.get('X-Branch-ID')
+            
+            if header_school_id is not None and header_school_id != "":
+                if header_school_id.lower() == 'all':
+                    g.school_id = None
+                else:
+                    try:
+                        g.school_id = int(header_school_id)
+                    except (ValueError, TypeError):
+                        abort(400, description="Invalid X-School-ID header. Must be an integer or 'all'.")
+            else:
+                g.school_id = data.get('school_id') or getattr(current_user, 'default_school_id', None)
+                
+            if header_branch_id is not None and header_branch_id != "":
+                if header_branch_id.lower() == 'all':
+                    g.branch_id = None
+                else:
+                    try:
+                        g.branch_id = int(header_branch_id)
+                    except (ValueError, TypeError):
+                        abort(400, description="Invalid X-Branch-ID header. Must be an integer or 'all'.")
+            else:
+                g.branch_id = data.get('branch_id') or getattr(current_user, 'default_branch_id', None)
         except jwt.ExpiredSignatureError:
             return jsonify({'error': 'Token has expired!'}), 401
         except Exception as e:
@@ -167,6 +214,48 @@ def token_required(f):
     return decorated
 
 
+def scope_query(query, model):
+    """
+    Applies multi-tenant filtering on the query based on the model's attributes
+    and the current user context (g.school_id, g.branch_id).
+    """
+    if not g or not getattr(g, 'user_id', None):
+        return query
+        
+    # Lazy import to avoid circular dependency
+    from models import User
+    user = User.query.get(g.user_id)
+    if not user:
+        return query
+        
+    role = get_effective_role_name(user)
+    if role == 'SuperAdmin':
+        # SuperAdmin has global platform access, no query scoping required
+        return query
+        
+    # Apply school_id scoping if model has school_id column
+    if hasattr(model, 'school_id'):
+        s_id = getattr(g, 'school_id', None)
+        if s_id is not None:
+            query = query.filter((model.school_id == s_id) | (model.school_id.is_(None)))
+        else:
+            allowed_schools = get_user_allowed_schools(user)
+            if not allowed_schools['is_unlimited'] and allowed_schools['ids']:
+                query = query.filter((model.school_id.in_(allowed_schools['ids'])) | (model.school_id.is_(None)))
+                
+    # Apply branch_id scoping if model has branch_id column
+    if hasattr(model, 'branch_id'):
+        b_id = getattr(g, 'branch_id', None)
+        if b_id is not None:
+            query = query.filter((model.branch_id == b_id) | (model.branch_id.is_(None)))
+        else:
+            allowed_branches = get_user_allowed_branches(user)
+            if not allowed_branches['is_unlimited'] and allowed_branches['ids']:
+                query = query.filter((model.branch_id.in_(allowed_branches['ids'])) | (model.branch_id.is_(None)))
+                
+    return query
+
+
 def is_admin_level(user):
     """Returns True for Admin and SuperAdmin — both have cross-branch data access."""
     return get_effective_role_name(user) in ('Admin', 'SuperAdmin')
@@ -176,6 +265,140 @@ def get_effective_role_name(user):
     if role_obj and getattr(role_obj, "is_active", True):
         return role_obj.name
     return getattr(user, "role", None)
+
+
+def get_user_allowed_schools(user):
+    """
+    Returns a dictionary with:
+      - 'names': set of school names the user can access
+      - 'ids': set of school IDs the user can access
+      - 'is_unlimited': True if SuperAdmin (no restriction)
+    """
+    from models import School, UserSchoolAccess
+    from datetime import date
+    
+    role = get_effective_role_name(user)
+    if role == 'SuperAdmin':
+        return {
+            'names': None,
+            'ids': None,
+            'is_unlimited': True
+        }
+        
+    # Check if there are explicit UserSchoolAccess assignments first
+    today = date.today()
+    access_records = UserSchoolAccess.query.join(School).filter(
+        UserSchoolAccess.user_id == user.user_id,
+        UserSchoolAccess.is_active == True,
+        UserSchoolAccess.start_date <= today,
+        (UserSchoolAccess.end_date.is_(None)) | (UserSchoolAccess.end_date >= today),
+        School.is_active == True
+    ).all()
+    
+    if access_records:
+        names = {r.school.school_name for r in access_records if r.school}
+        ids = {r.school_id for r in access_records}
+        return {
+            'names': names,
+            'ids': ids,
+            'is_unlimited': False
+        }
+        
+    # Fallback to user.default_school_id or user.school_id
+    names = set()
+    ids = set()
+    s_id = getattr(user, 'default_school_id', getattr(user, 'school_id', None))
+    if s_id:
+        school_obj = School.query.get(s_id)
+        if school_obj and school_obj.is_active:
+            ids.add(s_id)
+            names.add(school_obj.school_name)
+            
+    return {
+        'names': names,
+        'ids': ids,
+        'is_unlimited': False
+    }
+
+
+def get_user_allowed_branches(user):
+    """
+    Returns a dictionary with:
+      - 'names': set of branch names the user can access
+      - 'ids': set of branch IDs the user can access
+      - 'is_unlimited': True if SuperAdmin (no restriction)
+    """
+    from models import Branch, UserBranchAccess
+    from datetime import date
+    
+    role = get_effective_role_name(user)
+    if role == 'SuperAdmin':
+        return {
+            'names': None,
+            'ids': None,
+            'is_unlimited': True
+        }
+        
+    # 1. Explicit UserBranchAccess assignments
+    today = date.today()
+    access_records = UserBranchAccess.query.join(Branch).filter(
+        UserBranchAccess.user_id == user.user_id,
+        UserBranchAccess.is_active == True,
+        UserBranchAccess.start_date <= today,
+        (UserBranchAccess.end_date.is_(None)) | (UserBranchAccess.end_date >= today),
+        Branch.is_active == True
+    ).all()
+    
+    if access_records:
+        names = {r.branch.branch_name for r in access_records if r.branch}
+        ids = {r.branch_id for r in access_records}
+        return {
+            'names': names,
+            'ids': ids,
+            'is_unlimited': False
+        }
+        
+    # 2. Check if user has explicit UserSchoolAccess. If so, they can access all branches of those schools!
+    allowed_schools = get_user_allowed_schools(user)
+    if allowed_schools['ids']:
+        branches = Branch.query.filter(Branch.school_id.in_(allowed_schools['ids']), Branch.is_active == True).all()
+        if branches:
+            return {
+                'names': {b.branch_name for b in branches},
+                'ids': {b.id for b in branches},
+                'is_unlimited': False
+            }
+            
+    # 3. Fallback: if role == 'Admin' and user has a school_id / default_school_id, give access to all branches of that school
+    s_id = getattr(user, 'default_school_id', getattr(user, 'school_id', None))
+    if role == 'Admin' and s_id:
+        branches = Branch.query.filter_by(school_id=s_id, is_active=True).all()
+        return {
+            'names': {b.branch_name for b in branches},
+            'ids': {b.id for b in branches},
+            'is_unlimited': False
+        }
+        
+    # 4. Final fallback to user's single default branch / branch_id fields
+    names = set()
+    ids = set()
+    b_id = getattr(user, 'default_branch_id', getattr(user, 'branch_id', None))
+    if b_id:
+        b_by_id = Branch.query.filter_by(id=b_id, is_active=True).first()
+        if b_by_id:
+            ids.add(b_id)
+            names.add(b_by_id.branch_name)
+    elif user.branch and user.branch != 'All':
+        b_by_name = Branch.query.filter_by(branch_name=user.branch, is_active=True).first()
+        if b_by_name:
+            names.add(user.branch)
+            ids.add(b_by_name.id)
+        
+    return {
+        'names': names,
+        'ids': ids,
+        'is_unlimited': False
+    }
 
 
 def get_user_permissions(user):
@@ -205,14 +428,16 @@ def get_user_permissions(user):
 
     # Backward compatibility for legacy users that have not been moved to role_id yet.
     if not getattr(user, "role_id", None):
-        legacy_actions = {f"can_{action}": role_name == "Admin" for action in ACTION_KEYS}
-        legacy_actions["can_read"] = True
+        is_admin_or_super = role_name in ("Admin", "SuperAdmin")
         return with_aliases({
             p.code: {
                 "dashboard": p.dashboard,
                 "module": p.module,
                 "component": p.component,
-                **legacy_actions,
+                "can_read": is_admin_or_super or not (p.code.startswith("fees.") or p.code.startswith("system.") or p.code.startswith("setup.")),
+                "can_write": is_admin_or_super,
+                "can_append": is_admin_or_super,
+                "can_delete": is_admin_or_super,
             }
             for p in permissions
         })
@@ -261,6 +486,154 @@ def permission_required(permission_code, action="read"):
             return func(current_user, *args, **kwargs)
         return wrapper
     return decorator
+
+def validate_cross_branch_access(user, source_branch_id=None, target_branch_ids=None,
+                                   source_school_id=None, target_school_ids=None):
+    """
+    Centralized access validation for cross-branch/cross-school operations.
+    Works identically for SuperAdmin and multi-branch users — the permission
+    scope is determined by UserBranchAccess / UserSchoolAccess, NOT by role name.
+
+    Returns: (is_valid: bool, error_message: str | None)
+    """
+    allowed_branches = get_user_allowed_branches(user)
+    allowed_schools = get_user_allowed_schools(user)
+
+    # Unlimited users (SuperAdmin or users with full access) pass automatically
+    if allowed_branches['is_unlimited']:
+        return True, None
+
+    # Validate source branch access
+    if source_branch_id:
+        source_br = Branch.query.get(source_branch_id)
+        if not source_br:
+            return False, f"Source branch ID {source_branch_id} not found"
+        if source_br.id not in (allowed_branches['ids'] or set()):
+            return False, f"Unauthorized: no access to source branch '{source_br.branch_name}'"
+
+    # Validate target branch access
+    if target_branch_ids:
+        for t_id in target_branch_ids:
+            t_br = Branch.query.get(t_id)
+            if not t_br:
+                return False, f"Target branch ID {t_id} not found"
+            if t_br.id not in (allowed_branches['ids'] or set()):
+                return False, f"Unauthorized: no access to target branch '{t_br.branch_name}'"
+
+    # Validate school access (if provided)
+    if not allowed_schools['is_unlimited']:
+        if source_school_id and source_school_id not in (allowed_schools['ids'] or set()):
+            return False, "Unauthorized: no access to source school"
+        if target_school_ids:
+            for s_id in target_school_ids:
+                if s_id not in (allowed_schools['ids'] or set()):
+                    return False, f"Unauthorized: no access to target school ID {s_id}"
+
+    return True, None
+
+
+def resolve_user_scope(user):
+    """
+    Resolve school_id and branch_id for the current user context.
+    Replaces all ``if current_user.role != 'SuperAdmin'`` scope resolution blocks.
+    Uses header overrides (X-School-ID, X-Branch-ID, X-Branch) with fallbacks
+    to user defaults, then validates against allowed scope.
+
+    Returns dict:
+        school_id, branch_id          – effective single IDs for this request
+        allowed_school_ids, allowed_branch_ids – full sets the user may access
+        is_unlimited                   – True when no scoping needed
+    """
+    allowed_schools = get_user_allowed_schools(user)
+    allowed_branches = get_user_allowed_branches(user)
+
+    # Read from request headers
+    header_school_id = None
+    header_branch_id = None
+    header_branch_name = None
+
+    raw_school = request.headers.get('X-School-ID')
+    if raw_school and raw_school.isdigit():
+        header_school_id = int(raw_school)
+
+    raw_branch = request.headers.get('X-Branch-ID')
+    if raw_branch and raw_branch.isdigit():
+        header_branch_id = int(raw_branch)
+
+    header_branch_name = request.headers.get('X-Branch')
+
+    # Resolve branch_id from branch name if numeric ID not available
+    if header_branch_name and not header_branch_id and header_branch_name != 'All':
+        br = Branch.query.filter_by(branch_name=header_branch_name, is_active=True).first()
+        if br:
+            header_branch_id = br.id
+
+    # Determine effective scope
+    school_id = (header_school_id
+                 or getattr(user, 'default_school_id', None)
+                 or getattr(user, 'school_id', None))
+    branch_id = (header_branch_id
+                 or getattr(user, 'default_branch_id', None)
+                 or getattr(user, 'branch_id', None))
+
+    # Security: ensure resolved IDs are within allowed scope
+    if not allowed_schools['is_unlimited'] and school_id:
+        if school_id not in (allowed_schools['ids'] or set()):
+            school_id = next(iter(allowed_schools['ids'])) if allowed_schools['ids'] else None
+
+    if not allowed_branches['is_unlimited'] and branch_id:
+        if branch_id not in (allowed_branches['ids'] or set()):
+            branch_id = next(iter(allowed_branches['ids'])) if allowed_branches['ids'] else None
+
+    return {
+        'school_id': school_id,
+        'branch_id': branch_id,
+        'allowed_school_ids': allowed_schools['ids'],
+        'allowed_branch_ids': allowed_branches['ids'],
+        'is_unlimited': allowed_branches['is_unlimited'],
+    }
+
+
+def can_manage_global(user):
+    """
+    Returns True if the user may create/modify global ('All'-branch) resources.
+    Uses the franchise-management permission so the capability can be assigned
+    to any role via RolePermission rather than being hardcoded to SuperAdmin.
+    """
+    return has_permission(user, "system.franchise.franchise-management", "write")
+
+
+def cross_branch_required(f):
+    """
+    Decorator for copy / cross-branch endpoints.
+    Reads ``source_branch_id`` and ``target_branch_ids`` from the JSON body,
+    validates access via ``validate_cross_branch_access``, then passes through.
+    """
+    @wraps(f)
+    def wrapper(current_user, *args, **kwargs):
+        data = request.json or {}
+        source_branch_id = data.get('source_branch_id')
+        target_branch_ids = data.get('target_branch_ids', [])
+
+        # Parse IDs safely
+        try:
+            if source_branch_id is not None:
+                source_branch_id = int(source_branch_id)
+            target_branch_ids = [int(x) for x in target_branch_ids if x is not None]
+        except (ValueError, TypeError):
+            return jsonify({"error": "Branch IDs must be integers"}), 400
+
+        is_valid, error = validate_cross_branch_access(
+            current_user,
+            source_branch_id=source_branch_id,
+            target_branch_ids=target_branch_ids
+        )
+        if not is_valid:
+            return jsonify({"error": error}), 403
+
+        return f(current_user, *args, **kwargs)
+    return wrapper
+
 
 def require_academic_year():
     """Helper to enforce academic year validation"""
@@ -332,6 +705,7 @@ def student_to_dict(s):
         "student_id": s.student_id,
         "admission_no": s.admission_no, # Explicit key for frontend
         "admNo": s.admission_no,
+        "enrollment_no":s.enrollment_no,
         "Roll_Number": s.Roll_Number, # Explicit key for frontend
         "rollNo": s.Roll_Number,
         "name": name,

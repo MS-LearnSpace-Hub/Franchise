@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import ReceiptLogo from '../images/Receiptlogo.png';
+import api from '../api';
 
 interface FeeReceiptProps {
   onClose: () => void;
@@ -23,7 +24,7 @@ interface FeeReceiptProps {
   };
 }
 
-const ReceiptTemplate = ({ data, copyType, logo }: { data: any, copyType: string, logo: string }) => {
+const ReceiptTemplate = ({ data, copyType, logo, schoolName }: { data: any, copyType: string, logo: string, schoolName: string }) => {
   const { studentName, fatherName, fatherPhone, admissionNo, branch, className, receiptNo, paymentDate, paymentMode, paymentNote, items, amount, concession, payable } = data;
 
   const formatDate = (dateString: string) => {
@@ -38,7 +39,7 @@ const ReceiptTemplate = ({ data, copyType, logo }: { data: any, copyType: string
       <div className="flex items-center justify-start mb-4">
         <img src={logo} alt="School Logo" className="h-16 mr-4" />
         <div>
-          <h1 className="text-2xl font-bold text-black">MS Education Academy</h1>
+          <h1 className="text-2xl font-bold text-black">{schoolName}</h1>
           <p className="text-md text-gray-600">Fee Receipt <span className="text-sm font-semibold ml-2">({copyType})</span></p>
         </div>
       </div>
@@ -247,12 +248,39 @@ const FeeReceipt: React.FC<FeeReceiptProps> = ({ onClose, receiptData }) => {
     }, 500);
   };
 
+  const [branches, setBranches] = useState<any[]>([]);
+
+  useEffect(() => {
+    let isMounted = true;
+    api.get('/branches')
+      .then(res => {
+        if (isMounted && res.data.branches) {
+          setBranches(res.data.branches);
+        }
+      })
+      .catch(err => {
+        if (isMounted) {
+          console.error("Error fetching branches in receipt:", err);
+        }
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const matchingBranch = branches.find(b => b.branch_name === receiptData.branch);
+  const schoolLogo = matchingBranch?.school_logo || ReceiptLogo;
+  const schoolName = matchingBranch?.school_name || "MS LearnSpace";
+  const resolvedLogo = schoolLogo.startsWith('/') 
+    ? `${window.location.origin}${schoolLogo}` 
+    : schoolLogo;
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="printable-receipt">
           {/* We use the Template Component for the main display (Single Copy) */}
-          <ReceiptTemplate data={receiptData} copyType="Student Copy" logo={ReceiptLogo} />
+          <ReceiptTemplate data={receiptData} copyType="Student Copy" logo={resolvedLogo} schoolName={schoolName} />
           {/* Note: The user sees 'Student Copy' on screen. When printing, we manipulate HTML to show both. */}
         </div>
 

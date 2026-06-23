@@ -63,6 +63,19 @@ interface FormFieldProps {
   className?: string;
 }
 
+interface DocumentType {
+  id: number;
+  code: string;
+  name: string;
+}
+
+interface PendingDocument {
+  document_type_id: number;
+  document_type_name: string;
+  document_no: string;
+  file: File;
+}
+
 const FormField = React.memo(
   ({
     label,
@@ -106,7 +119,7 @@ const FormField = React.memo(
     return (
       <div className={className}>
         <label htmlFor={inputId} className={LABEL_STYLE}>
-          {label} {required && <span className="text-red-500">*</span>}
+          {label} {required && <span className="text-red-500">*</span>  }
         </label>
         {as === "input" && (
           <input
@@ -233,6 +246,7 @@ const CreateStudent: React.FC<CreateStudentProps> = ({
 
   const initialFormData: Record<string, any> = {
     admissionNo: "",
+    enrollment_no:"",
     first_name: "",
     last_name: "",
     gender: "",
@@ -355,6 +369,13 @@ const CreateStudent: React.FC<CreateStudentProps> = ({
 
   // Documents
   const [checkedDocuments, setCheckedDocuments] = useState<string[]>([]);
+  const [documentTypes, setDocumentTypes] = useState<DocumentType[]>([]);
+  const [selectedDocTypeId, setSelectedDocTypeId] = useState<string>("");
+  const [selectedDocNo, setSelectedDocNo] = useState<string>("");
+  const [selectedDocFile, setSelectedDocFile] = useState<File | null>(null);
+  const [pendingDocuments, setPendingDocuments] = useState<PendingDocument[]>([]);
+  const [documentUploadError, setDocumentUploadError] = useState<string>("");
+  const [documentUploadSuccess, setDocumentUploadSuccess] = useState<string>("");
 
   // Load student data for edit/view
   useEffect(() => {
@@ -462,6 +483,16 @@ const CreateStudent: React.FC<CreateStudentProps> = ({
         console.error("Failed to load classes", err);
       });
 
+    const loadDocumentTypes = async () => {
+      try {
+        const res = await api.get('/documents/types');
+        setDocumentTypes(res.data || []);
+      } catch (err) {
+        console.error('Failed to load document types', err);
+      }
+    };
+    loadDocumentTypes();
+
     // Fetch Master Data: Branches, Locations, Academic Years
     Promise.all([
       api.get("/branches"),
@@ -491,13 +522,11 @@ const CreateStudent: React.FC<CreateStudentProps> = ({
         if (mode === "create") {
           const savedBranch = localStorage.getItem("currentBranch");
           const savedUser = localStorage.getItem("user");
-          let userRole = "";
           let userBranch = "";
 
           if (savedUser) {
             try {
               const u = JSON.parse(savedUser);
-              userRole = u.role;
               userBranch = u.branch;
             } catch (e) {
               console.error("Error parsing user from localStorage", e);
@@ -506,10 +535,9 @@ const CreateStudent: React.FC<CreateStudentProps> = ({
 
           let targetBranch = "";
           const isAllBranch = savedBranch === "All" || savedBranch === "All Branches";
-          if (userRole === 'Admin') {
-            if (savedBranch && !isAllBranch) {
-              targetBranch = savedBranch;
-            }
+          
+          if (savedBranch && !isAllBranch) {
+            targetBranch = savedBranch;
           } else if (userBranch) {
             targetBranch = userBranch;
           }
@@ -692,6 +720,92 @@ const CreateStudent: React.FC<CreateStudentProps> = ({
     }
   };
 
+  const handleDocumentFileChange = (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    if (e.target.files && e.target.files[0]) {
+      setSelectedDocFile(e.target.files[0]);
+    }
+  };
+
+  const handleAddPendingDocument = () => {
+    setDocumentUploadError("");
+    setDocumentUploadSuccess("");
+
+    if (!selectedDocTypeId) {
+      setDocumentUploadError("Please select a document type.");
+      return;
+    }
+    if (!selectedDocFile) {
+      setDocumentUploadError("Please choose a file to upload.");
+      return;
+    }
+
+    const docType = documentTypes.find(
+      (doc) => String(doc.id) === selectedDocTypeId
+    );
+
+    if (!docType) {
+      setDocumentUploadError("Selected document type is not available.");
+      return;
+    }
+
+    setPendingDocuments((prev) => [
+      ...prev,
+      {
+        document_type_id: docType.id,
+        document_type_name: docType.name,
+        document_no: selectedDocNo,
+        file: selectedDocFile,
+      },
+    ]);
+
+    setSelectedDocTypeId("");
+    setSelectedDocNo("");
+    setSelectedDocFile(null);
+    setDocumentUploadSuccess("Document added to upload queue.");
+  };
+
+  const removePendingDocument = (index: number) => {
+    setPendingDocuments((prev) => prev.filter((_, idx) => idx !== index));
+  };
+
+  const uploadPendingDocuments = async (studentId: number) => {
+    if (pendingDocuments.length === 0) {
+      return;
+    }
+
+    const failures: string[] = [];
+
+    for (const doc of pendingDocuments) {
+      const formData = new FormData();
+      formData.append('student_id', String(studentId));
+      formData.append('document_type_id', String(doc.document_type_id));
+      formData.append('file', doc.file);
+      if (doc.document_no) {
+        formData.append('document_no', doc.document_no);
+      }
+
+      try {
+        await api.post('/documents/upload', formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        });
+      } catch (err: any) {
+        failures.push(
+          `${doc.document_type_name}: ${err.response?.data?.message || err.message || 'Upload failed'}`
+        );
+      }
+    }
+
+    if (failures.length) {
+      throw new Error(failures.join(' | '));
+    }
+
+    setPendingDocuments([]);
+  };
+
   const resetForm = () => {
     setFormData(initialFormData);
     setStudentPhoto(null);
@@ -699,6 +813,12 @@ const CreateStudent: React.FC<CreateStudentProps> = ({
     setMotherPhoto(null);
     setGuardianPhoto(null);
     setCheckedDocuments([]);
+    setSelectedDocTypeId("");
+    setSelectedDocNo("");
+    setSelectedDocFile(null);
+    setPendingDocuments([]);
+    setDocumentUploadError("");
+    setDocumentUploadSuccess("");
   };
 
   const handleResetClick = (e: React.MouseEvent) => {
@@ -709,6 +829,7 @@ const CreateStudent: React.FC<CreateStudentProps> = ({
   const buildPayload = () => {
     return {
       admission_no: formData.admissionNo,
+      enrollment_no:formData.enrollment_no,
       first_name: formData.first_name,
       last_name: formData.last_name,
       gender: formData.gender,
@@ -817,14 +938,11 @@ const CreateStudent: React.FC<CreateStudentProps> = ({
         !formData.gender ||
         !formData.dob ||
         !formData.phone ||
-        !formData.email ||
         !formData.Adharcardno ||
         !formData.section ||
         !formData.Fatherfirstname ||
         !formData.FatherPhone ||
-        !formData.Motherfirstname ||
-        !formData.SchoolName ||
-        !formData.PreviousSchoolClass)
+        !formData.Motherfirstname )
     ) {
       alert("Fill required fields");
       return;
@@ -835,7 +953,25 @@ const CreateStudent: React.FC<CreateStudentProps> = ({
     try {
       if (mode === "create") {
         const res = await api.post(`/students`, payload);
-        alert("Student created successfully!");
+        const studentId = res.data?.student_id;
+
+        if (!studentId) {
+          throw new Error('Student created but student ID was not returned.');
+        }
+
+        if (pendingDocuments.length > 0) {
+          try {
+            await uploadPendingDocuments(studentId);
+            alert("Student created and documents uploaded successfully!");
+          } catch (uploadError: any) {
+            console.error('Document upload error:', uploadError);
+            alert(
+              `Student created successfully, but document upload failed: ${uploadError.message}`
+            );
+          }
+        } else {
+          alert("Student created successfully!");
+        }
 
         if (onSave) onSave(res.data, exit);
 
@@ -847,7 +983,20 @@ const CreateStudent: React.FC<CreateStudentProps> = ({
         }
 
         const res = await api.put(`/students/${id}`, payload);
-        alert("Student updated successfully!");
+
+        if (pendingDocuments.length > 0) {
+          try {
+            await uploadPendingDocuments(id);
+            alert("Student updated and documents uploaded successfully!");
+          } catch (uploadError: any) {
+            console.error('Document upload error:', uploadError);
+            alert(
+              `Student updated successfully, but document upload failed: ${uploadError.message}`
+            );
+          }
+        } else {
+          alert("Student updated successfully!");
+        }
 
         // 🔥 IMPORTANT: use backend response
         if (onSave) onSave(res.data.student, exit);
@@ -925,6 +1074,12 @@ const CreateStudent: React.FC<CreateStudentProps> = ({
               value={formData.admissionNo}
               onChange={handleInputChange}
               disabled={true}
+            />           
+            <FormField
+              label="Enrollment No"
+              name="enrollment_no"
+              value={formData.enrollment_no}
+              onChange={handleInputChange}
             />
             <FormField
               label="Admission Date"
@@ -933,7 +1088,6 @@ const CreateStudent: React.FC<CreateStudentProps> = ({
               required
               value={formData.admission_date}
               onChange={handleInputChange}
-              disabled={true}
             />
             <FormField
               label="Roll Number"
@@ -953,8 +1107,8 @@ const CreateStudent: React.FC<CreateStudentProps> = ({
               disabled={isViewMode}
             >
               <option value="">-- Select --</option>
-              <option value="Hifz">Hifz</option>
-              <option value="Nazira">Hifz+Nazira</option>
+              <option value="Regular">Regular</option> 
+              <option value="Day-Scholar">Day-Scholar</option>
             </FormField>
             <FormField
               label="Admission Class"
@@ -1182,7 +1336,6 @@ const CreateStudent: React.FC<CreateStudentProps> = ({
               label="Email"
               name="email"
               type="email"
-              required
               value={formData.email}
               onChange={handleInputChange}
               disabled={isViewMode}
@@ -1430,7 +1583,6 @@ const CreateStudent: React.FC<CreateStudentProps> = ({
               label="School Name"
               name="SchoolName"
               value={formData.SchoolName}
-              required
               onChange={handleInputChange}
               disabled={isViewMode}
             />
@@ -1438,7 +1590,6 @@ const CreateStudent: React.FC<CreateStudentProps> = ({
               label="School Class"
               name="PreviousSchoolClass"
               value={formData.PreviousSchoolClass}
-              required
               onChange={handleInputChange}
               disabled={isViewMode}
             />
@@ -1450,7 +1601,7 @@ const CreateStudent: React.FC<CreateStudentProps> = ({
               disabled={isViewMode}
             />
             <FormField
-              label="Enrollment Number"
+              label="Previous Admission Number"
               name="PreviousAdmissionNumber"
               value={formData.PreviousAdmissionNumber}
               onChange={handleInputChange}
@@ -1491,24 +1642,102 @@ const CreateStudent: React.FC<CreateStudentProps> = ({
               /> */}
             </div>
 
-            {/* <div className="md:col-span-4">
+            <div className="md:col-span-4">
               <h4 className="font-medium text-gray-700 mb-2">
-                Documents Submitted
+                Admission Documents
               </h4>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                {documentTypes.map((doc) => (
-                  <FormField
-                    key={doc}
-                    label={doc}
-                    name={doc}
-                    type="checkbox"
-                    checked={checkedDocuments.includes(doc)}
-                    onChange={() => handleDocumentCheck(doc)}
+              <div className="grid gap-4 md:grid-cols-3">
+                <div>
+                  <label className={LABEL_STYLE} htmlFor="document-type">
+                    Document Type
+                  </label>
+                  <select
+                    id="document-type"
+                    className={INPUT_STYLE}
+                    value={selectedDocTypeId}
+                    onChange={(e) => setSelectedDocTypeId(e.target.value)}
+                    disabled={isViewMode}
+                  >
+                    <option value="">Select document type</option>
+                    {documentTypes.map((doc) => (
+                      <option key={doc.id} value={String(doc.id)}>
+                        {doc.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className={LABEL_STYLE} htmlFor="document-no">
+                    Document Number
+                  </label>
+                  <input
+                    id="document-no"
+                    type="text"
+                    className={INPUT_STYLE}
+                    value={selectedDocNo}
+                    onChange={(e) => setSelectedDocNo(e.target.value)}
+                    disabled={isViewMode}
+                    placeholder="Optional"
+                  />
+                </div>
+
+                <div>
+                  <label className={LABEL_STYLE} htmlFor="document-file">
+                    File
+                  </label>
+                  <input
+                    id="document-file"
+                    type="file"
+                    className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-violet-50 file:text-violet-700 hover:file:bg-violet-100"
+                    onChange={handleDocumentFileChange}
                     disabled={isViewMode}
                   />
-                ))}
+                </div>
               </div>
-            </div> */}
+
+              {!isViewMode && (
+                <div className="flex flex-wrap gap-2 items-center mt-3">
+                  <button
+                    type="button"
+                    onClick={handleAddPendingDocument}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-violet-500"
+                  >
+                    Add Document
+                  </button>
+                  {documentUploadSuccess && (
+                    <span className="text-sm text-green-600">{documentUploadSuccess}</span>
+                  )}
+                  {documentUploadError && (
+                    <span className="text-sm text-red-600">{documentUploadError}</span>
+                  )}
+                </div>
+              )}
+
+              {pendingDocuments.length > 0 && (
+                <div className="mt-4 bg-gray-50 p-3 rounded-lg border">
+                  <h5 className="font-medium text-gray-700 mb-2">Documents queued for upload</h5>
+                  <ul className="space-y-2 text-sm text-gray-700">
+                    {pendingDocuments.map((doc, index) => (
+                      <li key={`${doc.document_type_id}-${index}`} className="flex items-center justify-between gap-3 bg-white p-3 rounded border">
+                        <div>
+                          <div className="font-semibold">{doc.document_type_name}</div>
+                          {doc.document_no && <div className="text-xs text-gray-500">No: {doc.document_no}</div>}
+                          <div className="text-xs text-gray-500">{doc.file.name}</div>
+                        </div>
+                        <button
+                          type="button"
+                          className="text-sm text-red-600 hover:text-red-800"
+                          onClick={() => removePendingDocument(index)}
+                        >
+                          Remove
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
           </CollapsibleSection>
 
 
@@ -1570,13 +1799,6 @@ const CreateStudent: React.FC<CreateStudentProps> = ({
                   className="px-6 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-violet-500"
                 >
                   Reset
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSaveClick(false)}
-                  className="px-6 py-2 bg-violet-600 text-white rounded-md hover:bg-violet-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-violet-500"
-                >
-                  Save
                 </button>
                 <button
                   type="button"

@@ -20,6 +20,7 @@ interface Student {
     student_id: number;
     name: string;
     admNo: string;
+    enrollment_no: string;
     class: string;
     section: string;
     branch: string;
@@ -62,10 +63,7 @@ const UpdateStudentFeeStructure: React.FC = () => {
     }, []);
 
     const computeGlobalBranch = (): string => {
-        let user: Record<string, any> = {};
-        try { user = JSON.parse(localStorage.getItem('user') || '{}'); } catch { user = {}; }
         const storedBranch = localStorage.getItem('currentBranch') || 'All';
-        if (user.role !== 'Admin' && user.branch) return user.branch;
         return storedBranch;
     };
 
@@ -219,7 +217,7 @@ const UpdateStudentFeeStructure: React.FC = () => {
                     })()}
                     <input
                         type="text"
-                        placeholder="Search Name/AdmNo"
+                        placeholder="Search Name/AdmNo/EnrollmentNo"
                         value={searchTerm}
                         onChange={e => setSearchTerm(e.target.value)}
                         className="border rounded px-3 py-1 text-sm outline-none w-40 focus:ring-2 ring-indigo-300"

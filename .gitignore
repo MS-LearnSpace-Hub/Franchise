@@ -11,6 +11,8 @@ build/
 # Python
 # =========================
 .venv/
+myenv312/
+.myenv312/
 venv/
 __pycache__/
 *.pyc
@@ -32,6 +34,7 @@ __pycache__/
 .env
 .env.*
 *.env
+.myenv
 
 # =========================
 # Logs
@@ -56,5 +59,6 @@ Thumbs.db
 Media/
 media/
 uploads/
+erp-backend/myenv312
 
 

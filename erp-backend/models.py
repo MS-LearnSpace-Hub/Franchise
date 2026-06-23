@@ -4,9 +4,10 @@ from decimal import Decimal
 from sqlalchemy import or_, event
 from sqlalchemy.orm import declared_attr
 from sqlalchemy import inspect
+# pyrefly: ignore [missing-import]
 from flask import g, has_request_context, request
 
-
+ 
 
 class AuditLog(db.Model):
     __tablename__ = "audit_logs"
@@ -25,6 +26,8 @@ class AuditLog(db.Model):
 
     user_id = db.Column(db.Integer, db.ForeignKey('users.user_id'), nullable=True)
     ip_address = db.Column(db.String(50), nullable=True)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
+    branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
 
     timestamp = db.Column(db.DateTime, nullable=False)
 
@@ -57,6 +60,8 @@ class ClassMaster(db.Model, AuditMixin):
     class_name = db.Column(db.String(50), unique=True, nullable=False)
     location = db.Column(db.String(50), default="Hyderabad")
     branch = db.Column(db.String(50), default="All")
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
+    branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
 
 
 class ClassSection(db.Model, AuditMixin):
@@ -78,6 +83,7 @@ class ClassSection(db.Model, AuditMixin):
         db.ForeignKey("branches.id", ondelete="RESTRICT"),
         nullable=False
     )
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
 
     academic_year = db.Column(db.String(20), nullable=False)
 
@@ -110,6 +116,8 @@ class Role(db.Model, AuditMixin):
     description = db.Column(db.String(255), nullable=True)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     is_system = db.Column(db.Boolean, nullable=False, default=False)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
+    branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
 
     permissions = db.relationship(
         "RolePermission",
@@ -130,6 +138,8 @@ class Permission(db.Model, AuditMixin):
     code = db.Column(db.String(160), unique=True, nullable=False)
     description = db.Column(db.String(255), nullable=True)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
+    branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
 
     role_permissions = db.relationship("RolePermission", back_populates="permission", lazy="dynamic")
 
@@ -149,6 +159,8 @@ class RolePermission(db.Model, AuditMixin):
     can_write = db.Column(db.Boolean, nullable=False, default=False)
     can_append = db.Column(db.Boolean, nullable=False, default=False)
     can_delete = db.Column(db.Boolean, nullable=False, default=False)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
+    branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
 
     role = db.relationship("Role", back_populates="permissions")
     permission = db.relationship("Permission", back_populates="role_permissions")
@@ -177,12 +189,16 @@ class User(db.Model, AuditMixin):
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
     branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
     role_id = db.Column(db.Integer, db.ForeignKey('roles.id', ondelete='SET NULL'), nullable=True)
+    default_school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
+    default_branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
     is_active = db.Column(db.Boolean, default=True)
 
     # Relationships
     school_obj = db.relationship('School', foreign_keys=[school_id])
     branch_obj = db.relationship('Branch', foreign_keys=[branch_id])
     role_obj = db.relationship('Role', foreign_keys=[role_id])
+    default_school_obj = db.relationship('School', foreign_keys=[default_school_id])
+    default_branch_obj = db.relationship('Branch', foreign_keys=[default_branch_id])
 
 
 class PasswordResetOTP(db.Model, AuditMixin):
@@ -194,6 +210,8 @@ class PasswordResetOTP(db.Model, AuditMixin):
     expires_at = db.Column(db.DateTime, nullable=False)
     used = db.Column(db.Boolean, nullable=False, default=False)
     attempts = db.Column(db.Integer, default=0)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
+    branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
     
     user = db.relationship('User', foreign_keys=[user_id], backref=db.backref('reset_otps', lazy=True))
 
@@ -205,6 +223,7 @@ class Student(db.Model, AuditMixin):
     
     # Basic Information
     admission_no = db.Column(db.String(50), unique=True)
+    enrollment_no = db.Column(db.String(50))
     first_name = db.Column(db.String(100))
     StudentMiddleName = db.Column(db.String(100))
     last_name = db.Column(db.String(100))
@@ -306,6 +325,8 @@ class Student(db.Model, AuditMixin):
     location = db.Column(db.String(50), default="Hyderabad")
     branch = db.Column(db.String(50))
     academic_year = db.Column(db.String(20))
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
+    branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
 
     __table_args__ = (
         db.Index('idx_student_occupancy', 'class', 'section', 'branch', 'academic_year'),
@@ -315,6 +336,9 @@ class Student(db.Model, AuditMixin):
 class FeeType(db.Model, AuditMixin):
     __tablename__ = "feetypes"
     __audit_module__ = "FEES"
+    __table_args__ = (
+        db.UniqueConstraint('feetype', 'branch', 'academic_year', 'school_id', name='uq_feetype_branch_year_school'),
+    )
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     feetype = db.Column(db.String(100), nullable=False)
     category = db.Column(db.String(50))
@@ -329,6 +353,7 @@ class FeeType(db.Model, AuditMixin):
     branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
     location = db.Column(db.String(50), default="Hyderabad")
     academic_year = db.Column(db.String(20))
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
 
 
 class StudentFee(db.Model, AuditMixin):
@@ -350,6 +375,8 @@ class StudentFee(db.Model, AuditMixin):
     is_active = db.Column(db.Boolean, nullable=False, default= True)
     deleted_at = db.Column(db.DateTime, nullable = True)
     deleted_by = db.Column(db.Integer,nullable = True)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
+    branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
     fee_type = db.relationship("FeeType")
     student = db.relationship("Student")
 
@@ -373,11 +400,15 @@ class ClassFeeStructure(db.Model, AuditMixin):
     branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
     location = db.Column(db.String(50), default="Hyderabad")
     academic_year = db.Column(db.String(20))
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
 
 
 class Concession(db.Model, AuditMixin):
     __tablename__ = "concessions"
     __audit_module__ = "FEES"
+    __table_args__ = (
+        db.UniqueConstraint('title', 'branch', 'academic_year', 'fee_type_id', name='uq_concession_title_branch_year_feetype'),
+    )
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(100)) # e.g., "Sibling Discount"
     description = db.Column(db.String(255))
@@ -385,6 +416,7 @@ class Concession(db.Model, AuditMixin):
     branch = db.Column(db.String(50))              # legacy string (keep for compat)
     branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
     academic_year = db.Column(db.String(20))
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
     fee_type_id = db.Column(db.Integer, db.ForeignKey("feetypes.id"))
     percentage = db.Column(db.Numeric(10, 2)) # The value, e.g., 50.00 or flat amount like 1500
     is_percentage = db.Column(db.Boolean, default=True) # Flag: True=%, False=Flat Amount
@@ -409,6 +441,7 @@ class FeeInstallment(db.Model, AuditMixin):
     branch = db.Column(db.String(50))              # legacy string (keep for compat)
     branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
     academic_year = db.Column(db.String(20))
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
     
     fee_type = db.relationship("FeeType")
 
@@ -427,6 +460,7 @@ class FeePayment(db.Model, AuditMixin):
     branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
     location = db.Column(db.String(50), nullable=False)
     academic_year = db.Column(db.String(20), nullable=False)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
 
     # Student snapshot
     student_id = db.Column(db.Integer, db.ForeignKey("students.student_id"), nullable=False)
@@ -454,6 +488,12 @@ class FeePayment(db.Model, AuditMixin):
 
     note = db.Column(db.String(25))
     TransactionDetails=db.Column(db.String(100))
+
+    # Cheque Specific Fields
+    cheque_no = db.Column(db.String(50))
+    bank_name = db.Column(db.String(100))
+    cheque_date = db.Column(db.Date)
+    
     collected_by = db.Column(db.Integer) # User ID
     collected_by_name = db.Column(db.String(100)) # User Name (Added per request)
 
@@ -476,6 +516,8 @@ class OrgMaster(db.Model, AuditMixin):
     code = db.Column(db.String(50), nullable=False)
     display_name = db.Column(db.String(100), nullable=False)
     is_active = db.Column(db.Boolean, default=True)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
+    branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
     __table_args__ = (db.UniqueConstraint('master_type', 'code', name='_master_type_code_uc'),)
 
 
@@ -522,6 +564,7 @@ class UserBranchAccess(db.Model, AuditMixin):
 
     user_id = db.Column(db.Integer, db.ForeignKey("users.user_id"), nullable=False)
     branch_id = db.Column(db.Integer, db.ForeignKey("branches.id"), nullable=False)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
 
     start_date = db.Column(db.Date, nullable=False)
     end_date = db.Column(db.Date, nullable=True)  # NULL = Permanent
@@ -538,7 +581,36 @@ class UserBranchAccess(db.Model, AuditMixin):
 
     # Relationships
     branch = db.relationship("Branch", foreign_keys=[branch_id])
+    school = db.relationship("School", foreign_keys=[school_id])
+    user = db.relationship(
+        "User",
+        foreign_keys=[user_id]
+    )
 
+class UserSchoolAccess(db.Model, AuditMixin):
+    __tablename__ = "user_school_access"
+    __audit_module__ = "SYSTEM"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    user_id = db.Column(db.Integer, db.ForeignKey("users.user_id"), nullable=False)
+    school_id = db.Column(db.Integer, db.ForeignKey("schools.id"), nullable=False)
+
+    start_date = db.Column(db.Date, nullable=False)
+    end_date = db.Column(db.Date, nullable=True)  # NULL = Permanent
+    is_active = db.Column(db.Boolean, default=True)
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            'user_id', 
+            'school_id', 
+            'start_date', 
+            name='_user_school_start_uc'
+        ),
+    )
+
+    # Relationships
+    school = db.relationship("School", foreign_keys=[school_id])
     user = db.relationship(
         "User",
         foreign_keys=[user_id]
@@ -550,6 +622,7 @@ class BranchYearSequence(db.Model, AuditMixin):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     branch_id = db.Column(db.Integer, db.ForeignKey("branches.id"), nullable=False)
     academic_year_id = db.Column(db.Integer, db.ForeignKey("org_master.id"), nullable=False)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
     
     admission_prefix = db.Column(db.String(20), nullable=False)
     last_admission_no = db.Column(db.Integer, default=0, nullable=False)
@@ -577,6 +650,8 @@ class StudentAcademicRecord(db.Model, AuditMixin):
     promoted_date = db.Column(db.DateTime)
     is_locked = db.Column(db.Boolean, default=False)
     locked_at = db.Column(db.DateTime)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
+    branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
     
     student = db.relationship("Student", backref=db.backref("academic_records", lazy=True))
 
@@ -605,8 +680,10 @@ class Attendance(db.Model, AuditMixin):
     
     # Branch and Year Segregation
     branch = db.Column(db.String(50))
+    branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
     location = db.Column(db.String(50), default="Hyderabad")
     academic_year = db.Column(db.String(20))
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
 
     __table_args__ = (db.UniqueConstraint('student_id', 'date', name='_student_date_uc'),)
 
@@ -623,6 +700,7 @@ class WeeklyOffRule(db.Model, AuditMixin):
 
     branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='RESTRICT'), nullable=False)
     class_id = db.Column(db.Integer, db.ForeignKey('classes.id', ondelete='RESTRICT'), nullable=True)  # NULL = applies to all classes
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
 
     weekday = db.Column(db.Integer, nullable=False)      # 0=Monday … 6=Sunday
     week_number = db.Column(db.Integer, nullable=True)   # NULL=Every, 1-5=specific week of month
@@ -647,6 +725,7 @@ class HolidayCalendar(db.Model, AuditMixin):
 
     branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='RESTRICT'), nullable=False)
     class_id = db.Column(db.Integer, db.ForeignKey('classes.id', ondelete='RESTRICT'), nullable=True)  # NULL = applies to all classes
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
 
     title = db.Column(db.String(150), nullable=False)
 
@@ -682,9 +761,12 @@ class SubjectMaster(db.Model, AuditMixin):
     subject_name = db.Column(db.String(100), nullable=False)
     subject_name_urdu = db.Column(db.String(255), nullable=True)  # New field
 
-    subject_type = db.Column(db.Enum('Hifz', 'Academic'), default='Academic')
+    subject_type = db.Column(db.Enum('Deeniyath', 'Academic'), default='Academic')
     academic_year = db.Column(db.String(20)) # New: Scope to year
     is_active = db.Column(db.Boolean, default=True) # New: Active Status
+
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
+    branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
 
 class ClassSubjectAssignment(db.Model, AuditMixin):
     __tablename__ = "classsubjectassignment"
@@ -696,6 +778,7 @@ class ClassSubjectAssignment(db.Model, AuditMixin):
     location_name = db.Column(db.String(50), nullable=False)
     branch = db.Column(db.String(50), nullable=True)   # renamed from branch_name for consistency
     branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
 
     __table_args__ = (
         db.UniqueConstraint('class_id', 'subject_id', 'academic_year', 'location_name', 'branch_id', name='uq_classsubject_context'),
@@ -710,6 +793,7 @@ class StudentSubjectAssignment(db.Model, AuditMixin):
     academic_year = db.Column(db.String(50), nullable=False)
     branch = db.Column(db.String(50))              # legacy string (keep for compat)
     branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
     status = db.Column(db.Boolean, default=True) # 1=Assigned, 0=Removed
 
     __table_args__ = (
@@ -729,6 +813,8 @@ class TestType(db.Model, AuditMixin):
     academic_year = db.Column(db.String(20), nullable=False)
 
     is_active = db.Column(db.Boolean, default=True)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
+    branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
 
 
 
@@ -743,6 +829,7 @@ class TestAttendanceMonth(db.Model, AuditMixin):
     branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
     class_id = db.Column(db.Integer, nullable=False)
     academic_year = db.Column(db.String(20), nullable=False)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
     
     month = db.Column(db.Integer, nullable=False) # 1-12
     year = db.Column(db.Integer, nullable=False)
@@ -764,6 +851,7 @@ class ClassTest(db.Model, AuditMixin):
     branch = db.Column(db.String(50), nullable=False)  # legacy string (keep for compat)
     branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
     location = db.Column(db.String(50), nullable=False)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
     
     class_id = db.Column(db.Integer, nullable=False)
     test_id = db.Column(db.Integer, nullable=False)
@@ -785,6 +873,8 @@ class ClassTestSubject(db.Model, AuditMixin):
     subject_id = db.Column(db.Integer, db.ForeignKey("subjectmaster.id"), nullable=False)
     max_marks = db.Column(db.Integer, nullable=False)
     subject_order = db.Column(db.Integer, nullable=False)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
+    branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
 
     __table_args__ = (
         db.UniqueConstraint('class_test_id', 'subject_id', name='uniq_class_test_subject'),
@@ -802,6 +892,7 @@ class StudentTestAssignment(db.Model, AuditMixin):
     branch = db.Column(db.String(50))              # legacy string (keep for compat)
     branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
     location = db.Column(db.String(50), default="Hyderabad")
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
     
     status = db.Column(db.Boolean, default=True) # True=Assigned, False=Unassigned
 
@@ -823,6 +914,7 @@ class GradeScale(db.Model, AuditMixin):
     branch = db.Column(db.String(50), default="All")  # legacy string (keep for compat)
     branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
     academic_year = db.Column(db.String(50), nullable=False)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
     
     total_marks = db.Column(db.Integer, nullable=False, default=100) # Added default for migration safety, though should be explicit
 
@@ -845,6 +937,8 @@ class GradeScaleDetails(db.Model, AuditMixin):
     description = db.Column(db.String(255)) # Added per user request
 
     is_active = db.Column(db.Boolean, default=True)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
+    branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
     
     grade_scale = db.relationship("GradeScale", backref=db.backref("details", cascade="all, delete-orphan"))
 
@@ -871,6 +965,8 @@ class StudentMarks(db.Model, AuditMixin):
     branch = db.Column(db.String(100), nullable=False)
     class_id = db.Column(db.Integer, nullable=False)
     section = db.Column(db.String(20))
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
+    branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
 
     # Relationships
     student = db.relationship("Student")
@@ -892,6 +988,8 @@ class DocumentType(db.Model, AuditMixin):
     name = db.Column(db.String(100), nullable=False)
     description = db.Column(db.String(255))
     is_active = db.Column(db.Boolean, default=True)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
+    branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
 
 
 class StudentDocument(db.Model, AuditMixin):
@@ -911,6 +1009,8 @@ class StudentDocument(db.Model, AuditMixin):
     is_verified = db.Column(db.Boolean, default=False)
     verified_by = db.Column(db.Integer)
     verified_at = db.Column(db.DateTime)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
+    branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
     document_type = db.relationship("DocumentType")
     student = db.relationship("Student")
 
@@ -918,6 +1018,102 @@ class StudentDocument(db.Model, AuditMixin):
         db.UniqueConstraint('student_id', 'document_type_id', name='uq_student_doc_type'),
     )
 
+# ----------------------------------------------------------
+# PETTY CASH
+# ----------------------------------------------------------
+
+class PettyCashLedger(db.Model, AuditMixin):
+    __tablename__ = "petty_cash_ledger"
+    __audit_module__ = "PETTY_CASH"
+    
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    ledger_name = db.Column(db.String(255), nullable=False)
+    ledger_type = db.Column(db.Enum('Direct', 'Indirect'), nullable=False)
+    is_active = db.Column(db.Boolean, nullable=False, server_default=db.text('1'))
+
+
+class PettyCash(db.Model, AuditMixin):
+    __tablename__ = "petty_cash"
+    __audit_module__ = "PETTY_CASH"
+    
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    branch_id = db.Column(db.Integer, db.ForeignKey('branches.id'), nullable=False)
+    transaction_date = db.Column(db.Date, nullable=False)
+    voucher_name = db.Column(db.String(255), nullable=False)
+    voucher_type = db.Column(db.Enum('Payment', 'Received'), nullable=False)
+    ledger_id = db.Column(db.BigInteger, db.ForeignKey('petty_cash_ledger.id'), nullable=False)
+    paid_to = db.Column(db.String(255))
+    amount = db.Column(db.Numeric(12, 2), nullable=False)
+    payment_mode = db.Column(db.Enum('Cash', 'UPI'), nullable=False)
+    academic_year = db.Column(db.String(20), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    approval_status = db.Column(db.Enum('Pending', 'Approved', 'Rejected'), server_default='Pending', default='Pending')
+    approved_by = db.Column(db.Integer, db.ForeignKey('users.user_id'), nullable=True)
+    is_active = db.Column(db.Boolean, nullable=False, server_default=db.text('1'), default=True)
+
+    __table_args__ = (
+        db.Index('idx_petty_cash_branch_year', 'branch_id', 'academic_year'),
+        db.Index('idx_petty_cash_date', 'transaction_date'),
+    )
+
+    # Relationships of branches
+    branch = db.relationship("Branch")
+    ledger = db.relationship("PettyCashLedger")
+    items = db.relationship("PettyCashVoucherItem", backref="petty_cash_voucher", cascade="all, delete-orphan", lazy=True)
+
+
+class PettyCashVoucherItem(db.Model, AuditMixin):
+    __tablename__ = "petty_cash_voucher_items"
+    __audit_module__ = "PETTY_CASH"
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    petty_cash_id = db.Column(db.BigInteger, db.ForeignKey('petty_cash.id'), nullable=False)
+    item_name = db.Column(db.String(255), nullable=False)
+    amount = db.Column(db.Numeric(12, 2), nullable=False)
+
+class PettyCashFundAllocation(db.Model, AuditMixin):
+    __tablename__ = "petty_cash_fund_allocation"
+    __audit_module__ = "PETTY_CASH" 
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    branch_id = db.Column(db.Integer, db.ForeignKey('branches.id'), nullable=False)
+    allocation_date = db.Column(db.Date, nullable=False)
+    amount = db.Column(db.Numeric(12, 2), nullable=False)
+    remarks = db.Column(db.String(100), nullable=True)
+    approval_status = db.Column(db.Enum('Pending', 'Approved', 'Rejected'), server_default='Pending', default='Pending')
+    approved_by = db.Column(db.Integer, db.ForeignKey('users.user_id'), nullable=True)
+    approved_at = db.Column(db.DateTime, nullable=True)
+    academic_year = db.Column(db.String(20), nullable=False)
+    is_active = db.Column(db.Boolean, nullable=False, server_default=db.text('1'), default=True)
+
+    branch = db.relationship("Branch")
+
+# ----------------------------------------------------------
+# SMS LOG MODEL
+# ----------------------------------------------------------
+
+class SmsLog(db.Model, AuditMixin):
+    __tablename__ = "sms_logs"
+    __audit_module__ = "SMS"
+    id         = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    sms_type   = db.Column(db.String(50),  nullable=False)   # ATTENDANCE | FEE_RECEIPT | FEE_DUE
+    phone      = db.Column(db.String(20),  nullable=False)
+    message    = db.Column(db.Text,        nullable=False)
+    status     = db.Column(db.String(10),  nullable=False)   # sent | failed | skipped
+    reason     = db.Column(db.String(255), nullable=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('students.student_id'), nullable=True)
+    sent_at    = db.Column(db.DateTime,    nullable=False)
+    sent_by    = db.Column(db.Integer, db.ForeignKey('users.user_id'), nullable=True)
+    school_id  = db.Column(db.Integer, db.ForeignKey('schools.id',  ondelete='SET NULL'), nullable=True)
+    branch_id  = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
+
+    student = db.relationship('Student', foreign_keys=[student_id])
+
+    __table_args__ = (
+        db.Index('idx_sms_log_sent_at',        'sent_at'),
+        db.Index('idx_sms_log_type',            'sms_type'),
+        db.Index('idx_sms_log_school_branch',   'school_id', 'branch_id'),
+    )
 
 # ----------------------------------------------------------
 # GLOBAL AUDIT EVENT LISTENERS
@@ -968,7 +1164,7 @@ def receive_before_flush(session, flush_context, instances):
         return val
 
     # =========================================================
-    # AUTO-FILL created_by / updated_by on NEW objects
+    # AUTO-FILL created_by / updated_by / school_id / branch_id on NEW objects
     # =========================================================
     for obj in session.new:
         if isinstance(obj, AuditMixin) and not isinstance(obj, AuditLog):
@@ -980,6 +1176,21 @@ def receive_before_flush(session, flush_context, instances):
             if obj.created_at is None:
                 obj.created_at = now
             obj.updated_at = now
+
+            # Auto-fill tenant context if not explicitly set
+            if hasattr(obj, 'school_id'):
+                school_state = inspect(obj).attrs.school_id.history
+                if not school_state.added and getattr(obj, 'school_id', None) is None:
+                    s_id = getattr(g, 'school_id', None)
+                    if s_id is not None:
+                        obj.school_id = s_id
+
+            if hasattr(obj, 'branch_id'):
+                branch_state = inspect(obj).attrs.branch_id.history
+                if not branch_state.added and getattr(obj, 'branch_id', None) is None:
+                    b_id = getattr(g, 'branch_id', None)
+                    if b_id is not None:
+                        obj.branch_id = b_id
 
     # =========================================================
     # AUTO-FILL updated_by on DIRTY objects
@@ -1023,7 +1234,9 @@ def receive_before_flush(session, flush_context, instances):
             new_data=new_data,
             user_id=user_id,
             ip_address=ip_address,
-            timestamp=get_now()
+            timestamp=get_now(),
+            school_id=getattr(g, 'school_id', getattr(obj, 'school_id', None)),
+            branch_id=getattr(g, 'branch_id', getattr(obj, 'branch_id', None))
         )
 
         session.add(log)
@@ -1078,7 +1291,9 @@ def receive_before_flush(session, flush_context, instances):
                 new_data=new_data,
                 user_id=user_id,
                 ip_address=ip_address,
-                timestamp=get_now()
+                timestamp=get_now(),
+                school_id=getattr(g, 'school_id', getattr(obj, 'school_id', None)),
+                branch_id=getattr(g, 'branch_id', getattr(obj, 'branch_id', None))
             )
 
             session.add(log)
@@ -1115,7 +1330,112 @@ def receive_before_flush(session, flush_context, instances):
             new_data=None,
             user_id=user_id,
             ip_address=ip_address,
-            timestamp=get_now()
+            timestamp=get_now(),
+            school_id=getattr(g, 'school_id', getattr(obj, 'school_id', None)),
+            branch_id=getattr(g, 'branch_id', getattr(obj, 'branch_id', None))
         )
 
         session.add(log)
+
+
+# ----------------------------------------------------------
+# AUTOMATIC MULTI-TENANT QUERY SCOPING
+# ----------------------------------------------------------
+from sqlalchemy.orm import Query
+
+@event.listens_for(Query, "before_compile", retval=True)
+def before_compile_scoping(query):
+    # Only run inside request context
+    if not has_request_context():
+        return query
+
+    # If g is not populated or user_id is missing, do nothing
+    if not g or not getattr(g, 'user_id', None):
+        return query
+        
+    # Prevent infinite recursion/re-entry
+    if getattr(g, '_in_scoping', False):
+        return query
+        
+    g._in_scoping = True
+    try:
+        from models import User
+        user = User.query.get(g.user_id)
+        if not user:
+            return query
+            
+        from helpers import get_effective_role_name, get_user_allowed_schools, get_user_allowed_branches
+        role = get_effective_role_name(user)
+        if role == 'SuperAdmin':
+            return query
+            
+        # Capture numeric values of limit and offset before stripping
+        limit_val = None
+        offset_val = None
+        
+        limit_clause = getattr(query, '_limit_clause', None)
+        offset_clause = getattr(query, '_offset_clause', None)
+        
+        if limit_clause is not None:
+            if hasattr(limit_clause, 'value'):
+                limit_val = limit_clause.value
+            else:
+                try:
+                    limit_val = int(limit_clause)
+                except (ValueError, TypeError):
+                    pass
+                    
+        if offset_clause is not None:
+            if hasattr(offset_clause, 'value'):
+                offset_val = offset_clause.value
+            else:
+                try:
+                    offset_val = int(offset_clause)
+                except (ValueError, TypeError):
+                    pass
+
+        has_pagination = (limit_val is not None or offset_val is not None)
+        
+        # Create non-paginated clone for scoping
+        clone_query = query.limit(None).offset(None)
+
+        # Inspect query's entities to see if we should apply scoping
+        for desc in clone_query.column_descriptions:
+            model = desc.get('type')
+            if not model or not isinstance(model, type) or not hasattr(model, '__name__'):
+                continue
+                
+            # Skip core models to keep system functioning smoothly without cycles
+            if model.__name__ in ('User', 'School', 'Branch', 'OrgMaster', 'Role', 'Permission', 'RolePermission', 'UserBranchAccess', 'UserSchoolAccess', 'AuditLog', 'ClassMaster'):
+                continue
+                
+            # Apply school_id scoping if model has school_id column
+            if hasattr(model, 'school_id'):
+                s_id = getattr(g, 'school_id', None)
+                if s_id is not None:
+                    clone_query = clone_query.filter((model.school_id == s_id) | (model.school_id.is_(None)))
+                else:
+                    allowed_schools = get_user_allowed_schools(user)
+                    if not allowed_schools['is_unlimited'] and allowed_schools['ids']:
+                        clone_query = clone_query.filter((model.school_id.in_(allowed_schools['ids'])) | (model.school_id.is_(None)))
+                        
+            # Apply branch_id scoping if model has branch_id column
+            if hasattr(model, 'branch_id'):
+                b_id = getattr(g, 'branch_id', None)
+                if b_id is not None:
+                    clone_query = clone_query.filter((model.branch_id == b_id) | (model.branch_id.is_(None)))
+                else:
+                    allowed_branches = get_user_allowed_branches(user)
+                    if not allowed_branches['is_unlimited'] and allowed_branches['ids']:
+                        clone_query = clone_query.filter((model.branch_id.in_(allowed_branches['ids'])) | (model.branch_id.is_(None)))
+        # Restore original limit and offset if they were present
+        if has_pagination:
+            if limit_val is not None:
+                clone_query = clone_query.limit(limit_val)
+            if offset_val is not None:
+                clone_query = clone_query.offset(offset_val)
+        query = clone_query
+    finally:
+        g._in_scoping = False
+       
+    return query

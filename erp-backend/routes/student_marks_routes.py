@@ -12,7 +12,8 @@ from helpers import token_required, ensure_student_editable
 student_marks_bp = Blueprint('student_marks_bp', __name__)
 
 @student_marks_bp.route('/api/marks/entry/subject', methods=['GET'])
-def get_marks_entry_grid():
+@token_required
+def get_marks_entry_grid(current_user):
     try: 
         academic_year = request.args.get('academic_year')
         branch = request.args.get('branch')
@@ -24,14 +25,40 @@ def get_marks_entry_grid():
         if not all([academic_year, branch, class_id, test_id, subject_id]):
             return jsonify({"error": "Missing required parameters"}), 400
 
+        # Resolve branch to specific branch object
+        from models import Branch
+        branch_obj = None
+        if branch:
+            if str(branch).isdigit():
+                branch_obj = Branch.query.get(int(branch))
+            else:
+                branch_obj = Branch.query.filter_by(branch_name=branch, is_active=True).first()
+                if not branch_obj:
+                    branch_obj = Branch.query.filter_by(branch_code=branch, is_active=True).first()
+
         # 1. Resolve ClassTest ID
         # We need to find the specific class_test instance for this class/year/test type
-        class_test = ClassTest.query.filter_by(
-            academic_year=academic_year,
-            branch=branch,
-            class_id=class_id,
-            test_id=test_id
-        ).first()
+        if branch_obj:
+            class_test = ClassTest.query.filter_by(
+                academic_year=academic_year,
+                branch_id=branch_obj.id,
+                class_id=class_id,
+                test_id=test_id
+            ).first()
+            if not class_test:
+                class_test = ClassTest.query.filter_by(
+                    academic_year=academic_year,
+                    branch=branch_obj.branch_name,
+                    class_id=class_id,
+                    test_id=test_id
+                ).first()
+        else:
+            class_test = ClassTest.query.filter_by(
+                academic_year=academic_year,
+                branch=branch,
+                class_id=class_id,
+                test_id=test_id
+            ).first()
 
         if not class_test:
             return jsonify({"error": "Test not configured for this class"}), 404
@@ -52,10 +79,10 @@ def get_marks_entry_grid():
         class_name_val = class_obj.class_name if class_obj else str(class_id)
 
         # 3. Fetch Students
-        # Must be:
-        # a) In the class/section (StudentAcademicRecord)
-        # b) Assigned to the subject (StudentSubjectAssignment)
-        # c) (Optional) Explicitly assigned to test? Relaxing this to allow implicit inclusion.
+        if branch_obj:
+            student_branch_cond = (Student.branch_id == branch_obj.id) | (Student.branch == branch_obj.branch_name)
+        else:
+            student_branch_cond = (Student.branch == branch)
 
         query = db.session.query(
             Student.student_id,
@@ -74,7 +101,7 @@ def get_marks_entry_grid():
         ).filter(
             StudentAcademicRecord.academic_year == academic_year,
             StudentAcademicRecord.class_name == class_name_val,
-            Student.branch == branch, 
+            student_branch_cond, 
             Student.status == 'Active',
             
             # Subject Assignment Checks
@@ -231,6 +258,14 @@ def save_marks_entry(current_user):
                 except ValueError:
                     return jsonify({"error": f"Invalid format for student {student_id}: {raw_value}"}), 400
 
+            # Resolve branch name if it is an ID
+            from models import Branch
+            branch_name = branch
+            if branch and str(branch).isdigit():
+                branch_obj = Branch.query.get(int(branch))
+                if branch_obj:
+                    branch_name = branch_obj.branch_name
+
             # Upsert
             existing = StudentMarks.query.filter_by(
                 student_id=student_id,
@@ -249,7 +284,7 @@ def save_marks_entry(current_user):
                     marks_obtained=marks_obtained,
                     is_absent=is_absent,
                     academic_year=academic_year,
-                    branch=branch,
+                    branch=branch_name,
                     class_id=class_id,
                     section=section
                 )

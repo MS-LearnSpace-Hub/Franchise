@@ -16,6 +16,7 @@ interface UserRow {
   school_name: string | null;
   branch_id: number | null;
   branch_name: string | null;
+  branch_ids?: number[];
 }
 interface RoleOption { id: number; name: string; is_active: boolean; }
 
@@ -38,18 +39,31 @@ const UserManagement: React.FC = () => {
   const [roles, setRoles] = useState<RoleOption[]>([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [activeTab, setActiveTab] = useState<'basic' | 'roles' | 'schools' | 'branches'>('basic');
 
   // Form state
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<{
+    username: string;
+    password: string;
+    useremail: string;
+    role: string;
+    role_id: string;
+    school_id: string;
+    school_ids: number[];
+    branch_id: string;
+    branch_ids: number[];
+  }>({
     username: '',
     password: '',
     useremail: '',
     role: 'User',
     role_id: '',
     school_id: '',
+    school_ids: [],
     branch_id: '',
+    branch_ids: [],
   });
 
   // Filter state
@@ -107,7 +121,9 @@ const UserManagement: React.FC = () => {
   }, [roles, form.role, form.role_id]);
 
   // ── Filtered branches (by selected school in form) ─────────────────────────
-  const filteredBranches = form.school_id
+  const filteredBranches = form.school_ids && form.school_ids.length > 0
+    ? branches.filter(b => b.school_id !== null && form.school_ids.includes(b.school_id))
+    : form.school_id
     ? branches.filter(b => String(b.school_id) === form.school_id)
     : branches;
 
@@ -115,8 +131,9 @@ const UserManagement: React.FC = () => {
 
   const resetForm = () => {
     const userRole = roles.find(r => r.name === 'User');
-    setForm({ username: '', password: '', useremail: '', role: 'User', role_id: userRole ? String(userRole.id) : '', school_id: '', branch_id: '' });
+    setForm({ username: '', password: '', useremail: '', role: 'User', role_id: userRole ? String(userRole.id) : '', school_id: '', school_ids: [], branch_id: '', branch_ids: [] });
     setEditingId(null);
+    setActiveTab('basic');
     setShowForm(false);
     setMessage(null);
   };
@@ -126,7 +143,7 @@ const UserManagement: React.FC = () => {
     setShowForm(true);
   };
 
-  const openEdit = (u: UserRow) => {
+  const openEdit = (u: any) => {
     setForm({
       username: u.username,
       password: '',
@@ -134,9 +151,12 @@ const UserManagement: React.FC = () => {
       role: u.role,
       role_id: u.role_id ? String(u.role_id) : '',
       school_id: u.school_id ? String(u.school_id) : '',
+      school_ids: u.school_ids || [],
       branch_id: u.branch_id ? String(u.branch_id) : '',
+      branch_ids: u.branch_ids || [],
     });
     setEditingId(u.user_id);
+    setActiveTab('basic');
     setShowForm(true);
     setMessage(null);
   };
@@ -157,8 +177,12 @@ const UserManagement: React.FC = () => {
           role_id: form.role_id ? Number(form.role_id) : null,
           useremail: form.useremail,
           branch_id: form.branch_id ? Number(form.branch_id) : null,
+          branch_ids: form.branch_ids,
         };
-        if (isSuperAdmin) payload.school_id = form.school_id ? Number(form.school_id) : null;
+        if (isSuperAdmin) {
+          payload.school_id = form.school_id ? Number(form.school_id) : null;
+          payload.school_ids = form.school_ids;
+        }
         await api.put(`/users/${editingId}`, payload);
         setMessage({ type: 'success', text: 'User updated successfully' });
       } else {
@@ -171,13 +195,15 @@ const UserManagement: React.FC = () => {
           role_id: form.role_id ? Number(form.role_id) : undefined,
           branch_id: form.branch_id ? Number(form.branch_id) : undefined,
           school_id: form.school_id ? Number(form.school_id) : undefined,
+          school_ids: form.school_ids,
+          branch_ids: form.branch_ids,
         };
         await api.post('/users/add', payload);
         setMessage({ type: 'success', text: 'User created successfully' });
       }
       fetchUsers();
       const userRole = roles.find(r => r.name === 'User');
-      setForm({ username: '', password: '', useremail: '', role: 'User', role_id: userRole ? String(userRole.id) : '', school_id: '', branch_id: '' });
+      setForm({ username: '', password: '', useremail: '', role: 'User', role_id: userRole ? String(userRole.id) : '', school_id: '', school_ids: [], branch_id: '', branch_ids: [] });
       setEditingId(null);
       setShowForm(false);
       // Don't clear message here so success banner shows
@@ -250,7 +276,7 @@ const UserManagement: React.FC = () => {
       {/* ── Create / Edit Form Modal ─────────────────────────────────────────── */}
       {showForm && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between p-5 border-b">
               <h2 className="text-lg font-bold text-gray-900">
                 {editingId ? 'Edit User' : 'Create New User'}
@@ -262,7 +288,57 @@ const UserManagement: React.FC = () => {
               </button>
             </div>
 
-            <div className="p-5 space-y-4">
+            {/* Tabs Header */}
+            <div className="flex border-b border-gray-200 bg-slate-50">
+              <button
+                type="button"
+                onClick={() => setActiveTab('basic')}
+                className={`flex-1 py-3 text-center text-xs font-semibold border-b-2 transition-colors ${
+                  activeTab === 'basic'
+                    ? 'border-blue-600 text-blue-600 bg-white'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                Basic Info
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('roles')}
+                className={`flex-1 py-3 text-center text-xs font-semibold border-b-2 transition-colors ${
+                  activeTab === 'roles'
+                    ? 'border-blue-600 text-blue-600 bg-white'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                Roles
+              </button>
+              {isSuperAdmin && (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('schools')}
+                  className={`flex-1 py-3 text-center text-xs font-semibold border-b-2 transition-colors ${
+                    activeTab === 'schools'
+                      ? 'border-blue-600 text-blue-600 bg-white'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  Schools
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setActiveTab('branches')}
+                className={`flex-1 py-3 text-center text-xs font-semibold border-b-2 transition-colors ${
+                  activeTab === 'branches'
+                    ? 'border-blue-600 text-blue-600 bg-white'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                Branches
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 max-h-[60vh] overflow-y-auto">
               {message && (
                 <div className={`p-3 rounded-lg text-sm ${message.type === 'success'
                   ? 'bg-green-50 text-green-700 border border-green-200'
@@ -271,120 +347,210 @@ const UserManagement: React.FC = () => {
                 </div>
               )}
 
-              {/* Username (only when creating) */}
-              {!editingId && (
-                <div>
-                  <label htmlFor="um-username" className="block text-sm font-medium text-gray-700 mb-1">Username *</label>
-                  <input
-                    type="text"
-                    value={form.username}
-                    onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="e.g. vizag_admin"
-                    id="um-username"
-                  />
+              {/* TAB 1: BASIC INFO */}
+              {activeTab === 'basic' && (
+                <div className="space-y-4">
+                  {/* Username (only when creating) */}
+                  {!editingId ? (
+                    <div>
+                      <label htmlFor="um-username" className="block text-sm font-medium text-gray-700 mb-1">Username *</label>
+                      <input
+                        type="text"
+                        value={form.username}
+                        onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="e.g. vizag_admin"
+                        id="um-username"
+                      />
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-500 mb-1">Username</label>
+                      <div className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-600 font-semibold">
+                        {form.username}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Email */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
+                    <input
+                      type="email"
+                      value={form.useremail}
+                      onChange={e => setForm(f => ({ ...f, useremail: e.target.value }))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="user@school.com"
+                      id="um-email"
+                    />
+                  </div>
+
+                  {/* Password (only when creating) */}
+                  {!editingId && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Password *</label>
+                      <input
+                        type="password"
+                        value={form.password}
+                        onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Min 8 characters"
+                        id="um-password"
+                      />
+                    </div>
+                  )}
                 </div>
               )}
 
-              {/* Email */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
-                <input
-                  type="email"
-                  value={form.useremail}
-                  onChange={e => setForm(f => ({ ...f, useremail: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="user@school.com"
-                  id="um-email"
-                />
-              </div>
-
-              {/* Password (only when creating) */}
-              {!editingId && (
+              {/* TAB 2: ROLES */}
+              {activeTab === 'roles' && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Password *</label>
-                  <input
-                    type="password"
-                    value={form.password}
-                    onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Min 8 characters"
-                    id="um-password"
-                  />
-                </div>
-              )}
-
-              {/* Role */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
-                <select
-                  value={form.role_id || (roles.find(r => r.name === form.role)?.id ?? form.role)}
-                  onChange={e => {
-                    const selected = roles.find(r => String(r.id) === e.target.value);
-                    setForm(f => ({
-                      ...f,
-                      role_id: selected ? String(selected.id) : '',
-                      role: selected ? selected.name : e.target.value,
-                    }));
-                  }}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  id="um-role"
-                >
-                  {roles.length > 0
-                    ? roles
-                      .filter(r => r.is_active && (isSuperAdmin || r.name !== 'SuperAdmin'))
-                      .map(r => <option key={r.id} value={r.id}>{r.name}</option>)
-                    : ROLES.filter(r => isSuperAdmin || r !== 'SuperAdmin').map(r => (
-                      <option key={r} value={r}>{r}</option>
-                    ))}                </select>
-              </div>
-
-              {/* School (SuperAdmin only) */}
-              {isSuperAdmin && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">School</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2 font-semibold">Assigned Role *</label>
                   <select
-                    value={form.school_id}
-                    onChange={e => setForm(f => ({ ...f, school_id: e.target.value, branch_id: '' }))}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    id="um-school"
+                    value={form.role_id || (roles.find(r => r.name === form.role)?.id ?? form.role)}
+                    onChange={e => {
+                      const selected = roles.find(r => String(r.id) === e.target.value);
+                      setForm(f => ({
+                        ...f,
+                        role_id: selected ? String(selected.id) : '',
+                        role: selected ? selected.name : e.target.value,
+                      }));
+                    }}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                    id="um-role"
                   >
-                    <option value="">-- Select School --</option>
-                    {schools.map(s => (
-                      <option key={s.id} value={s.id}>{s.school_name}</option>
-                    ))}
+                    {roles.length > 0 ? (
+                      <>
+                        {roles
+                          .filter(r => r.is_active && (isSuperAdmin || r.name !== 'SuperAdmin'))
+                          .map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                        {!roles.some(r => r.id === Number(form.role_id) || r.name === form.role) && form.role && (
+                          <option value={form.role_id || form.role}>{form.role}</option>
+                        )}
+                      </>
+                    ) : (
+                      ROLES.filter(r => isSuperAdmin || r !== 'SuperAdmin').map(r => (
+                        <option key={r} value={r}>{r}</option>
+                      ))
+                    )}
                   </select>
+                  <p className="text-xs text-gray-500 mt-2">
+                    Roles define user permissions across the platform. Changing roles may affect which modules are accessible.
+                  </p>
                 </div>
               )}
 
-              {/* Branch */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Branch</label>
-                <select
-                  value={form.branch_id}
-                  onChange={e => setForm(f => ({ ...f, branch_id: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  id="um-branch"
-                >
-                  <option value="">-- Select Branch --</option>
-                  {filteredBranches.map(b => (
-                    <option key={b.id} value={b.id}>{b.branch_name}</option>
-                  ))}
-                </select>
-              </div>
+              {/* TAB 3: SCHOOL ACCESS */}
+              {activeTab === 'schools' && isSuperAdmin && (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Primary School</label>
+                    <select
+                      value={form.school_id}
+                      onChange={e => setForm(f => ({ ...f, school_id: e.target.value }))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                      id="um-school"
+                    >
+                      <option value="">-- Select School --</option>
+                      {schools.map(s => (
+                        <option key={s.id} value={s.id}>{s.school_name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2 font-semibold">Assigned Schools</label>
+                    <div className="grid grid-cols-1 gap-2 p-3 bg-slate-50 border border-gray-200 rounded-lg max-h-48 overflow-y-auto">
+                      {schools.length === 0 ? (
+                        <span className="text-gray-400 text-xs">No schools available</span>
+                      ) : (
+                        schools.map(s => {
+                          const isChecked = form.school_ids.includes(s.id);
+                          return (
+                            <label key={s.id} className="flex items-center space-x-3 text-sm text-gray-700 hover:bg-slate-100 p-2 rounded cursor-pointer transition-colors">
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => {
+                                  setForm(f => {
+                                    const newSchoolIds = f.school_ids.includes(s.id)
+                                      ? f.school_ids.filter(id => id !== s.id)
+                                      : [...f.school_ids, s.id];
+                                    return {
+                                      ...f,
+                                      school_ids: newSchoolIds,
+                                      // Auto-set primary if empty
+                                      school_id: f.school_id ? f.school_id : (newSchoolIds.length > 0 ? String(newSchoolIds[0]) : '')
+                                    };
+                                  });
+                                }}
+                                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                              />
+                              <span className="font-medium text-gray-900">{s.school_name}</span>
+                            </label>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 4: BRANCH ACCESS */}
+              {activeTab === 'branches' && (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2 font-semibold">Assigned Branches</label>
+                    <div className="grid grid-cols-1 gap-2 p-3 bg-slate-50 border border-gray-200 rounded-lg max-h-56 overflow-y-auto">
+                      {filteredBranches.length === 0 ? (
+                        <span className="text-gray-400 text-xs">No branches available for the selected school(s)</span>
+                      ) : (
+                        filteredBranches.map(b => {
+                          const isChecked = form.branch_ids.includes(b.id);
+                          return (
+                            <label key={b.id} className="flex items-center space-x-3 text-sm text-gray-700 hover:bg-slate-100 p-2 rounded cursor-pointer transition-colors">
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => {
+                                  setForm(f => {
+                                    const newBranchIds = f.branch_ids.includes(b.id)
+                                      ? f.branch_ids.filter(id => id !== b.id)
+                                      : [...f.branch_ids, b.id];
+                                    return {
+                                      ...f,
+                                      branch_ids: newBranchIds,
+                                      branch_id: newBranchIds.length > 0 ? String(newBranchIds[0]) : '',
+                                    };
+                                  });
+                                }}
+                                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                              />
+                              <div className="flex flex-col">
+                                <span className="font-medium text-gray-900">{b.branch_name}</span>
+                                <span className="text-gray-400 text-xs">({b.branch_code})</span>
+                              </div>
+                            </label>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
-            <div className="flex gap-3 p-5 border-t">
+            <div className="flex gap-3 p-5 border-t bg-slate-50">
               <button
                 onClick={handleSave}
-                className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+                className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow"
                 id="um-save-btn"
               >
                 {editingId ? 'Update User' : 'Create User'}
               </button>
               <button
                 onClick={resetForm}
-                className="flex-1 bg-gray-100 text-gray-700 py-2 px-4 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors"
+                className="flex-1 bg-white border border-gray-300 text-gray-700 py-2 px-4 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
               >
                 Cancel
               </button>

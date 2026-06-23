@@ -1,12 +1,15 @@
+# pyrefly: ignore [missing-import]
 from flask import Blueprint, jsonify, request
 from extensions import db, get_now, get_today
 from models import Student, StudentFee, FeePayment, Branch, FeeInstallment, Concession, ClassFeeStructure, StudentAcademicRecord, FeeType
-from helpers import token_required, require_academic_year, normalize_fee_title, assign_fee_to_student, require_editable_student, ensure_student_editable
+from helpers import token_required, require_academic_year, normalize_fee_title, assign_fee_to_student, require_editable_student, ensure_student_editable, get_user_allowed_branches, has_permission
 from services.sequence_service import SequenceService
 from datetime import datetime, date
 from decimal import Decimal
 from sqlalchemy import func, or_, and_
 import traceback
+import logging
+logger = logging.getLogger(__name__)
 
 bp = Blueprint('fee_transaction_routes', __name__)
 
@@ -27,10 +30,15 @@ def get_fee_students(current_user):
         return err, code
     
     # STRICT BRANCH ENFORCEMENT
-    if current_user.role != 'Admin':
-         h_branch = current_user.branch
-    elif not h_branch:
-         h_branch = "All"
+    allowed = get_user_allowed_branches(current_user)
+    if not allowed['is_unlimited']:
+        if h_branch and h_branch != "All" and h_branch in allowed['names']:
+            pass
+        else:
+            h_branch = None
+    else:
+        if not h_branch:
+            h_branch = "All"
     
     # HISTORY-AWARE QUERY
     # query selects: Student, StudentAcademicRecord, total, paid, due, concession
@@ -59,17 +67,25 @@ def get_fee_students(current_user):
     )
 
     # STRICT BRANCH SEGREGATION
-    if current_user.role == 'Admin':
-         # Admins: Check Query Param first, then Header
-         branch_param = request.args.get("branch")
-         if branch_param and branch_param != "All":
-             q = q.filter(Student.branch == branch_param)
-         elif branch_param == "All":
-             pass # Explicitly show all
-         elif h_branch and h_branch != "All":
-             q = q.filter(Student.branch == h_branch)
-    elif current_user.branch != 'All':
-         q = q.filter(Student.branch == current_user.branch)
+    branch_param = request.args.get("branch")
+    allowed = get_user_allowed_branches(current_user)
+    if not allowed['is_unlimited']:
+        if branch_param and branch_param != "All":
+            if branch_param in allowed['names']:
+                q = q.filter(Student.branch == branch_param)
+            else:
+                q = q.filter(Student.branch.in_(list(allowed['names'])))
+        else:
+            if h_branch:
+                q = q.filter(Student.branch == h_branch)
+            else:
+                q = q.filter(Student.branch.in_(list(allowed['names'])))
+    else:
+        # SuperAdmin
+        if branch_param and branch_param != "All":
+            q = q.filter(Student.branch == branch_param)
+        elif h_branch and h_branch != "All":
+            q = q.filter(Student.branch == h_branch)
 
     if class_name:
         q = q.filter(StudentAcademicRecord.class_name == class_name) # Use Record's class
@@ -84,6 +100,7 @@ def get_fee_students(current_user):
                 Student.StudentMiddleName.like(like),
                 Student.last_name.like(like),
                 Student.admission_no.like(like),
+                Student.enrollment_no.like(like),
             )
         )
     
@@ -97,6 +114,7 @@ def get_fee_students(current_user):
             "fatherName": s.Fatherfirstname,
             "fatherPhone": s.FatherPhone or s.SmsNo or s.phone,
             "admNo": s.admission_no,
+            "enrollment_no": s.enrollment_no,
             "branch": s.branch,
             "class": record.class_name,
             "section": record.section,
@@ -120,10 +138,12 @@ def get_student_fees_detail(current_user, student_id):
         h_year = request.headers.get("X-Academic-Year")
         
         # Verify Student belongs to user's branch
-        if current_user.role != 'Admin':
-            student = Student.query.get(student_id)
-            if not student or (current_user.branch != 'All' and student.branch != current_user.branch):
-                return jsonify({"error": "Unauthorized access to student data"}), 403
+        student = Student.query.get(student_id)
+        if not student:
+            return jsonify({"error": "Student not found"}), 404
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited'] and student.branch not in allowed['names']:
+            return jsonify({"error": "Unauthorized access to student data"}), 403
         
         # Use join to filter by Student's branch
         q = StudentFee.query.join(Student).filter(StudentFee.student_id == student_id, StudentFee.is_active == True)
@@ -209,7 +229,7 @@ def get_student_fees_detail(current_user, student_id):
         return jsonify({"error": str(e)}), 500
 
 
-def _process_fee_allocation(alloc, student, receipt_no, payment_mode, payment_date, note, transaction_details, current_user):
+def _process_fee_allocation(alloc, student, receipt_no, payment_mode, payment_date, note, transaction_details, current_user, cheque_no=None, bank_name=None, cheque_date=None):
     amount = Decimal(str(alloc.get("amount", 0)))
     concession_val = Decimal(str(alloc.get("concession_amount", 0)))
     if amount <= 0 and concession_val <= 0:
@@ -218,6 +238,15 @@ def _process_fee_allocation(alloc, student, receipt_no, payment_mode, payment_da
     sf = StudentFee.query.get(alloc.get("student_fee_id"))
     if not sf or not sf.is_active:
         return Decimal(0)
+
+    # Verify student fee record matches requested student
+    if sf.student_id != student.student_id:
+        raise ValueError(f"Student fee record does not belong to student {student.student_id}")
+
+    # Enforce allowed branch boundaries
+    allowed = get_user_allowed_branches(current_user)
+    if not allowed['is_unlimited'] and student.branch not in allowed['names']:
+        raise PermissionError("Unauthorized branch access for this student fee record")
 
     sf.paid_amount = (sf.paid_amount or Decimal(0)) + amount
     sf.concession = (sf.concession or Decimal(0)) + concession_val
@@ -269,6 +298,9 @@ def _process_fee_allocation(alloc, student, receipt_no, payment_mode, payment_da
         payment_year=payment_date.year,
         note=note,
         TransactionDetails=transaction_details,
+        cheque_no=cheque_no,
+        bank_name=bank_name,
+        cheque_date=cheque_date,
         collected_by=current_user.user_id,
         collected_by_name=current_user.username 
     )
@@ -309,14 +341,35 @@ def record_fee_payment(current_user):
                 "error": "UPI/Card Transaction Description is required for UPI and CardSwap payments."
             }), 400
 
+    cheque_no = data.get("cheque_no")
+    bank_name = data.get("bank_name")
+    cheque_date_str = data.get("cheque_date")
+    cheque_date_val = None
+
+    if payment_mode == "Cheque":
+        if not cheque_no or not str(cheque_no).strip():
+            return jsonify({"error": "Cheque No is required for Cheque payments."}), 400
+        if not bank_name or not str(bank_name).strip():
+            return jsonify({"error": "Bank Name is required for Cheque payments."}), 400
+        if not cheque_date_str or not str(cheque_date_str).strip():
+            return jsonify({"error": "Cheque Date is required for Cheque payments."}), 400
+        
+        try:
+            cheque_date_val = datetime.strptime(cheque_date_str, "%Y-%m-%d").date()
+        except ValueError:
+            return jsonify({"error": "Invalid Cheque Date format. Use YYYY-MM-DD"}), 400
+
+
     h_year, err, code = require_academic_year()
     if err:
         return err, code
 
-    if current_user.role != 'Admin':
-        student = Student.query.get(student_id)
-        if not student or student.branch != current_user.branch:
-            return jsonify({"error": "Unauthorized: Cannot accept fees for student from another branch"}), 403
+    student = Student.query.get(student_id)
+    if not student:
+        return jsonify({"error": "Student not found"}), 404
+    allowed = get_user_allowed_branches(current_user)
+    if not allowed['is_unlimited'] and student.branch not in allowed['names']:
+        return jsonify({"error": "Unauthorized: Cannot accept fees for student from another branch"}), 403
     
     if not student_id or not allocations:
         return jsonify({"error": "Student ID and Allocations are required"}), 400
@@ -356,6 +409,12 @@ def record_fee_payment(current_user):
             "transaction_detials":transaction_details
         }), 201
     
+    except PermissionError as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 403
+    except ValueError as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 400
     except Exception as e:
         db.session.rollback()
         traceback.print_exc()
@@ -367,10 +426,12 @@ def get_student_payment_history(current_user, student_id):
     """Fetch all payments for a student"""
     try:
         # Check permissions
-        if current_user.role != 'Admin':
-            student = Student.query.get(student_id)
-            if not student or (current_user.branch != 'All' and student.branch != current_user.branch):
-                return jsonify({"error": "Unauthorized"}), 403
+        student = Student.query.get(student_id)
+        if not student:
+            return jsonify({"error": "Student not found"}), 404
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited'] and student.branch not in allowed['names']:
+            return jsonify({"error": "Unauthorized"}), 403
         
         # Filter by Academic Year (SMART FILTER)
         h_year = request.headers.get("X-Academic-Year")
@@ -445,6 +506,13 @@ def delete_fee_payment(current_user, payment_id):
         if not reason:
              return jsonify({"error": "Cancellation reason is required"}), 400
 
+        logger.info("User %s is attempting to cancel payment %s. Reason: %s", current_user.username, payment_id, reason)
+
+        # Permission Check
+        if not has_permission(current_user, "fees.fee.take-fee", "delete"):
+            logger.warning("User %s attempted to cancel payment %s without delete permission.", current_user.username, payment_id)
+            return jsonify({"error": "Forbidden: missing permission"}), 403
+
         payment = FeePayment.query.get(payment_id)
         if not payment:
             return jsonify({"error": "Payment not found"}), 404
@@ -453,7 +521,9 @@ def delete_fee_payment(current_user, payment_id):
             return jsonify({"error": "Payment is already cancelled"}), 400
 
         # Permission Check
-        if current_user.role != 'Admin' and payment.branch != current_user.branch:
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited'] and payment.branch not in allowed['names']:
+             logger.warning("User %s attempted to cancel payment %s for branch %s without branch access.", current_user.username, payment_id, payment.branch)
              return jsonify({"error": "Unauthorized"}), 403
 
         # Revert Logic
@@ -530,8 +600,9 @@ def assign_special_fee(current_user):
         student_map = {s.student_id: s for s in students}
 
         # Validate Access
-        if current_user.role != 'Admin' and current_user.branch != 'All':
-            if unauthorized_ids := [sid for sid, s in student_map.items() if s.branch != current_user.branch]:
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited']:
+            if unauthorized_ids := [sid for sid, s in student_map.items() if s.branch not in allowed['names']]:
                 return jsonify({"error": "Unauthorized access to some students"}), 403
 
         # Process Assignments
@@ -625,7 +696,8 @@ def add_student_fee(current_user):
         if not student:
             return jsonify({"error": "Student not found"}), 404
             
-        if current_user.role != 'Admin' and current_user.branch != 'All' and student.branch != current_user.branch:
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited'] and student.branch not in allowed['names']:
              return jsonify({"error": "Unauthorized"}), 403
              
         # Create Fee
@@ -677,7 +749,8 @@ def update_student_fee(current_user, fee_id):
              
         # Check permissions
         student = Student.query.get(sf.student_id)
-        if current_user.role != 'Admin' and current_user.branch != 'All' and student.branch != current_user.branch:
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited'] and student.branch not in allowed['names']:
              return jsonify({"error": "Unauthorized"}), 403
              
         # Validation
@@ -728,7 +801,8 @@ def delete_student_fee(current_user, fee_id):
              
         # Check permissions
         student = Student.query.get(sf.student_id)
-        if current_user.role != 'Admin' and current_user.branch != 'All' and student.branch != current_user.branch:
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited'] and student.branch not in allowed['names']:
              return jsonify({"error": "Unauthorized"}), 403
              
         if sf.paid_amount and sf.paid_amount > 0:
@@ -803,7 +877,8 @@ def assign_concession(current_user):
         if not student:
             return jsonify({"error": "Student not found"}), 404
             
-        if current_user.role != 'Admin' and current_user.branch != 'All' and student.branch != current_user.branch:
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited'] and student.branch not in allowed['names']:
              return jsonify({"error": "Unauthorized"}), 403
              
         # 2. Fetch Concession Template (All items for this title)
@@ -840,7 +915,8 @@ def assign_fee_type(current_user):
         if not student:
             return jsonify({"error": "Student not found"}), 404
             
-        if current_user.role != 'Admin' and current_user.branch != 'All' and student.branch != current_user.branch:
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited'] and student.branch not in allowed['names']:
              return jsonify({"error": "Unauthorized"}), 403
              
         # Check if already exists
@@ -913,7 +989,8 @@ def nullify_student_fees(current_user, student_id):
         if not student:
             return jsonify({"error": "Student not found"}), 404
 
-        if current_user.role != 'Admin' and current_user.branch != 'All' and student.branch != current_user.branch:
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited'] and student.branch not in allowed['names']:
             return jsonify({"error": "Unauthorized"}), 403
 
         # Fetch all active, unpaid installments for this student in this academic year
@@ -956,7 +1033,8 @@ def assign_standard_fees(current_user, student_id):
         if not student:
             return jsonify({"error": "Student not found"}), 404
 
-        if current_user.role != 'Admin' and current_user.branch != 'All' and student.branch != current_user.branch:
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited'] and student.branch not in allowed['names']:
             return jsonify({"error": "Unauthorized"}), 403
 
         from helpers import auto_enroll_student_fee
@@ -967,6 +1045,267 @@ def assign_standard_fees(current_user, student_id):
         db.session.commit()
 
         return jsonify({"message": "Standard fees assigned successfully."}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+@bp.route("/api/students/search", methods=["GET"])
+@token_required
+def search_students(current_user):
+    """Search students by admission_no or name."""
+    try:
+        q = request.args.get("q", "").strip()
+        search_type = request.args.get("type", "admission").lower()
+
+        if not q:
+            return jsonify({"students": []}), 200
+
+        h_year = request.headers.get("X-Academic-Year")
+        h_branch = request.headers.get("X-Branch")
+
+        # Base query
+        query = db.session.query(Student, StudentAcademicRecord)\
+            .outerjoin(StudentAcademicRecord,
+                and_(
+                    Student.student_id == StudentAcademicRecord.student_id,
+                    StudentAcademicRecord.academic_year == h_year if h_year else True
+                )
+            ).filter(Student.status == "Active")
+
+        # Search Type
+        if search_type == "admission":
+            query = query.filter(Student.admission_no.ilike(f"%{q}%"))
+        else:  # name
+            like = f"%{q}%"
+            query = query.filter(
+                or_(
+                    Student.first_name.ilike(like),
+                    Student.last_name.ilike(like),
+                    func.concat(Student.first_name, ' ', Student.last_name).ilike(like),
+                    Student.admission_no.ilike(like),
+                )
+            )
+
+        # Branch filtering
+        if current_user.role != 'Admin':
+            if current_user.branch and current_user.branch != 'All':
+                query = query.filter(Student.branch == current_user.branch)
+        else:
+            if h_branch and h_branch not in ("All", "AllBranches", "All Branches"):
+                query = query.filter(Student.branch == h_branch)
+
+        results = query.limit(50).all()
+
+        students = []
+        for s, record in results:
+            students.append({
+                "id": s.student_id,
+                "student_id": s.student_id,
+                "name": f"{s.first_name or ''} {s.last_name or ''}".strip(),
+                "admission_no": s.admission_no,
+                "adm_no": s.admission_no,
+                "class": record.class_name if record else s.clazz,
+                "section": record.section if record else s.section,
+                "father_name": s.Fatherfirstname,
+                "father": s.Fatherfirstname,
+                "father_mobile": s.FatherPhone or s.SmsNo or s.phone,
+                "branch": s.branch,
+            })
+
+        return jsonify({"students": students}), 200
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+@bp.route("/api/reports/fees/student-receipts/<int:student_id>", methods=["GET"])
+@token_required
+def get_student_receipts(current_user, student_id):
+    """Fetch all receipts grouped by receipt_no for a specific student."""
+    try:
+        h_year = request.headers.get("X-Academic-Year")
+
+        # Permission
+        student = Student.query.get(student_id)
+        if not student:
+            return jsonify({"error": "Student not found"}), 404
+
+        if current_user.role != 'Admin':
+            if current_user.branch and current_user.branch != 'All' and student.branch != current_user.branch:
+                return jsonify({"error": "Unauthorized"}), 403
+
+        query = FeePayment.query.filter(
+            FeePayment.student_id == student_id,
+            FeePayment.status == 'A'
+        )
+
+        if h_year:
+            query = query.filter(
+                or_(
+                    FeePayment.academic_year == h_year,
+                    FeePayment.academic_year.is_(None)
+                )
+            )
+
+        payments = query.order_by(
+            FeePayment.payment_date.desc(),
+            FeePayment.id.desc()
+        ).all()
+
+        # Group by receipt_no
+        grouped = {}
+        for p in payments:
+            rno = p.receipt_no
+            if rno not in grouped:
+                grouped[rno] = {
+                    "receipt_no": rno,
+                    "student_name": f"{student.first_name or ''} {student.last_name or ''}".strip(),
+                    "admission_no": student.admission_no,
+                    "class": p.class_name,
+                    "section": p.section,
+                    "branch": p.branch,
+                    "date": p.payment_date.strftime("%d-%m-%Y") if p.payment_date else None,
+                    "time": "",
+                    "mode": p.payment_mode,
+                    "transaction_id": p.TransactionDetails or "",
+                    "cheque_no": p.cheque_no or "",
+                    "bank_name": p.bank_name or "",
+                    "cheque_date": p.cheque_date.strftime("%d-%m-%Y") if p.cheque_date else "",
+                    "note": p.note or "",
+                    "collected_by": p.collected_by_name or "",
+                    "fee_type_str": "",
+                    "amount_paid": 0,
+                    "amount": 0,
+                    "gross_amount": 0,
+                    "concession": 0,
+                    "net_payable": 0,
+                    "due_amount": 0,
+                    "_fee_types": set(),
+                }
+
+            # Time field (if model has created_at)
+            if hasattr(p, 'created_at') and p.created_at and not grouped[rno]["time"]:
+                grouped[rno]["time"] = p.created_at.strftime("%H:%M")
+
+            g = grouped[rno]
+            g["amount_paid"] += float(p.amount_paid or 0)
+            g["amount"] += float(p.amount_paid or 0)
+            g["gross_amount"] += float(p.gross_amount or 0)
+            g["concession"] += float(p.concession_amount or 0)
+            g["net_payable"] += float(p.net_payable or 0)
+            g["due_amount"] += float(p.due_amount or 0)
+
+            label = p.fee_type or "Fee"
+            if p.installment_name and p.installment_name != "One-Time":
+                label = p.installment_name
+            g["_fee_types"].add(label)
+
+        receipts = []
+        for rno, g in grouped.items():
+            g["fee_type_str"] = ", ".join(sorted(g["_fee_types"]))
+            del g["_fee_types"]
+            receipts.append(g)
+
+        receipts.sort(key=lambda x: x.get("date") or "", reverse=True)
+
+        return jsonify({"receipts": receipts}), 200
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+@bp.route("/api/reports/fees/receipt/<string:receipt_no>", methods=["PUT"])
+@token_required
+def update_receipt_details(current_user, receipt_no):
+    """Update editable fields of a receipt (Admin only)."""
+    try:
+        # ADMIN ONLY
+        if current_user.role not in ['Admin','SuperAdmin','Branch Admin']:
+            return jsonify({"error": "Only Admins can edit receipt details"}), 403
+
+        data = request.json or {}
+
+        payments = FeePayment.query.filter_by(receipt_no=receipt_no, status='A').all()
+        if not payments:
+            return jsonify({"error": "Receipt not found or already cancelled"}), 404
+
+        new_mode = data.get("mode")
+        new_date_str = data.get("date")
+        new_txn = data.get("transaction_id", "")
+        new_cheque_no = data.get("cheque_no", "")
+        new_bank_name = data.get("bank_name", "")
+        new_cheque_date_str = data.get("cheque_date", "")
+
+        if not new_mode:
+            return jsonify({"error": "Payment mode is required"}), 400
+
+        # Parse date (handle both YYYY-MM-DD and DD-MM-YYYY)
+        new_date = None
+        if new_date_str:
+            try:
+                parts = new_date_str.split("-")
+                if len(parts[0]) == 4:
+                    new_date = datetime.strptime(new_date_str, "%Y-%m-%d").date()
+                else:
+                    new_date = datetime.strptime(new_date_str, "%d-%m-%Y").date()
+            except ValueError:
+                return jsonify({"error": "Invalid date format. Use YYYY-MM-DD"}), 400
+
+        new_cheque_date = None
+        if new_cheque_date_str:
+            try:
+                parts = new_cheque_date_str.split("-")
+                if len(parts[0]) == 4:
+                    new_cheque_date = datetime.strptime(new_cheque_date_str, "%Y-%m-%d").date()
+                else:
+                    new_cheque_date = datetime.strptime(new_cheque_date_str, "%d-%m-%Y").date()
+            except ValueError:
+                return jsonify({"error": "Invalid cheque date format"}), 400
+
+        # Mode validation
+        if new_mode == "Cheque":
+            if not new_cheque_no or not new_bank_name or not new_cheque_date:
+                return jsonify({"error": "Cheque No, Bank Name, and Cheque Date are required for Cheque mode"}), 400
+        elif new_mode in ("UPI", "CardSwap", "Card", "Bank Transfer"):
+            if not new_txn or not str(new_txn).strip():
+                return jsonify({"error": f"Transaction ID is required for {new_mode} mode"}), 400
+
+        # Update all line items
+        for p in payments:
+            p.payment_mode = new_mode
+            if new_date:
+                p.payment_date = new_date
+                p.payment_month = new_date.month
+                p.payment_year = new_date.year
+
+            if new_mode == "Cheque":
+                p.cheque_no = new_cheque_no
+                p.bank_name = new_bank_name
+                p.cheque_date = new_cheque_date
+                p.TransactionDetails = ""
+            elif new_mode == "Cash":
+                p.TransactionDetails = ""
+                p.cheque_no = None
+                p.bank_name = None
+                p.cheque_date = None
+            else:
+                p.TransactionDetails = new_txn
+                p.cheque_no = None
+                p.bank_name = None
+                p.cheque_date = None
+
+        db.session.commit()
+
+        return jsonify({
+            "message": "Receipt updated successfully",
+            "receipt_no": receipt_no,
+            "updated_rows": len(payments)
+        }), 200
 
     except Exception as e:
         db.session.rollback()

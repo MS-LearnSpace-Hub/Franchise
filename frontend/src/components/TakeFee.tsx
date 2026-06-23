@@ -82,10 +82,12 @@ interface FeeStudent {
     student_id: number;
     name: string;
     admNo: string;
+    enrollment_no?: string;
     class: string;
     section: string;
     total_fee: number;
     paid_amount: number;
+    due_amount: number;
     concession: number;
     balance: number;
     status: string;
@@ -215,17 +217,7 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
     const [selectedStudentId, setSelectedStudentId] = useState<number | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
 
-    // ─── Role-Based Access Control ───────────────────────────────────────────────
-    // Reads the user role from localStorage (set during login).
-    // Only users with role "admin" can cancel/delete receipts.
-    let isAdmin = false;
-    try {
-        const user = JSON.parse(localStorage.getItem('user') || '{}');
-        isAdmin = user.role === 'Admin';
-    } catch {
-        // Malformed JSON in localStorage; default to non-admin
-    }
-    // ─────────────────────────────────────────────────────────────────────────────
+
     const selectedStudent = useMemo(
         () => students.find(s => s.student_id === selectedStudentId),
         [students, selectedStudentId]
@@ -269,12 +261,6 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
     }, [showCancelled]);
 
     const handleDeleteReceipt = async (receiptNo: string) => {
-        // Guard: only admins can cancel receipts
-        if (!isAdmin) {
-            alert("Access Denied: Only administrators are allowed to cancel receipts.");
-            return;
-        }
-
         if (
             !window.confirm(
                 "Are you sure you want to cancel this ENTIRE RECEIPT? This will revert all associated fee payments."
@@ -289,7 +275,20 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
         }
 
         const paymentsToDelete = paymentHistory.filter(p => p.receipt_no === receiptNo);
+        const userRole =
+            (localStorage.getItem('role') ||
+                localStorage.getItem('userRole') ||
+                '').toLowerCase();
+        const canDeleteReceipt = [
+            'admin',
+            'superadmin',
+            'branch admin'
+        ].includes(userRole);
 
+        if (!canDeleteReceipt) {
+            alert('You do not have permission to cancel receipts.');
+            return;
+        }
         try {
             for (const p of paymentsToDelete) {
                 await api.delete(`/fees/payment/${p.payment_id}`, {
@@ -419,6 +418,9 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
     const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
     const [transactionId, setTransactionId] = useState('');
     const [transactionIdDescription, setTransactionIdDescription] = useState('');
+    const [chequeNo, setChequeNo] = useState('');
+    const [bankName, setBankName] = useState('');
+    const [chequeDate, setChequeDate] = useState('');
 
     useEffect(() => {
         const fetchClasses = async () => {
@@ -609,6 +611,9 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
         setPaymentDate(new Date().toISOString().split('T')[0]);
         setTransactionId('');
         setTransactionIdDescription('');
+        setChequeNo('');
+        setBankName('');
+        setChequeDate('');
     };
 
     const handleTakeFee = async () => {
@@ -646,10 +651,32 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
                 receipt_no: schoolReceiptNo,
                 transaction_id: transactionId,
                 transaction_id_description: transactionIdDescription,
+                cheque_no: chequeNo,
+                bank_name: bankName,
+                cheque_date: chequeDate,
                 fee_allocations: feeAllocations
             });
 
             const realReceiptNo = response.data.receipt_no;
+
+            // Send fee receipt SMS
+            try {
+                const phone = selectedStudent.fatherPhone;
+                if (phone) {
+                    await api.post('/sms/send-fee-receipt', {
+                phone: String(phone).replace('+91', '').trim(),
+                paid_amount: Number(paidInput),
+                total_amount: selectedStudent.total_fee,
+                admission_no: selectedStudent.admNo,
+                balance: selectedStudent.due_amount - Number(paidInput),
+                branch_name: selectedStudent.branch || 'School',
+                student_id: selectedStudent.student_id
+            });
+                }
+            } catch (smsErr) {
+                // SMS failure should not block the receipt
+                console.warn('Fee SMS failed (non-blocking):', smsErr);
+            }
 
             const receiptLineItemsRaw = selectedItems.map((item: FeeInstallment, index: number) => {
                 const alloc = feeAllocations[index];
@@ -677,6 +704,9 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
                 paymentDate,
                 paymentMode,
                 paymentNote,
+                chequeNo,
+                bankName,
+                chequeDate,
                 items: groupedReceiptItems,
                 amount,
                 concession: appliedConcession,
@@ -722,14 +752,14 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
                         {/* Left Column */}
                         <div className="lg:col-span-3 space-y-4">
                             <h3 className="text-lg font-semibold text-gray-800 flex items-center">
-                                <RupeeIcon />&nbsp;Take Fee
+                                <RupeeIcon />&nbsp;Collect Fee
                             </h3>
 
                             <div className="p-4 border rounded-lg shadow-sm bg-violet-50/50 space-y-3">
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                                     <input
                                         type="text"
-                                        placeholder="Search Adm No or Name..."
+                                        placeholder="Search Adm No, Enrollment No or Name..."
                                         value={searchTerm}
                                         onChange={e => setSearchTerm(e.target.value)}
                                         className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-violet-500 focus:border-violet-500 text-sm"
@@ -1092,6 +1122,22 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
                                             </div>
                                         </>
                                     )}
+                                    {(paymentMode === 'Cheque') && (
+                                        <>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700">Cheque No*</label>
+                                                <input type="text" value={chequeNo} onChange={e => setChequeNo(e.target.value)} required className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-violet-500 focus:border-violet-500" placeholder="Enter Cheque No" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700">Bank Name*</label>
+                                                <input type="text" value={bankName} onChange={e => setBankName(e.target.value)} required className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-violet-500 focus:border-violet-500" placeholder="Enter Bank Name" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700">Cheque Date*</label>
+                                                <input type="date" value={chequeDate} onChange={e => setChequeDate(e.target.value)} required className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-violet-500 focus:border-violet-500" />
+                                            </div>
+                                        </>
+                                    )}
                                 </div>
                                 <div className="flex items-center">
                                     <input
@@ -1109,7 +1155,7 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
                                         className="px-4 py-2 text-sm font-medium text-white bg-violet-600 rounded-md hover:bg-violet-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-violet-500"
                                         disabled={!selectedStudent}
                                     >
-                                        Take Fee
+                                        Collect Fee
                                     </button>
                                     <button
                                         onClick={handleReset}
@@ -1153,25 +1199,6 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
                                 </button>
                             </div>
                         </div>
-
-                        {/* ── Admin-only notice banner ─────────────────────────────── */}
-                        {!isAdmin && (
-                            <div className="mb-3 flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-800">
-                                <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    className="h-4 w-4 shrink-0"
-                                    viewBox="0 0 20 20"
-                                    fill="currentColor"
-                                >
-                                    <path
-                                        fillRule="evenodd"
-                                        d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
-                                        clipRule="evenodd"
-                                    />
-                                </svg>
-                                Receipt cancellation is restricted to <strong className="mx-1">Administrators</strong> only.
-                            </div>
-                        )}
                         {/* ────────────────────────────────────────────────────────── */}
 
                         <table className="w-full text-sm text-left">
@@ -1263,26 +1290,13 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
                                                     </button>
 
                                                     {/* ── Cancel – ADMIN ONLY ─────────────────────────── */}
-                                                    {!isCancelled && (
-                                                        isAdmin ? (
-                                                            // Admin: active red trash button
-                                                            <button
-                                                                onClick={() => handleDeleteReceipt(first.receipt_no)}
-                                                                title="Cancel Receipt"
-                                                                className="text-red-600 hover:text-red-800"
-                                                            >
-                                                                <TrashIcon className="w-5 h-5" />
-                                                            </button>
-                                                        ) : (
-                                                            // Non-admin: greyed-out, non-interactive icon with tooltip
-                                                            <span
-                                                                title="Only administrators can cancel receipts"
-                                                                className="text-gray-300 cursor-not-allowed"
-                                                            >
-                                                                <TrashIcon className="w-5 h-5" />
-                                                            </span>
-                                                        )
-                                                    )}
+                                                    <button
+                                                        onClick={() => handleDeleteReceipt(first.receipt_no)}
+                                                        title="Cancel Receipt"
+                                                        className="text-red-600 hover:text-red-800"
+                                                    >
+                                                        <TrashIcon className="w-5 h-5" />
+                                                    </button>
                                                     {/* ────────────────────────────────────────────────── */}
                                                 </div>
                                             </td>

@@ -272,7 +272,7 @@ def upgrade():
     op.create_table('subjectmaster',
     sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
     sa.Column('subject_name', sa.String(length=100), nullable=False),
-    sa.Column('subject_type', sa.Enum('Hifz', 'Academic'), nullable=True),
+    sa.Column('subject_type', sa.Enum('Deeniyath', 'Academic'), nullable=True),
     sa.Column('academic_year', sa.String(length=20), nullable=True),
     sa.Column('is_active', sa.Boolean(), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=False),

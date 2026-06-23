@@ -43,17 +43,13 @@ const AssignStudentSubjects: React.FC = () => {
 
         if (userStr) {
             try {
-                const user = JSON.parse(userStr);
-                // Fix: If user is Admin or has 'All' access, prioritize the SELECTED branch from localStorage
-                // Otherwise use their assigned branch.
-                if (user.role === 'Admin' || user.branch === 'All' || user.branch === 'AllBranches') {
-                    const selected = localStorage.getItem("currentBranch");
-                    if (selected && selected !== "All" && selected !== "All Locations") {
+                const selected = localStorage.getItem("currentBranch");
+                if (selected) {
+                    if (selected === "All Locations" || selected === "All Branches" || selected === "All") {
+                        storedBranch = "All";
+                    } else {
                         storedBranch = selected;
                     }
-                } else {
-                    // Specific Branch User
-                    storedBranch = user.branch || "All";
                 }
             } catch (e) {
                 console.error("Error parsing user", e);
@@ -79,18 +75,24 @@ const AssignStudentSubjects: React.FC = () => {
         }
     };
 
-    // Fetch sections when class changes
+    // Fetch sections when class, branch, or academicYear changes
     useEffect(() => {
         setSelectedSection(""); // Reset section
         setSectionList([]);
         if (selectedClass) {
             fetchSections(selectedClass);
         }
-    }, [selectedClass]);
+    }, [selectedClass, branch, academicYear]);
 
     const fetchSections = async (cls: string) => {
         try {
-            const res = await api.get(`/sections?class=${cls}`);
+            const res = await api.get('/sections', {
+                params: {
+                    class: cls,
+                    branch: branch,
+                    academic_year: academicYear
+                }
+            });
             if (res.data && res.data.sections) {
                 setSectionList(res.data.sections);
             }
@@ -318,11 +320,11 @@ const AssignStudentSubjects: React.FC = () => {
                                 type="radio"
                                 name="subjectType"
                                 className="mr-2"
-                                value="Hifz"
-                                checked={subjectType === "Hifz"}
+                                value="Deeniyath"
+                                checked={subjectType === "Deeniyath"}
                                 onChange={(e) => setSubjectType(e.target.value)}
                             />
-                            Hifz
+                            Deeniyath
                         </label>
                     </div>
                 </div>

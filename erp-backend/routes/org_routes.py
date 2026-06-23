@@ -1,10 +1,13 @@
 import os
+# pyrefly: ignore [missing-import]
 from flask import Blueprint, jsonify, request, current_app, send_from_directory
 from extensions import db
 from models import Branch, School, OrgMaster, User, UserBranchAccess, ClassMaster, ClassSection
-from helpers import token_required, require_academic_year, get_branch_query_filter
+from services.sequence_service import SequenceService
+from helpers import token_required, require_academic_year, get_branch_query_filter, get_user_allowed_branches
 from datetime import date, datetime
-from sqlalchemy import or_
+from sqlalchemy import or_ 
+# pyrefly: ignore [missing-import]
 from werkzeug.utils import secure_filename
 
 bp = Blueprint('org_routes', __name__)
@@ -26,36 +29,50 @@ def _allowed_logo(filename):
 @bp.route("/api/schools", methods=["GET"])
 @token_required
 def get_all_schools(current_user):
-    """List all schools with their branches. Admins see only their own school."""
+    """List all schools with their branches. Filters dynamically based on allowed branches."""
     try:
-        if current_user.role == 'SuperAdmin':
+        allowed = get_user_allowed_branches(current_user)
+
+        if allowed['is_unlimited']:
             schools = School.query.filter_by(is_active=True).order_by(School.id).all()
-        elif current_user.role == 'Admin' and current_user.school_id:
-            schools = School.query.filter_by(id=current_user.school_id, is_active=True).all()
         else:
-            schools = []
+            allowed_branch_ids = allowed['ids'] or set()
+            if not allowed_branch_ids:
+                schools = []
+            else:
+                schools = School.query.join(Branch).filter(
+                    School.is_active == True,
+                    Branch.id.in_(list(allowed_branch_ids)),
+                    Branch.is_active == True
+                ).distinct().order_by(School.id).all()
 
         result = []
         for s in schools:
-            branches = Branch.query.filter_by(school_id=s.id, is_active=True).all()
-            result.append({
-                "id": s.id,
-                "school_name": s.school_name,
-                "school_code": s.school_code,
-                "logo_url": s.logo_url,
-                "address": s.address,
-                "phone": s.phone,
-                "email": s.email,
-                "theme_color": s.theme_color,
-                "domain_name": s.domain_name,
-                "subscription_plan": s.subscription_plan,
-                "is_active": s.is_active,
-                "branch_count": len(branches),
-                "branches": [
-                    {"id": b.id, "branch_name": b.branch_name, "branch_code": b.branch_code}
-                    for b in branches
-                ]
-            })
+            branches_query = Branch.query.filter_by(school_id=s.id, is_active=True)
+            if not allowed['is_unlimited']:
+                allowed_branch_ids = allowed['ids'] or set()
+                branches_query = branches_query.filter(Branch.id.in_(list(allowed_branch_ids)))
+            branches = branches_query.all()
+
+            if branches or allowed['is_unlimited']:
+                result.append({
+                    "id": s.id,
+                    "school_name": s.school_name,
+                    "school_code": s.school_code,
+                    "logo_url": s.logo_url,
+                    "address": s.address,
+                    "phone": s.phone,
+                    "email": s.email,
+                    "theme_color": s.theme_color,
+                    "domain_name": s.domain_name,
+                    "subscription_plan": s.subscription_plan,
+                    "is_active": s.is_active,
+                    "branch_count": len(branches),
+                    "branches": [
+                        {"id": b.id, "branch_name": b.branch_name, "branch_code": b.branch_code}
+                        for b in branches
+                    ]
+                })
 
         return jsonify({"schools": result}), 200
     except Exception as e:
@@ -213,9 +230,9 @@ def get_all_branches(current_user):
     try:
         query = Branch.query.filter_by(is_active=True)
 
-        # Admin: restrict to their school's branches
-        if current_user.role == 'Admin' and current_user.school_id:
-            query = query.filter_by(school_id=current_user.school_id)
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited']:
+            query = query.filter(Branch.id.in_(allowed['ids']))
 
         branches = query.all()
       
@@ -276,7 +293,19 @@ def create_branch(current_user):
         updated_by=current_user.user_id,
     )
     try:
+        # Create branch and also initialize enrollment sequences for existing academic years
         db.session.add(branch)
+        db.session.flush()  # ensure branch.id is available for sequence creation
+
+        # For every active academic year, ensure an enrollment sequence exists for this branch
+        active_years = OrgMaster.query.filter_by(master_type='ACADEMIC_YEAR', is_active=True).all()
+        for ay in active_years:
+            try:
+                SequenceService.get_or_create_sequence(branch.id, ay.id, user_id=current_user.user_id)
+            except Exception:
+                # swallow per-year errors to avoid blocking branch creation; they'll be visible in DB if any
+                pass
+
         db.session.commit()
         return jsonify({"message": "Branch created", "branch_id": branch.id}), 201
     except Exception as e:
@@ -449,45 +478,79 @@ def seed_branches(current_user):
 
 
 @bp.route("/api/classes", methods=["GET"])
-def get_classes():
-    from sqlalchemy import and_
+@token_required
+def get_classes(current_user):
+    from sqlalchemy import and_, or_
     
     h_branch = request.args.get("branch") or request.headers.get("X-Branch")
     academic_year = request.args.get("academic_year") or request.headers.get("X-Academic-Year")
+    
+    allowed = get_user_allowed_branches(current_user)
     
     query = ClassMaster.query
     query = query.join(ClassSection, ClassSection.class_id == ClassMaster.id)
     if academic_year:
         query = query.filter(ClassSection.academic_year == academic_year)
     
+    # Resolve the requested branch if passed
+    branch_obj = None
     if h_branch and h_branch != "All":
-         branch_obj = None
-         location_filter = "Global"
-
-         if h_branch.isdigit():
-             branch_obj = Branch.query.get(int(h_branch))
-         else:
-             branch_obj = Branch.query.filter_by(branch_name=h_branch).first()
-             if not branch_obj:
-                 branch_obj = Branch.query.filter_by(branch_code=h_branch).first()
+        if h_branch.isdigit():
+            branch_obj = Branch.query.get(int(h_branch))
+        else:
+            branch_obj = Branch.query.filter_by(branch_name=h_branch).first()
+            if not branch_obj:
+                branch_obj = Branch.query.filter_by(branch_code=h_branch).first()
+                
+    # Security constraint:
+    if not allowed['is_unlimited']:
+        if branch_obj:
+            if branch_obj.id not in allowed['ids']:
+                branch_obj = None
+                query = query.filter(ClassSection.branch_id.in_(allowed['ids']))
+            else:
+                query = query.filter(ClassSection.branch_id == branch_obj.id)
+        else:
+            query = query.filter(ClassSection.branch_id.in_(allowed['ids']))
+    else:
+        if branch_obj:
+            query = query.filter(ClassSection.branch_id == branch_obj.id)
+            
+    # Apply branch/location-specific criteria for global vs specific classes
+    if branch_obj:
+        location_filter = "Global"
+        loc_obj = OrgMaster.query.filter_by(master_type='LOCATION', code=branch_obj.location_code).first()
+        if loc_obj:
+            location_filter = loc_obj.display_name
+            
+        branch_specific_cond = or_(ClassMaster.branch == str(branch_obj.id), ClassMaster.branch == branch_obj.branch_name)
         
-         if branch_obj:
-             loc_obj = OrgMaster.query.filter_by(master_type='LOCATION', code=branch_obj.location_code).first()
-             if loc_obj:
-                 location_filter = loc_obj.display_name
-         
-         branch_specific_cond = (ClassMaster.branch == h_branch)
-         if branch_obj:
-             branch_specific_cond = or_(ClassMaster.branch == str(branch_obj.id), ClassMaster.branch == branch_obj.branch_name)
-
-         query = query.filter(or_(
-             branch_specific_cond,
-             and_(ClassMaster.branch == 'All', ClassMaster.location == location_filter),
-             and_(ClassMaster.branch == 'All', ClassMaster.location == 'All')
-         ))
-
-         if branch_obj:
-             query = query.filter(ClassSection.branch_id == branch_obj.id)
+        query = query.filter(or_(
+            ClassSection.branch_id == branch_obj.id,
+            branch_specific_cond,
+            and_(ClassMaster.branch == 'All', ClassMaster.location == location_filter),
+            and_(ClassMaster.branch == 'All', ClassMaster.location == 'All')
+        ))
+    else:
+        if not allowed['is_unlimited']:
+            allowed_branches = Branch.query.filter(Branch.id.in_(allowed['ids'])).all()
+            loc_codes = {b.location_code for b in allowed_branches if b.location_code}
+            loc_names = set()
+            if loc_codes:
+                loc_objs = OrgMaster.query.filter(OrgMaster.master_type == 'LOCATION', OrgMaster.code.in_(list(loc_codes))).all()
+                loc_names = {l.display_name for l in loc_objs}
+            
+            allowed_branch_names = allowed['names']
+            allowed_branch_ids_str = {str(bid) for bid in allowed['ids']}
+            
+            branch_cond = or_(
+                ClassSection.branch_id.in_(allowed['ids']),
+                ClassMaster.branch.in_(list(allowed_branch_names)),
+                ClassMaster.branch.in_(list(allowed_branch_ids_str)),
+                and_(ClassMaster.branch == 'All', ClassMaster.location.in_(list(loc_names))),
+                and_(ClassMaster.branch == 'All', ClassMaster.location == 'All')
+            )
+            query = query.filter(branch_cond)
 
     query = query.distinct(ClassMaster.id)
     classes = query.order_by(ClassMaster.id.asc()).all()

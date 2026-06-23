@@ -1,10 +1,13 @@
+# pyrefly: ignore [missing-import]
 from flask import Blueprint, request, jsonify
 from datetime import datetime
+# pyrefly: ignore [missing-import]
 import mysql.connector
+# pyrefly: ignore [missing-import]
 from mysql.connector import Error 
 import os
 import logging
-from helpers import token_required
+from helpers import token_required, get_user_allowed_branches
 from models import Branch, UserBranchAccess
 
 report_bp = Blueprint('report', __name__)
@@ -12,48 +15,33 @@ logger = logging.getLogger(__name__)
 
 
 def resolve_branch_scope(current_user, requested_branch=None):
-    if current_user.role == "Admin" or current_user.branch == "All":
-        return requested_branch
-
-    if requested_branch and requested_branch not in ["All", "All Branches", current_user.branch]:
-        branch_obj = Branch.query.filter(
-            (Branch.branch_code == requested_branch) | (Branch.branch_name == requested_branch)
-        ).first()
-        if branch_obj:
-            access = UserBranchAccess.query.filter_by(
-                user_id=current_user.user_id,
-                branch_id=branch_obj.id,
-                is_active=True
-            ).first()
-            if access:
-                return branch_obj.branch_name
-
-    return current_user.branch
+    """
+    Returns (branch_filter, is_list)
+    """
+    allowed = get_user_allowed_branches(current_user)
+    if allowed['is_unlimited']:
+        if requested_branch in ("All", "All Branches", None):
+            return None, False
+        return requested_branch, False
+    else:
+        if requested_branch and requested_branch not in ("All", "All Branches") and requested_branch in allowed['names']:
+            return requested_branch, False
+        return list(allowed['names']), True
 
 
 def ensure_student_branch_access(current_user, student_branch):
-    if current_user.role == "Admin" or current_user.branch == "All":
-        return True
     if not student_branch:
         return False
-    if student_branch == current_user.branch:
+    allowed = get_user_allowed_branches(current_user)
+    if allowed['is_unlimited']:
         return True
 
     branch_obj = Branch.query.filter(
         (Branch.branch_code == student_branch) | (Branch.branch_name == student_branch)
     ).first()
-    if not branch_obj:
-        return False
-
-    if current_user.branch in [branch_obj.branch_code, branch_obj.branch_name]:
-        return True
-
-    access = UserBranchAccess.query.filter_by(
-        user_id=current_user.user_id,
-        branch_id=branch_obj.id,
-        is_active=True
-    ).first()
-    return access is not None
+    if branch_obj:
+        return branch_obj.branch_name in allowed['names']
+    return student_branch in allowed['names']
 
 def get_db_connection():
     """Create database connection"""
@@ -69,7 +57,7 @@ def get_db_connection():
 @token_required
 def get_students(current_user):
     """Get students by branch, class, section for dropdown"""
-    branch = resolve_branch_scope(current_user, request.args.get('branch'))
+    branch_filter, is_list = resolve_branch_scope(current_user, request.args.get('branch'))
     class_name = request.args.get('class')
     section = request.args.get('section')
     academic_year = request.args.get('academic_year')
@@ -97,9 +85,14 @@ def get_students(current_user):
         """
         params = [academic_year]
         
-        if branch and branch != 'All':
-            query += " AND s.branch = %s"
-            params.append(branch)
+        if branch_filter is not None:
+            if is_list:
+                placeholders = ", ".join(["%s"] * len(branch_filter))
+                query += f" AND s.branch IN ({placeholders})"
+                params.extend(branch_filter)
+            else:
+                query += " AND s.branch = %s"
+                params.append(branch_filter)
         
         if class_name:
             query += " AND (sar.class = %s OR s.class = %s)"
@@ -316,13 +309,13 @@ def get_student_report(current_user):
             
             return '-'
         
-        # ========== Separate Hifz and Academic subjects ==========
-        hifz_data = []
+        # ========== Separate Deeniyath and Academic subjects ==========
+        Deeniyath_data = []
         academic_data = []
         colors = ['#4ade80', '#38bdf8', '#f472b6', '#facc15', '#a78bfa', '#fb923c', '#f87171', '#34d399']
         
-        hifz_total_marks = 0
-        hifz_secured_marks = 0
+        Deeniyath_total_marks = 0
+        Deeniyath_secured_marks = 0
         academic_total_marks = 0
         academic_secured_marks = 0
         
@@ -336,17 +329,18 @@ def get_student_report(current_user):
             grade = '-' if is_absent else get_grade(secured, max_marks, require_exact_scale=True)
             percentage = 0 if max_marks == 0 else round((secured / max_marks) * 100)
             
-            if subject['subject_type'] == 'Hifz':
-                hifz_total_marks += max_marks
-                hifz_secured_marks += secured
-                hifz_data.append({
-                    'subject': subject['subject_name'],
-                    'urduSubject': subject['subject_name_urdu'] or '',
-                    'totalMarks': max_marks,
-                    'securedMarks': 'AB' if is_absent else int(secured),  # Show 'AB' in marks column
-                    'classMarks': int(subject['class_average']),
-                    'grade': grade
-                })
+            if subject['subject_type'] == 'Deeniyath':
+                Deeniyath_total_marks += max_marks
+                Deeniyath_secured_marks += secured
+                Deeniyath_data.append({
+        'subject': subject['subject_name'],
+        'urduSubject': subject['subject_name_urdu'] or '',
+        'totalMarks': max_marks,
+        'securedMarks': 'AB' if is_absent else int(secured),
+        'classMarks': int(subject['class_average']),
+        'grade': grade,
+        'subject_order': subject['subject_order'] or 0,   # ← ADD THIS LINE
+    })
             else:
                 academic_total_marks += max_marks
                 academic_secured_marks += secured
@@ -357,20 +351,22 @@ def get_student_report(current_user):
                     'securedMarks': 'AB' if is_absent else int(secured),  # Show 'AB' in marks column
                     'percentage': percentage,
                     'grade': grade,
-                    'color': colors[color_idx % len(colors)]
+                    'color': colors[color_idx % len(colors)],
+                    'subject_order': subject['subject_order'] or 0,
+                    
                 })
                 color_idx += 1
         
-        # Add totals to hifz data
-        if hifz_data:
-            hifz_grade = get_grade(hifz_secured_marks, hifz_total_marks, require_exact_scale=True) if hifz_total_marks > 0 else '-'
-            hifz_data.append({
+        # Add totals to Deeniyath data
+        if Deeniyath_data:
+            Deeniyath_grade = get_grade(Deeniyath_secured_marks, Deeniyath_total_marks, require_exact_scale=True) if Deeniyath_total_marks > 0 else '-'
+            Deeniyath_data.append({
                 'subject': 'Total/Grade',
                 'urduSubject': 'کل/گریڈ',
-                'totalMarks': hifz_total_marks,
-                'securedMarks': int(hifz_secured_marks),
+                'totalMarks': Deeniyath_total_marks,
+                'securedMarks': int(Deeniyath_secured_marks),
                 'classMarks': 0,
-                'grade': hifz_grade
+                'grade': Deeniyath_grade
             })
         
         # Add totals to academic data
@@ -428,7 +424,7 @@ def get_student_report(current_user):
         cursor.execute(mapping_query, (test_id, academic_year, mapping_branch, class_id))
         mapped_months = cursor.fetchall()
         if not mapped_months:  
-    # Return empty attendance data when no months are mapped  
+            # Return empty attendance data when no months are mapped  
             monthly_attendance = []  
             total_present = 0  
             total_absent = 0  
@@ -445,35 +441,35 @@ def get_student_report(current_user):
             FROM attendance  
             WHERE student_id = %s AND academic_year = %s  
             """  
-        att_params = [student_id, academic_year]  
+            att_params = [student_id, academic_year]  
+          
+            conditions = []  
+            for m in mapped_months:  
+                conditions.append(f"(MONTH(date) = {m['month']} AND YEAR(date) = {m['year']})")  
+          
+            if conditions:  
+                attendance_query += " AND (" + " OR ".join(conditions) + ")"  
       
-        conditions = []  
-        for m in mapped_months:  
-            conditions.append(f"(MONTH(date) = {m['month']} AND YEAR(date) = {m['year']})")  
-      
-        if conditions:  
-            attendance_query += " AND (" + " OR ".join(conditions) + ")"  
-  
-        attendance_query += " GROUP BY YEAR(date), MONTH(date), MONTHNAME(date) ORDER BY YEAR(date), MONTH(date)"  
-      
-        cursor.execute(attendance_query, tuple(att_params))  
-        attendance_rows = cursor.fetchall()  
-      
-        monthly_attendance = []  
-        total_present = 0  
-        total_absent = 0  
-        total_days = 0  
-      
-        for row in attendance_rows:  
-            monthly_attendance.append({  
-                'month': row['month_name'][:3],  
-                'total': int(row['total']),  
-                'present': int(row['present']),  
-                'absent': int(row['absent'])  
-            })  
-            total_present += int(row['present'])  
-            total_absent += int(row['absent'])  
-            total_days += int(row['total'])
+            attendance_query += " GROUP BY YEAR(date), MONTH(date), MONTHNAME(date) ORDER BY YEAR(date), MONTH(date)"  
+          
+            cursor.execute(attendance_query, tuple(att_params))  
+            attendance_rows = cursor.fetchall()  
+          
+            monthly_attendance = []  
+            total_present = 0  
+            total_absent = 0  
+            total_days = 0  
+          
+            for row in attendance_rows:  
+                monthly_attendance.append({  
+                    'month': row['month_name'][:3],  
+                    'total': int(row['total']),  
+                    'present': int(row['present']),  
+                    'absent': int(row['absent'])  
+                })  
+                total_present += int(row['present'])  
+                total_absent += int(row['absent'])  
+                total_days += int(row['total'])
         
         # ========== 6. Get Student's Academic History ==========
         history_query = """
@@ -576,7 +572,7 @@ def get_student_report(current_user):
         
         # ========== Build Final Response ==========
         response = {
-            'reportTitle': f"PROGRESS REPORT OF {current_test_name.upper()}",
+            'reportTitle': f"Performance Dashboard OF {current_test_name.upper()}",
             'student': {
                 'studentName': student['student_name'].strip(),
                 'fathersName': student['father_name'] or '',
@@ -586,7 +582,7 @@ def get_student_report(current_user):
                 'academicYear': academic_year
             },
             'gradingScales': grading_scales,
-            'hifzData': hifz_data,
+            'DeeniyathData': Deeniyath_data,
             'academicPerformance': academic_data,
             'attendance': {
                 'monthly': monthly_attendance,
@@ -598,7 +594,7 @@ def get_student_report(current_user):
                     'totalCount': total_days
                 }
             },
-            'hifzTargetLevel': [],  # Keep empty as per requirement
+            'DeeniyathTargetLevel': [],  # Keep empty as per requirement
             'teacherRemark': '',     # Keep empty as per requirement
             'academicHistory': academic_history,
             'historicalPerformance': historical_performance
@@ -930,7 +926,7 @@ def get_student_report_by_year(current_user):
             avg_rows = cursor.fetchall()
             avg_map = {row['subject_id']: round(float(row['avg'] or 0), 1) for row in avg_rows}
             
-            hifz_data = []
+            Deeniyath_data = []
             academic_data = []
             colors = ['#4ade80', '#38bdf8', '#f472b6', '#facc15', '#a78bfa', '#fb923c']
             
@@ -950,9 +946,9 @@ def get_student_report_by_year(current_user):
                     'grade': grade
                 }
                 
-                if subj['subject_type'] == 'Hifz':
+                if subj['subject_type'] == 'Deeniyath':
                     entry['classMarks'] = int(class_avg)
-                    hifz_data.append(entry)
+                    Deeniyath_data.append(entry)
                 else:
                     entry['percentage'] = percentage
                     entry['color'] = colors[idx % len(colors)]
@@ -962,7 +958,7 @@ def get_student_report_by_year(current_user):
                 'testId': test['test_id'],
                 'testName': test['test_name'],
                 'classTestId': test['class_test_id'],
-                'hifzData': hifz_data,
+                'DeeniyathData': Deeniyath_data,
                 'academicPerformance': academic_data
             })
         

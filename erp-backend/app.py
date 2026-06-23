@@ -1,10 +1,12 @@
+# pyrefly: ignore [missing-import]
 from flask import Flask, request, jsonify, send_from_directory # Force Reload
 from flask_cors import CORS
 from dotenv import load_dotenv
-from flask_migrate import Migrate 
+from flask_migrate import Migrate
 from extensions import db, limiter, cache
 import os
 import logging
+from models import SmsLog
 
 # -----------------------------
 # EXTENSIONS
@@ -34,9 +36,9 @@ from routes.test_attendance_routes import test_attendance_bp
 from routes.config_routes import bp as config_bp
 from routes.document_routes import document_routes
 from routes.rbac_routes import bp as rbac_bp
-
-
-  
+from routes.petty_cash_routes import petty_cash_bp
+from routes.petty_cash_report_routes import petty_cash_report_bp
+from routes.sms_routes import bp as sms_bp
 
 
 # -----------------------------
@@ -78,16 +80,16 @@ def create_app():
     else:
         app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///erp.db"
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-    app.config["SQLALCHEMY_POOL_SIZE"] = 20  
-    app.config["SQLALCHEMY_MAX_OVERFLOW"] = 20  
-    app.config["SQLALCHEMY_POOL_RECYCLE"] = 300  
-    app.config["SQLALCHEMY_POOL_TIMEOUT"] = 30  
-    app.config["SQLALCHEMY_POOL_PRE_PING"] = True 
+    app.config["SQLALCHEMY_POOL_SIZE"] = 20
+    app.config["SQLALCHEMY_MAX_OVERFLOW"] = 20
+    app.config["SQLALCHEMY_POOL_RECYCLE"] = 300
+    app.config["SQLALCHEMY_POOL_TIMEOUT"] = 30
+    app.config["SQLALCHEMY_POOL_PRE_PING"] = True
     # -----------------------------
     # INIT EXTENSIONS
     # -----------------------------
     # Allow specific origins with credentials
-   # CORS: strict allowlist in production via CORS_ALLOWED_ORIGINS (comma-separated)
+    # CORS: strict allowlist in production via CORS_ALLOWED_ORIGINS (comma-separated)
     if env_name == "production":
         allowed_origins = [o.strip() for o in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",") if o.strip()]
         if not allowed_origins:
@@ -100,7 +102,7 @@ def create_app():
     else:
         allowed_origins = [
             r"https://.*\.vercel\.app",
-            "http://localhost:5173",
+            "http://localhost:8001",
             "http://localhost:3000",
             r"http://192\.168\.[0-9]+\.[0-9]+:[0-9]+"
         ]
@@ -108,14 +110,21 @@ def create_app():
         r"/*": {
             "origins": allowed_origins,
             "supports_credentials": True,
-            "allow_headers": ["Content-Type", "Authorization", "X-Branch", "X-Location", "X-Academic-Year", "X-Requested-With"],
+            "allow_headers": ["Content-Type", "Authorization", "X-Branch", "X-Location", "X-Academic-Year", "X-Requested-With", "X-School-ID", "X-Branch-ID"],
             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
         }
     })
     db.init_app(app)
     migrate.init_app(app, db)
+    # Auto-sync permission catalog on every server start
+    from routes.rbac_routes import _sync_permission_catalog
+    with app.app_context():
+        try:
+            _sync_permission_catalog()
+        except Exception as e:
+            print(f"[WARN] Permission sync failed: {e}")
 
-    limiter.init_app(app)  
+    limiter.init_app(app)
     cache.init_app(app, config={'CACHE_TYPE': 'SimpleCache', 'CACHE_DEFAULT_TIMEOUT': 300})
 
 
@@ -142,6 +151,9 @@ def create_app():
     app.register_blueprint(config_bp)
     app.register_blueprint(document_routes, url_prefix="/api/documents")
     app.register_blueprint(rbac_bp)
+    app.register_blueprint(petty_cash_bp, url_prefix="/api/petty-cash")
+    app.register_blueprint(petty_cash_report_bp, url_prefix="/api/petty-cash-report")
+    app.register_blueprint(sms_bp)
 
     # -----------------------------
     # SERVE UPLOADS (legacy - kept for backward compatibility)
@@ -214,7 +226,7 @@ if __name__ == "__main__":
     from sqlalchemy import inspect, text
     with app.app_context():
         upgrade()
-        print("✅ Database upgraded.")
+        print("[OK] Database upgraded.")
 
     port = int(os.getenv("PORT", 5001))
     debug = os.getenv("FLASK_DEBUG", "false").lower() == "true"

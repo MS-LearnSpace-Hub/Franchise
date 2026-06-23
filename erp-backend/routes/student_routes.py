@@ -1,4 +1,5 @@
 
+# pyrefly: ignore [missing-import] 
 from flask import Blueprint, jsonify, request, send_file
 from extensions import db, get_now, to_local_time
 from models import Student, Branch, UserBranchAccess, StudentFee, StudentAcademicRecord
@@ -17,7 +18,7 @@ from models import (
 
 
 from services.sequence_service import SequenceService
-from helpers import token_required, require_academic_year, get_branch_query_filter, student_to_dict, auto_enroll_student_fee, require_editable_student, is_admin_level
+from helpers import token_required, require_academic_year, get_branch_query_filter, student_to_dict, auto_enroll_student_fee, require_editable_student, is_admin_level, has_permission, get_user_allowed_branches, resolve_user_scope
 from datetime import datetime
 from sqlalchemy import or_, and_, func
 import io
@@ -140,6 +141,8 @@ def save_student_photo(student, photo_data):
 @bp.route("/api/students", methods=["GET"])
 @token_required
 def get_students(current_user):
+    if not has_permission(current_user, "administration.student.student-administration", "read"):
+        return jsonify({"error": "Forbidden: missing permission"}), 403
     try:
         class_name = request.args.get("class")
         section = request.args.get("section")
@@ -200,6 +203,7 @@ def get_students(current_user):
                 (Student.StudentMiddleName.like(like)) |
                 (Student.last_name.like(like)) |
                 (Student.admission_no.like(like)) |
+                (Student.enrollment_no.like(like)) |
                 (Student.Fatherfirstname.like(like)) |
                 (Student.phone.like(like)) |
                 (Student.FatherPhone.like(like))
@@ -211,42 +215,33 @@ def get_students(current_user):
              q = q.filter(Student.status == "Active")
 
         # Branch Filtering (Unified Logic)
-        branch_filter = None
-        
-        if not is_admin_level(current_user):
-             req_branch = h_branch
-
-             has_access = False
-             # Check explicit branch request access
-             if req_branch and req_branch != "All" and (b_obj := Branch.query.filter(or_(Branch.branch_code == req_branch, Branch.branch_name == req_branch)).first()):
-                 has_access = bool(UserBranchAccess.query.filter_by(user_id=current_user.user_id, branch_id=b_obj.id, is_active=True).first())
-
-             if has_access or (current_user.branch == 'All' and req_branch and req_branch != "All"):
-                 branch_filter = get_branch_query_filter(Student.branch, req_branch)
-             elif current_user.branch != 'All':
-                  branch_filter = get_branch_query_filter(Student.branch, current_user.branch)
-
+        allowed = get_user_allowed_branches(current_user)
+        branch_param = request.args.get("branch") or h_branch
+        if branch_param in ("All", "All Branches", None):
+            branch_param = None
+            
+        if not allowed['is_unlimited']:
+            if branch_param:
+                b_obj = Branch.query.filter(or_(Branch.branch_code == branch_param, Branch.branch_name == branch_param)).first()
+                b_name = b_obj.branch_name if b_obj else branch_param
+                if b_name in allowed['names']:
+                    q = q.filter(get_branch_query_filter(Student.branch, b_name))
+                else:
+                    q = q.filter(False)
+            else:
+                if allowed['names']:
+                    q = q.filter(Student.branch.in_(list(allowed['names'])))
+                else:
+                    q = q.filter(False)
         else:
-             # Admin / SuperAdmin — use header/param for cross-branch access
-             branch_param = request.args.get("branch")
-             if branch_param in ("All", "All Branches"):
-                 pass
-             elif branch_param:
-                 branch_filter = get_branch_query_filter(Student.branch, branch_param)
-             elif h_branch and h_branch not in ("All", "All Branches"):
-                 branch_filter = get_branch_query_filter(Student.branch, h_branch)
-        
-        if branch_filter is not None:
-            q = q.filter(branch_filter)
-
-        # School filter: when SuperAdmin selects a specific school (All Branches within that school)
-        if is_admin_level(current_user) and not branch_filter:
-            h_school_id = request.headers.get("X-School-Id")
-            if h_school_id and h_school_id != 'All' and h_school_id.isdigit():
-                school_branches = Branch.query.filter_by(school_id=int(h_school_id), is_active=True).all()
-                school_branch_names = [b.branch_name for b in school_branches]
-                if school_branch_names:
-                    q = q.filter(Student.branch.in_(school_branch_names))
+            if branch_param:
+                q = q.filter(get_branch_query_filter(Student.branch, branch_param))
+            else:
+                h_school_id = request.headers.get("X-School-Id")
+                if h_school_id and h_school_id != 'All' and h_school_id.isdigit():
+                    school_branches = Branch.query.filter_by(school_id=int(h_school_id), is_active=True).all()
+                    if school_branches:
+                        q = q.filter(Student.branch.in_([b.branch_name for b in school_branches]))
 
         # Execute
         rows = q.all()
@@ -332,22 +327,46 @@ def get_students(current_user):
 @token_required
 @require_editable_student
 def update_student(current_user, student_id):
+    if not has_permission(current_user, "administration.student.update-student-details", "write"):
+        return jsonify({"error": "Forbidden: missing permission"}), 403
     try:
         student = Student.query.get(student_id)
         if not student:
             return jsonify({"error": "Student not found"}), 404
 
         # Permission check
-        if current_user.role != 'Admin' and current_user.branch != 'All' and student.branch != current_user.branch:
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited'] and student.branch not in allowed['names']:
             return jsonify({"error": "Unauthorized"}), 403
 
         data = request.json or {}
+        # Aadhar number duplication check
+        aadhar = data.get("Adharcardno")
+        if aadhar:
+            aadhar = str(aadhar).strip()
+            if aadhar:
+                #Validate Aadhar number format
+                if not aadhar.isdigit() or len(aadhar) !=12:
+                    return jsonify({"error":"Aadhar Number must be exactly 12 digits."}),400 
+                existing_student = Student.query.filter_by(Adharcardno=aadhar).first()
+                if existing_student and existing_student.student_id != student_id:
+                    return jsonify({"error": f"A student with Aadhar number {aadhar} already exists."}), 400
+
+        new_branch = data.get('branch')
+        b_obj = None
+        if new_branch:
+            b_obj = Branch.query.filter_by(branch_name=new_branch, is_active=True).first()
+            if not b_obj:
+                return jsonify({"error": f"Branch '{new_branch}' not found or is inactive"}), 400
+            if not allowed['is_unlimited'] and new_branch not in allowed['names']:
+                return jsonify({"error": "Unauthorized to move student to branch: " + new_branch}), 403
 
         # -------- EXPLICIT FIELD MAPPING --------
         # Map frontend field names to backend model attributes
         field_mapping = {
             'admission_no': 'admission_no',
-            'admissionNo': 'admission_no',
+            'admissionNo' : 'admission_no',
+            'enrollment_no': 'enrollment_no',
             'first_name': 'first_name',
             'last_name': 'last_name',
             'StudentMiddleName': 'StudentMiddleName',
@@ -356,7 +375,6 @@ def update_student(current_user, student_id):
             'section': 'section',
             'Roll_Number': 'Roll_Number',
             'status': 'status',
-            'branch': 'branch',
             'location': 'location',
             'academic_year': 'academic_year',
             'BloodGroup': 'BloodGroup',
@@ -496,6 +514,11 @@ def update_student(current_user, student_id):
             student.inactivate_reason = None
             student.inactivated_by = None
 
+        # -------- BRANCH & TENANT MAPPING RESOLUTION --------
+        if b_obj:
+            student.branch = b_obj.branch_name
+            student.branch_id = b_obj.id
+            student.school_id = b_obj.school_id
 
         # -------- PHOTO HANDLING --------
         photos = data.get("photos")
@@ -547,6 +570,8 @@ def update_student(current_user, student_id):
 @bp.route("/api/students", methods=["POST"])
 @token_required
 def create_student(current_user):
+    if not has_permission(current_user, "administration.student.create-student", "write"):
+        return jsonify({"error": "Forbidden: missing permission"}), 403
     h_year, err, code = require_academic_year()
     if h_year:
         h_year = h_year.strip()
@@ -569,11 +594,35 @@ def create_student(current_user):
             # Ideally OrgMaster should have this year.
             return jsonify({"error": f"Academic Year {h_year} not found in Master"}), 400
 
-        # 2. Resolve Branch ID
+        # 2. Resolve Branch ID (more tolerant for multi-branch users)
         branch_name_code = data.get("branch")
-        branch_id = SequenceService.resolve_branch_id(branch_name_code)
+        branch_id = None
+
+        # If client passed a numeric branch id as string, accept it
+        if isinstance(branch_name_code, str) and branch_name_code.isdigit():
+            branch_id = int(branch_name_code)
+        else:
+            branch_id = SequenceService.resolve_branch_id(branch_name_code) if branch_name_code else None
+
+        # Fallback to effective request/user scope (X-Branch header or user default)
         if not branch_id:
-             return jsonify({"error": f"Invalid Branch: {branch_name_code}"}), 400
+            scope = resolve_user_scope(current_user)
+            branch_id = scope.get('branch_id')
+            # Update branch_name_code to readable name for messages
+            if branch_id:
+                br = Branch.query.get(branch_id)
+                branch_name_code = br.branch_name if br else branch_name_code
+
+        if not branch_id:
+            return jsonify({"error": f"Invalid Branch: {branch_name_code}"}), 400
+
+        # Load branch object and check permission
+        b_obj = Branch.query.get(branch_id)
+
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited']:
+            if not b_obj or b_obj.branch_name not in allowed['names']:
+                return jsonify({"error": "Unauthorized to create student for branch: " + (b_obj.branch_name if b_obj else branch_name_code)}), 403
 
         # 3. Generate Number (Thread-Safe)
         # Note: We must ensure this runs in the transaction. 
@@ -582,7 +631,7 @@ def create_student(current_user):
         
         s.admission_no = new_admission_no
         # -------------------------------------------------------------
-        
+        s.enrollment_no = data.get("enrollment_no")
         s.first_name = data.get("first_name")
         s.StudentMiddleName = data.get("StudentMiddleName")
         s.last_name = data.get("last_name")
@@ -607,9 +656,11 @@ def create_student(current_user):
                 s.admission_date = datetime.strptime(data['admission_date'], '%Y-%m-%d').date()
                 
         s.status = data.get("status", "Active")
-        s.branch = data.get("branch")
+        s.branch = b_obj.branch_name if b_obj else data.get("branch")
         s.location = data.get("location")
         s.academic_year = h_year
+        s.branch_id = branch_id
+        s.school_id = b_obj.school_id if b_obj else None
         
         s.BloodGroup = data.get("BloodGroup")
         s.Adharcardno = data.get("Adharcardno")
@@ -741,6 +792,8 @@ def create_student(current_user):
 @token_required
 @require_editable_student
 def delete_student(current_user, student_id):
+    if not has_permission(current_user, "administration.student.make-student-inactive", "write"):
+        return jsonify({"error": "Forbidden: missing permission"}), 403
     try:
         student = Student.query.get(student_id)
         if not student:
@@ -766,8 +819,14 @@ def delete_student(current_user, student_id):
 @bp.route("/api/students/upload_csv", methods=["POST"])
 @token_required
 def upload_students_csv(current_user):
+    if not has_permission(current_user, "administration.student.import-student-data", "write"):
+        return jsonify({"error": "Forbidden: missing permission"}), 403
     """Bulk upload students from CSV file"""
     try:
+        academic_year, err, code = require_academic_year()
+        if err:
+            return err, code
+
         if 'file' not in request.files:
             return jsonify({"error": "No file provided"}), 400
         
@@ -821,6 +880,16 @@ def upload_students_csv(current_user):
         students_created = 0
         errors = []
 
+        # Check branch permission
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited']:
+            for row_num, row in enumerate(data, start=2):
+                s_branch = row.get('branch')
+                if not s_branch:
+                    return jsonify({"error": f"Row {row_num}: branch is missing"}), 400
+                if s_branch not in allowed['names']:
+                    return jsonify({"error": f"Row {row_num}: Unauthorized to import students for branch '{s_branch}'"}), 403
+
         # ---------------------------------------------------------
         # RISK 3 FIX: PRE-VALIDATION & DUPLICATE CHECKS
         # Prevent partial failures and data corruption
@@ -842,9 +911,20 @@ def upload_students_csv(current_user):
         
         for row_num, row in enumerate(data, start=2):
             try:
-                # Create student from CSV row
+                s_branch = row.get('branch')
+                b_obj = Branch.query.filter_by(branch_name=s_branch, is_active=True).first()
+                if not b_obj:
+                    b_obj = Branch.query.filter_by(branch_code=s_branch, is_active=True).first()
+                if not b_obj:
+                    return jsonify({"error": f"Row {row_num}: Branch '{s_branch}' not found or is inactive"}), 400
+
                 student = Student(
+                    branch=b_obj.branch_name,
+                    branch_id=b_obj.id,
+                    school_id=b_obj.school_id,
+                    academic_year=academic_year,
                     admission_no=row.get('admission_no'),
+                    enrollment_no=row.get('enrollment_no'),
                     first_name=row.get('first_name'),
                     StudentMiddleName=row.get('StudentMiddleName'),
                     last_name=row.get('last_name'),
@@ -938,7 +1018,7 @@ def upload_students_csv(current_user):
                 
                 # Auto-enroll in fee structures
                 if student.clazz:
-                    auto_enroll_student_fee(student.student_id, student.clazz)
+                    auto_enroll_student_fee(student.student_id, student.clazz, year=academic_year)
                     db.session.commit() # Commit fees for this student
                 
                 students_created += 1
@@ -966,6 +1046,8 @@ def upload_students_csv(current_user):
 @bp.route("/api/students/<int:student_id>/history", methods=["GET"])
 @token_required
 def get_student_history(current_user, student_id):
+    if not has_permission(current_user, "administration.student.student-administration", "read"):
+        return jsonify({"error": "Forbidden: missing permission"}), 403
     """Get academic history (promotion records) for a student"""
     try:
         student = Student.query.get(student_id)
@@ -973,7 +1055,8 @@ def get_student_history(current_user, student_id):
             return jsonify({"error": "Student not found"}), 404
             
         # Permission check
-        if current_user.role != 'Admin' and current_user.branch != 'All' and student.branch != current_user.branch:
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited'] and student.branch not in allowed['names']:
              return jsonify({"error": "Unauthorized"}), 403
              
         records = StudentAcademicRecord.query.filter_by(student_id=student_id).order_by(StudentAcademicRecord.created_at.desc()).all()
@@ -997,6 +1080,8 @@ def get_student_history(current_user, student_id):
 @bp.route("/api/students/promote-bulk", methods=["POST"])
 @token_required
 def promote_students_bulk(current_user):
+    if not has_permission(current_user, "administration.student.promote-students", "write"):
+        return jsonify({"error": "Forbidden: missing permission"}), 403
     """
     Bulk promote students to a new academic year.
     Mirrors the individual promote logic for each student.
@@ -1025,10 +1110,11 @@ def promote_students_bulk(current_user):
         if not_found := [sid for sid in student_ids if sid not in student_map]:
             errors.append(f"Students not found: {', '.join(map(str, not_found))}")
 
-        if current_user.role != 'Admin' and current_user.branch != 'All':
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited']:
             for sid in list(student_map.keys()):
                 student = student_map[sid]
-                if student.branch != current_user.branch:
+                if student.branch not in allowed['names']:
                     errors.append(f"Unauthorized for student {student.admission_no} (branch mismatch)")
                     del student_map[sid]
 
@@ -1141,6 +1227,8 @@ def promote_students_bulk(current_user):
 @bp.route("/api/students/demote-bulk", methods=["POST"])
 @token_required
 def demote_students_bulk(current_user):
+    if not has_permission(current_user, "administration.student.demote-students", "write"):
+        return jsonify({"error": "Forbidden: missing permission"}), 403
     """
     Bulk DEMOTE (de-promote) students — reverting a mistaken promotion.
 
@@ -1181,9 +1269,10 @@ def demote_students_bulk(current_user):
         if not_found := [sid for sid in student_ids if sid not in student_map]:
             errors.append(f"Students not found: {', '.join(map(str, not_found))}")
 
-        if current_user.role != "Admin" and current_user.branch != "All":
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited']:
             for sid in list(student_map.keys()):
-                if student_map[sid].branch != current_user.branch:
+                if student_map[sid].branch not in allowed['names']:
                     errors.append(f"Unauthorized for student {student_map[sid].admission_no}")
                     del student_map[sid]
 
@@ -1262,6 +1351,8 @@ def demote_students_bulk(current_user):
 @bp.route("/api/students/change-section-bulk", methods=["POST"])
 @token_required
 def change_section_bulk(current_user):
+    if not has_permission(current_user, "administration.student.change-section", "write"):
+        return jsonify({"error": "Forbidden: missing permission"}), 403
     """
     Bulk change student sections within the same academic year.
     """
@@ -1287,9 +1378,10 @@ def change_section_bulk(current_user):
         students = Student.query.filter(Student.student_id.in_(student_ids)).all()
         student_map = {s.student_id: s for s in students}
 
-        if current_user.role != "Admin" and current_user.branch != "All":
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited']:
             for sid in list(student_map.keys()):
-                if student_map[sid].branch != current_user.branch:
+                if student_map[sid].branch not in allowed['names']:
                     errors.append(f"Unauthorized for student {student_map[sid].admission_no}")
                     del student_map[sid]
 
@@ -1345,6 +1437,9 @@ def change_section_bulk(current_user):
 @bp.route("/api/students/summary", methods=["GET"])
 @token_required
 def get_student_summary(current_user):
+    if not (has_permission(current_user, "setup.school-setup.class-summary", "read") or
+            has_permission(current_user, "administration.student.student-administration", "read")):
+        return jsonify({"error": "Forbidden: missing permission"}), 403
     """
     Get aggregated student summary:
     - Overall counts by status
@@ -1369,21 +1464,34 @@ def get_student_summary(current_user):
             base_q = db.session.query(Student, None)
 
         # 2. Apply Branch Filter
-        if not is_admin_level(current_user):
-             target_branch = current_user.branch
-        else:
-             target_branch = request.headers.get("X-Branch") or request.args.get("branch")
+        allowed = get_user_allowed_branches(current_user)
+        target_branch = request.headers.get("X-Branch") or request.args.get("branch")
+        if target_branch in ('All', 'All Branches', 'AllBranches', None):
+            target_branch = None
 
-        if target_branch and target_branch not in ['All', 'All Branches', 'AllBranches']:
-             base_q = base_q.filter(Student.branch == target_branch)
-        elif is_admin_level(current_user):
-             # School-level filter when no specific branch is selected
-             h_school_id = request.headers.get("X-School-Id")
-             if h_school_id and h_school_id != 'All' and h_school_id.isdigit():
-                 school_branches = Branch.query.filter_by(school_id=int(h_school_id), is_active=True).all()
-                 school_branch_names = [b.branch_name for b in school_branches]
-                 if school_branch_names:
-                     base_q = base_q.filter(Student.branch.in_(school_branch_names))
+        if not allowed['is_unlimited']:
+            if target_branch:
+                b_obj = Branch.query.filter(or_(Branch.branch_code == target_branch, Branch.branch_name == target_branch)).first()
+                b_name = b_obj.branch_name if b_obj else target_branch
+                if b_name in allowed['names']:
+                    base_q = base_q.filter(Student.branch == b_name)
+                else:
+                    base_q = base_q.filter(False)
+            else:
+                if allowed['names']:
+                    base_q = base_q.filter(Student.branch.in_(list(allowed['names'])))
+                else:
+                    base_q = base_q.filter(False)
+        else:
+            if target_branch:
+                base_q = base_q.filter(Student.branch == target_branch)
+            else:
+                h_school_id = request.headers.get("X-School-Id")
+                if h_school_id and h_school_id != 'All' and h_school_id.isdigit():
+                    school_branches = Branch.query.filter_by(school_id=int(h_school_id), is_active=True).all()
+                    school_branch_names = [b.branch_name for b in school_branches]
+                    if school_branch_names:
+                        base_q = base_q.filter(Student.branch.in_(school_branch_names))
         # 3. Aggregations via Python (Flexible for History Mode complexity)
         # SQLAlchemy GroupBy with complex join conditions + OR logic is readable but tricky.
         # Fetching simplified objects might be safer/easier to maintain than pure SQL GroupBy for this specific "fallback" logic.
@@ -1481,6 +1589,7 @@ def download_student_template():
     """Download student import template"""
     template_data = {
         "admission_no": ["ADM001"],
+        "enrollment_no": ["VDK003"],
         "first_name": ["John"],
         "StudentMiddleName": ["Mark"],
         "last_name": ["Doe"],

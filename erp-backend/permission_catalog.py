@@ -30,7 +30,8 @@ PERMISSION_CATALOG = [
     permission("Home", "Dashboard", "Report Card", "home.dashboard.report-card", "View report card dashboard"),
     permission("Home", "Dashboard", "Student Report Card", "home.dashboard.student-report-card", "View student report cards"),
 
-    permission("Administration", "Student", "Student Administration", "administration.student.student-administration"),
+    permission("Administration", "SMS", "SMS Center", "administration.sms.sms-center", "Access to SMS Center for attendance, fee and announcement SMS"),
+    permission("Administration", "Student", "Student Administration", "administration.student.student-administration", "Access to Student Administration module"),
     permission("Administration", "Student", "Search Student", "administration.student.search-student"),
     permission("Administration", "Student", "Create Student", "administration.student.create-student"),
     permission("Administration", "Student", "Update Student Details", "administration.student.update-student-details"),
@@ -49,10 +50,20 @@ PERMISSION_CATALOG = [
     permission("Fees", "Fee", "Class Fee Structure", "fees.fee.class-fee-structure"),
     permission("Fees", "Fee", "Assign Special Fee", "fees.fee.assign-special-fee"),
     permission("Fees", "Fee", "Update Student Fee Structure", "fees.fee.update-student-fee-structure"),
+    permission("Fees", "Fee", "Update Rebate Date", "fees.fee.update-rebate-date"),
     permission("Fees", "Fee", "Fee Installments", "fees.fee.fee-installments"),
     permission("Fees", "Fee", "Concession Master", "fees.fee.concession-master"),
     permission("Fees", "Fee", "Fee Reports", "fees.fee.fee-reports"),
     permission("Fees", "Fee", "Fee Report Components", "fees.fee.fee-report-components"),
+    permission("Fees", "Fee", "Deleted Receipts", "fees.fee.deleted-receipts"),
+    permission("Fees", "Fee", "Fee Concession Report", "fees.fee.fee-concession-report"),
+    permission("Fees", "Fee", "Adjust Fee Report", "fees.fee.adjust-fee-report"),
+    permission("Fees", "Fee", "Petty Cash", "fees.fee.petty-cash"),
+    permission("Fees", "Fee", "Petty Cash Fund Allocation", "fees.fee.petty-cash-fund-allocation"),
+    permission("Fees", "Fee", "Petty Cash Monthly Expenses", "fees.fee.petty-cash-monthly-expenses"),
+    permission("Fees", "Fee", "Petty Cash Report", "fees.fee.petty-cash-report"),
+    permission("Fees", "Fee", "Petty Cash Approval", "fees.fee.petty-cash-approval"),
+    permission("Fees", "Fee", "Reports", "fees.fee.reports"),
 
     permission("Academics", "Academic", "Academic Management", "academics.academic.academic-management"),
     permission("Academics", "Academic", "Academics", "academics.academic.academics"),
@@ -82,9 +93,11 @@ PERMISSION_CATALOG = [
     permission("System", "Users", "User Management", "system.users.user-management"),
     permission("System", "Roles", "Role Permissions", "system.roles.role-permissions"),
     permission("System", "Franchise", "Franchise Management", "system.franchise.franchise-management"),
+    permission("System", "School", "School Management", "system.school.school-management"),
 ]
 
 LEGACY_PERMISSION_ALIASES = {
+    "system.school.management": "system.school.school-management",
     "home.dashboard.main": "home.dashboard.dashboard",
     "academics.academic.management": "academics.academic.academic-management",
     "academics.attendance.student": "attendance.attendance.student-attendance",
