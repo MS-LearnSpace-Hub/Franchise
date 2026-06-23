@@ -24,7 +24,7 @@ def get_available_petty_cash_fund(branch_id, academic_year, exclude_txn_id=None)
         PettyCash.academic_year == academic_year,
         PettyCash.is_active == True,
         PettyCash.voucher_type == 'Received',
-        PettyCash.approval_status != 'Rejected'
+        PettyCash.approval_status == 'Approved'
     )
     if exclude_txn_id:
         received_query = received_query.filter(PettyCash.id != exclude_txn_id)
@@ -36,7 +36,7 @@ def get_available_petty_cash_fund(branch_id, academic_year, exclude_txn_id=None)
         PettyCash.academic_year == academic_year,
         PettyCash.is_active == True,
         PettyCash.voucher_type == 'Payment',
-        PettyCash.approval_status != 'Rejected'
+        PettyCash.approval_status == 'Approved'
     )
     if exclude_txn_id:
         payments_query = payments_query.filter(PettyCash.id != exclude_txn_id)
@@ -53,7 +53,7 @@ def get_available_petty_cash_fund(branch_id, academic_year, exclude_txn_id=None)
 def get_ledgers(current_user):
     try:
         # Permission check - only allow petty cash access
-        if current_user.role not in ("SuperAdmin", "Admin", "Branch Admin", "branch admin") and not has_permission(current_user, "fees.fee.petty-cash", "read"):
+        if current_user.role and current_user.role.lower() not in ("superadmin", "admin", "branch admin") and not has_permission(current_user, "fees.fee.petty-cash", "read"):
             return jsonify({"message": "Unauthorized access to petty cash"}), 403
         
         ledger_type = request.args.get('type')
@@ -78,7 +78,7 @@ def get_ledgers(current_user):
 def create_ledger(current_user):
     try:
         # Permission check - only SuperAdmin, Admin, and Branch Admin can create ledgers
-        if current_user.role not in ("SuperAdmin", "Admin", "Branch Admin", "branch admin"):
+        if current_user.role and current_user.role.lower() not in ("superadmin", "admin", "branch admin"):
             return jsonify({"message": "Only Admin, SuperAdmin, or Branch Admin can create ledgers"}), 403
         
         data = request.json
@@ -117,7 +117,7 @@ def create_ledger(current_user):
 def update_ledger(current_user, ledger_id):
     try:
         # Permission check - only SuperAdmin, Admin, and Branch Admin can update ledgers
-        if current_user.role not in ("SuperAdmin", "Admin", "Branch Admin", "branch admin"):
+        if current_user.role and current_user.role.lower() not in ("superadmin", "admin", "branch admin"):
             return jsonify({"message": "Only Admin, SuperAdmin, or Branch Admin can update ledgers"}), 403
         
         data = request.json
@@ -311,7 +311,7 @@ def create_transaction(current_user):
         data = request.json
         academic_year = request.headers.get("X-Academic-Year", "2024-2025")
         
-        if current_user.role != "Admin" and current_user.role != "Accountant":
+        if current_user.role and current_user.role.lower() not in ("superadmin", "admin", "branch admin", "accountant"):
             branch_id = resolve_branch_id(current_user.branch)
         else:
             # We don't trust the body for branch anymore, checking headers or user object is better.
@@ -533,18 +533,18 @@ def delete_transaction(current_user, txn_id):
 def approve_petty_cash(current_user, txn_id):
     try:
         from helpers import has_permission
-        if current_user.role not in ("SuperAdmin", "Admin", "Branch Admin", "branch admin") and not has_permission(current_user, "fees.fee.petty-cash-approval", "write"):
+        if current_user.role and current_user.role.lower() not in ("superadmin", "admin", "branch admin") and not has_permission(current_user, "fees.fee.petty-cash-approval", "write"):
             return jsonify({"message": "Unauthorized to approve petty cash"}), 403
 
         data = request.json
         txn = PettyCash.query.get_or_404(txn_id)
         
         status = data.get('approval_status')
-        if status not in ('Approved', 'Rejected', 'Pending'):
+        if status not in ('Approved', 'Rejected'):
             return jsonify({"message": "Invalid approval status"}), 400
             
         txn.approval_status = status
-        txn.approved_by = current_user.username
+        txn.approved_by = current_user.user_id
         
         db.session.commit()
         return jsonify({"message": f"Transaction marked as {status}"}), 200
@@ -559,7 +559,7 @@ def approve_fund_allocation(current_user, allocation_id):
     try:
         from helpers import has_permission
         from datetime import datetime
-        if current_user.role not in ("SuperAdmin", "Admin", "Branch Admin", "branch admin") and not has_permission(current_user, "fees.fee.petty-cash-approval", "write"):
+        if current_user.role and current_user.role.lower() not in ("superadmin", "admin", "branch admin") and not has_permission(current_user, "fees.fee.petty-cash-approval", "write"):
             return jsonify({"message": "Unauthorized to approve fund allocations"}), 403
 
         data = request.json
@@ -567,12 +567,13 @@ def approve_fund_allocation(current_user, allocation_id):
         allocation = PettyCashFundAllocation.query.get_or_404(allocation_id)
         
         status = data.get('approval_status')
-        if status not in ('Approved', 'Rejected', 'Pending'):
+        if status not in ('Approved', 'Rejected'):
             return jsonify({"message": "Invalid approval status"}), 400
             
         allocation.approval_status = status
-        allocation.approved_by = current_user.user_id
-        allocation.approved_at = datetime.utcnow()
+        if status == 'Approved':
+            allocation.approved_by = current_user.user_id
+            allocation.approved_at = datetime.utcnow()
         
         db.session.commit()
         return jsonify({"message": f"Fund allocation marked as {status}"}), 200

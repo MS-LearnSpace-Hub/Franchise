@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { API_URL } from '../config';
 
 const PettyCashApproval: React.FC = () => {
@@ -8,6 +8,13 @@ const PettyCashApproval: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [message, setMessage] = useState('');
     const [activeTab, setActiveTab] = useState<'expenses' | 'funds'>('expenses');
+    const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+    useEffect(() => {
+        return () => {
+            if (timeoutRef.current) clearTimeout(timeoutRef.current);
+        };
+    }, []);
 
     const getHeaders = () => {
         const token = localStorage.getItem('token') || '';
@@ -83,7 +90,8 @@ const PettyCashApproval: React.FC = () => {
             setMessage('Network error');
         } finally {
             setLoading(false);
-            setTimeout(() => setMessage(''), 3000);
+            if (timeoutRef.current) clearTimeout(timeoutRef.current);
+            timeoutRef.current = setTimeout(() => setMessage(''), 3000);
         }
     };
 

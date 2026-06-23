@@ -96,7 +96,7 @@ const PettyCash: React.FC = () => {
       const currentMonth = new Date().toLocaleString('default', { month: 'long', year: 'numeric' });
       setExpandedMonths(prev => ({ ...prev, [currentMonth]: true }));
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to load transactions');
+      setError(err.response?.data?.message || 'Failed to load data');
     } finally {
       setLoading(false);
     }
@@ -181,7 +181,7 @@ const PettyCash: React.FC = () => {
             <div>
               <p className="text-sm text-gray-500 font-medium uppercase tracking-wider">Cash In Hand</p>
               <h3 className={`text-3xl font-bold ${summary.net_amount < 0 ? 'text-red-600' : 'text-blue-700'}`}>
-                ₹ {summary.net_amount.toFixed(2)}
+                ₹ {summary.net_amount?.toFixed(2) ?? '0.00'}
               </h3>
             </div>
           </div>

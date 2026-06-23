@@ -1048,7 +1048,7 @@ class PettyCash(db.Model, AuditMixin):
     academic_year = db.Column(db.String(20), nullable=False)
     description = db.Column(db.Text, nullable=True)
     approval_status = db.Column(db.Enum('Pending', 'Approved', 'Rejected'), server_default='Pending', default='Pending')
-    approved_by = db.Column(db.String(100), nullable=True)
+    approved_by = db.Column(db.Integer, db.ForeignKey('users.user_id'), nullable=True)
     is_active = db.Column(db.Boolean, nullable=False, server_default=db.text('1'), default=True)
 
     __table_args__ = (
@@ -1078,15 +1078,15 @@ class PettyCashFundAllocation(db.Model, AuditMixin):
     id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
     branch_id = db.Column(db.Integer, db.ForeignKey('branches.id'), nullable=False)
     allocation_date = db.Column(db.Date, nullable=False)
-    amount = db.Column(db.Numeric(12,2),nullable=False)
-    remark = db.Column(db.String(100),nullable = True)
+    amount = db.Column(db.Numeric(12, 2), nullable=False)
+    remarks = db.Column(db.String(100), nullable=True)
     approval_status = db.Column(db.Enum('Pending', 'Approved', 'Rejected'), server_default='Pending', default='Pending')
     approved_by = db.Column(db.Integer, db.ForeignKey('users.user_id'), nullable=True)
     approved_at = db.Column(db.DateTime, nullable=True)
-    academic_year=db.Column(db.String(20),nullable=False)
+    academic_year = db.Column(db.String(20), nullable=False)
     is_active = db.Column(db.Boolean, nullable=False, server_default=db.text('1'), default=True)
 
-    branch =db.relationship("Branch")
+    branch = db.relationship("Branch")
 
 # ----------------------------------------------------------
 # SMS LOG MODEL

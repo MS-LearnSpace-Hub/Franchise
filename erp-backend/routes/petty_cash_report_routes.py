@@ -572,7 +572,7 @@ def ledger_details(current_user):
             academic_year=academic_year, 
             is_active=True,
             approval_status='Approved'
-        ).all()
+        ).filter(PettyCash.voucher_type.in_(['Payment', 'Payments'])).all()
         
         combined = []
         
@@ -602,7 +602,7 @@ def ledger_details(current_user):
             combined.append({
                 "date_obj": e.transaction_date,
                 "date": e.transaction_date.isoformat(),
-                "voucher_no": e.voucher_name,
+                "voucher_no": e.voucher_name or f"C{e.id:05d}",
                 "voucher_type": e.voucher_type,
                 "ledger_type": e.ledger.ledger_type if e.ledger else "",
                 "ledger_name": e.ledger.ledger_name if e.ledger else "",

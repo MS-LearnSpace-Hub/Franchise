@@ -159,7 +159,6 @@ const DetailedLedger: React.FC<DetailedLedgerProps> = ({ filterMonth }) => {
                                 value={selectedBranch}
                                 onChange={(e) => setSelectedBranch(e.target.value)}
                             >
-                                <option value="All">All Branches</option>
                                 {branches.map(b => <option key={b.id} value={b.id}>{b.branch_name}</option>)}
                             </select>
                         </div>
@@ -201,12 +200,12 @@ const DetailedLedger: React.FC<DetailedLedgerProps> = ({ filterMonth }) => {
                         <tbody>
                             {filteredData.length === 0 && !loading && (
                                 <tr>
-                                    <td colSpan={7} className="text-center p-6 text-gray-500">No transactions found.</td>
+                                    <td colSpan={8} className="text-center p-6 text-gray-500">No transactions found.</td>
                                 </tr>
                             )}
                             {loading && (
                                 <tr>
-                                    <td colSpan={7} className="text-center p-6 text-gray-500">Loading details...</td>
+                                    <td colSpan={8} className="text-center p-6 text-gray-500">Loading details...</td>
                                 </tr>
                             )}
                             {filteredData.map((row, idx) => (
@@ -235,7 +234,7 @@ const DetailedLedger: React.FC<DetailedLedgerProps> = ({ filterMonth }) => {
                             ))}
                             {filteredData.length > 0 && (
                                 <tr className="bg-gray-100 font-semibold text-gray-800">
-                                    <td colSpan={5} className="p-3 border text-right">Total:</td>
+                                    <td colSpan={6} className="p-3 border text-right">Total:</td>
                                     <td className="p-3 border text-right text-emerald-700">
                                         {filteredData.reduce((sum, row) => sum + row.debit, 0).toFixed(2)}
                                     </td>

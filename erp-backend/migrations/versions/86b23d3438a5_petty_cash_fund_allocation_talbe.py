@@ -1,4 +1,4 @@
-"""Petty-Cash-Fund-Allocation_Talbe
+"""Petty-Cash-Fund-Allocation_Table
 
 Revision ID: 86b23d3438a5
 Revises: cb32975f3e5b
