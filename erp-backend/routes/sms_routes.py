@@ -438,19 +438,14 @@ def sms_reports(current_user):
         effective_branch_id = int(filter_branch_id) if filter_branch_id else b_id
         effective_school_id = int(filter_school_id) if filter_school_id else s_id
 
-        if role != 'SuperAdmin':
-            # Always scope to school
-            if effective_school_id:
-                q = q.filter(SmsLog.school_id == effective_school_id)
-            # Always scope to branch when resolved
-            if effective_branch_id:
-                q = q.filter(SmsLog.branch_id == effective_branch_id)
-        else:
-            # SuperAdmin: still respect explicit param if provided
-            if effective_branch_id:
-                q = q.filter(SmsLog.branch_id == effective_branch_id)
-            if effective_school_id:
-                q = q.filter(SmsLog.school_id == effective_school_id)
+        allowed_b = get_user_allowed_branches(current_user)
+        if not allowed_b['is_unlimited']:
+            q = q.filter(SmsLog.branch_id.in_(allowed_b['ids']))
+
+        if effective_branch_id:
+            q = q.filter(SmsLog.branch_id == effective_branch_id)
+        if effective_school_id:
+            q = q.filter(SmsLog.school_id == effective_school_id)
 
         if sms_type:
             q = q.filter(SmsLog.sms_type == sms_type)
@@ -466,7 +461,8 @@ def sms_reports(current_user):
             func.sum(case((SmsLog.status == "skipped", 1), else_=0)).label("skipped"),
         ).filter(SmsLog.sent_at >= from_dt, SmsLog.sent_at <= to_dt)
 
-        if role != 'SuperAdmin':
+        if not allowed_b['is_unlimited']:
+            stats_q = stats_q.filter(SmsLog.branch_id.in_(allowed_b['ids']))
             if s_id:
                 stats_q = stats_q.filter((SmsLog.school_id == s_id) | (SmsLog.school_id.is_(None)))
             if b_id:
@@ -499,7 +495,8 @@ def sms_reports(current_user):
             func.sum(case((SmsLog.status == "sent", 1), else_=0)).label("sent"),
         ).filter(SmsLog.sent_at >= from_dt, SmsLog.sent_at <= to_dt)
 
-        if role != 'SuperAdmin':
+        if not allowed_b['is_unlimited']:
+            daily_q = daily_q.filter(SmsLog.branch_id.in_(allowed_b['ids']))
             if s_id:
                 daily_q = daily_q.filter((SmsLog.school_id == s_id) | (SmsLog.school_id.is_(None)))
             if b_id:

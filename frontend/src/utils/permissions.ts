@@ -20,10 +20,6 @@ export interface User {
 export const hasPermission = (user: User | null, permission: string, action: string = "read"): boolean => {
   if (!user) return false;
 
-  // SuperAdmin always has access. Admin must rely on explicit permissions from backend.
-  if (user.role === "SuperAdmin") {
-    return true;
-  }
 
   // Check if permissions array/object exists
   if (!user.permissions) {
