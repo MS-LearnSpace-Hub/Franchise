@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../api';
+import { canWrite, canRead } from '../utils/permissions';
 import { useAuth } from '../contexts/AuthContext';
 
 interface SchoolOption { id: number; school_name: string; }
@@ -30,7 +31,9 @@ const ROLE_COLORS: Record<string, string> = {
 
 const UserManagement: React.FC = () => {
   const { user: currentUser } = useAuth();
-  const isSuperAdmin = currentUser?.role === 'SuperAdmin';
+  const canManageUsersGlobal = canWrite(currentUser, 'system.franchise.franchise-management');
+  // If they can manage franchise, they act like a SuperAdmin in the UI context (see all schools)
+  const isGlobalManager = canManageUsersGlobal;
 
   // Data
   const [users, setUsers] = useState<UserRow[]>([]);
@@ -179,7 +182,7 @@ const UserManagement: React.FC = () => {
           branch_id: form.branch_id ? Number(form.branch_id) : null,
           branch_ids: form.branch_ids,
         };
-        if (isSuperAdmin) {
+        if (isGlobalManager) {
           payload.school_id = form.school_id ? Number(form.school_id) : null;
           payload.school_ids = form.school_ids;
         }
@@ -250,7 +253,7 @@ const UserManagement: React.FC = () => {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">User Management</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            {isSuperAdmin ? 'Manage all users across all schools' : 'Manage users in your school'}
+            {isGlobalManager ? 'Manage all users across all schools' : 'Manage users in your school'}
           </p>
         </div>
         <button
@@ -312,7 +315,7 @@ const UserManagement: React.FC = () => {
               >
                 Roles
               </button>
-              {isSuperAdmin && (
+              {isGlobalManager && (
                 <button
                   type="button"
                   onClick={() => setActiveTab('schools')}
@@ -422,14 +425,14 @@ const UserManagement: React.FC = () => {
                     {roles.length > 0 ? (
                       <>
                         {roles
-                          .filter(r => r.is_active && (isSuperAdmin || r.name !== 'SuperAdmin'))
+                          .filter(r => r.is_active && (canWrite(currentUser, 'system.roles.role-permissions') || r.name !== 'SuperAdmin'))
                           .map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
                         {!roles.some(r => r.id === Number(form.role_id) || r.name === form.role) && form.role && (
                           <option value={form.role_id || form.role}>{form.role}</option>
                         )}
                       </>
                     ) : (
-                      ROLES.filter(r => isSuperAdmin || r !== 'SuperAdmin').map(r => (
+                      ROLES.filter(r => canWrite(currentUser, 'system.roles.role-permissions') || r !== 'SuperAdmin').map(r => (
                         <option key={r} value={r}>{r}</option>
                       ))
                     )}
@@ -441,7 +444,7 @@ const UserManagement: React.FC = () => {
               )}
 
               {/* TAB 3: SCHOOL ACCESS */}
-              {activeTab === 'schools' && isSuperAdmin && (
+              {activeTab === 'schools' && isGlobalManager && (
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Primary School</label>
@@ -569,7 +572,7 @@ const UserManagement: React.FC = () => {
           className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           id="um-search"
         />
-        {isSuperAdmin && (
+        {isGlobalManager && (
           <select
             value={filterSchool}
             onChange={e => setFilterSchool(e.target.value)}
@@ -616,7 +619,7 @@ const UserManagement: React.FC = () => {
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">#</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">User</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Role</th>
-                  {isSuperAdmin && (
+                  {isGlobalManager && (
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">School</th>
                   )}
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Branch</th>
@@ -637,7 +640,7 @@ const UserManagement: React.FC = () => {
                         {u.role}
                       </span>
                     </td>
-                    {isSuperAdmin && (
+                    {isGlobalManager && (
                       <td className="px-4 py-3 text-gray-600 text-xs">{u.school_name || '—'}</td>
                     )}
                     <td className="px-4 py-3 text-gray-600 text-xs">{u.branch_name || '—'}</td>

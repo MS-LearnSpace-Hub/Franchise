@@ -1,7 +1,7 @@
 import logging
 from flask import Blueprint, request, jsonify, g
 from models import db, PettyCash, PettyCashLedger, User, Branch, PettyCashVoucherItem
-from helpers import token_required, has_permission
+from helpers import token_required, has_permission, validate_cross_branch_access
 from datetime import datetime
 from sqlalchemy import extract, func
 
@@ -52,8 +52,8 @@ def get_available_petty_cash_fund(branch_id, academic_year, exclude_txn_id=None)
 @token_required
 def get_ledgers(current_user):
     try:
-        # Permission check - only allow petty cash access
-        if current_user.role and current_user.role.lower() not in ("superadmin", "admin", "branch admin") and not has_permission(current_user, "fees.fee.petty-cash", "read"):
+        # Feature Permission
+        if not has_permission(current_user, "fees.fee.petty-cash", "read"):
             return jsonify({"message": "Unauthorized access to petty cash"}), 403
         
         ledger_type = request.args.get('type')
@@ -77,9 +77,9 @@ def get_ledgers(current_user):
 @token_required
 def create_ledger(current_user):
     try:
-        # Permission check - only SuperAdmin, Admin, and Branch Admin can create ledgers
-        if current_user.role and current_user.role.lower() not in ("superadmin", "admin", "branch admin"):
-            return jsonify({"message": "Only Admin, SuperAdmin, or Branch Admin can create ledgers"}), 403
+        # Feature Permission
+        if not has_permission(current_user, "fees.fee.petty-cash", "write"):
+            return jsonify({"message": "Unauthorized to create ledgers"}), 403
         
         data = request.json
         ledger_name = data.get('ledger_name', '').strip()
@@ -116,9 +116,9 @@ def create_ledger(current_user):
 @token_required
 def update_ledger(current_user, ledger_id):
     try:
-        # Permission check - only SuperAdmin, Admin, and Branch Admin can update ledgers
-        if current_user.role and current_user.role.lower() not in ("superadmin", "admin", "branch admin"):
-            return jsonify({"message": "Only Admin, SuperAdmin, or Branch Admin can update ledgers"}), 403
+        # Feature Permission
+        if not has_permission(current_user, "fees.fee.petty-cash", "write"):
+            return jsonify({"message": "Unauthorized to update ledgers"}), 403
         
         data = request.json
         ledger = PettyCashLedger.query.get_or_404(ledger_id)
@@ -171,14 +171,18 @@ def get_transactions(current_user):
         month = request.args.get("month")
         year = request.args.get("year")
         
-        # User branch enforcement
-        # If normal user, force their branch
-        if current_user.role and current_user.role.lower() not in ("superadmin", "admin", "branch admin", "accountant"):
-            branch_id = resolve_branch_id(current_user.branch)
-        else:
-            # Frontend passes it via query or header
-            branch_val = request.args.get('branch_id') or request.args.get('branch') or request.headers.get('X-Branch') or current_user.branch
-            branch_id = resolve_branch_id(branch_val)
+        # Feature Permission
+        if not has_permission(current_user, "fees.fee.petty-cash", "read"):
+            return jsonify({"message": "Unauthorized"}), 403
+            
+        branch_val = request.args.get('branch_id') or request.args.get('branch') or request.headers.get('X-Branch') or current_user.branch
+        branch_id = resolve_branch_id(branch_val)
+        
+        # Branch Scope
+        if branch_id:
+            is_valid, msg = validate_cross_branch_access(current_user, source_branch_id=branch_id)
+            if not is_valid:
+                return jsonify({"message": msg}), 403
             
         if not branch_id:
             return jsonify([]), 200 # Return empty if 'All' branch selected
@@ -227,12 +231,18 @@ def get_transactions_summary(current_user):
         month = request.args.get("month")
         year = request.args.get("year")
         
-        # User branch enforcement
-        if current_user.role and current_user.role.lower() not in ("superadmin", "admin", "branch admin", "accountant"):
-            branch_id = resolve_branch_id(current_user.branch)
-        else:
-            branch_val = request.args.get('branch_id') or request.args.get('branch') or request.headers.get('X-Branch') or current_user.branch
-            branch_id = resolve_branch_id(branch_val)
+        # Feature Permission
+        if not has_permission(current_user, "fees.fee.petty-cash", "read"):
+            return jsonify({"message": "Unauthorized"}), 403
+
+        branch_val = request.args.get('branch_id') or request.args.get('branch') or request.headers.get('X-Branch') or current_user.branch
+        branch_id = resolve_branch_id(branch_val)
+        
+        # Branch Scope
+        if branch_id:
+            is_valid, msg = validate_cross_branch_access(current_user, source_branch_id=branch_id)
+            if not is_valid:
+                return jsonify({"message": msg}), 403
             
         if not branch_id:
             return jsonify({"total_payment": 0, "total_received": 0, "net_amount": 0}), 200
@@ -311,13 +321,18 @@ def create_transaction(current_user):
         data = request.json
         academic_year = request.headers.get("X-Academic-Year", "2024-2025")
         
-        if current_user.role and current_user.role.lower() not in ("superadmin", "admin", "branch admin", "accountant"):
-            branch_id = resolve_branch_id(current_user.branch)
-        else:
-            # We don't trust the body for branch anymore, checking headers or user object is better.
-            # But Accountant might select a branch from dropdown which sets X-Branch header.
-            branch_val = request.headers.get('X-Branch') or current_user.branch
-            branch_id = resolve_branch_id(branch_val)
+        # Feature Permission
+        if not has_permission(current_user, "fees.fee.petty-cash", "write"):
+            return jsonify({"message": "Unauthorized"}), 403
+
+        branch_val = request.headers.get('X-Branch') or current_user.branch
+        branch_id = resolve_branch_id(branch_val)
+            
+        # Branch Scope
+        if branch_id:
+            is_valid, msg = validate_cross_branch_access(current_user, source_branch_id=branch_id)
+            if not is_valid:
+                return jsonify({"message": msg}), 403
             
         if not branch_id:
             return jsonify({"message": "Valid Branch is required"}), 400
@@ -533,11 +548,17 @@ def delete_transaction(current_user, txn_id):
 def approve_petty_cash(current_user, txn_id):
     try:
         from helpers import has_permission
-        if current_user.role and current_user.role.lower() not in ("superadmin", "admin", "branch admin") and not has_permission(current_user, "fees.fee.petty-cash-approval", "write"):
+        # Feature Permission
+        if not has_permission(current_user, "fees.fee.petty-cash-approval", "write"):
             return jsonify({"message": "Unauthorized to approve petty cash"}), 403
 
         data = request.json
         txn = PettyCash.query.get_or_404(txn_id)
+        
+        # Branch Scope
+        is_valid, msg = validate_cross_branch_access(current_user, source_branch_id=txn.branch_id)
+        if not is_valid:
+            return jsonify({"message": msg}), 403
         
         status = data.get('approval_status')
         if status not in ('Approved', 'Rejected'):
@@ -559,12 +580,18 @@ def approve_fund_allocation(current_user, allocation_id):
     try:
         from helpers import has_permission
         from datetime import datetime
-        if current_user.role and current_user.role.lower() not in ("superadmin", "admin", "branch admin") and not has_permission(current_user, "fees.fee.petty-cash-approval", "write"):
+        # Feature Permission
+        if not has_permission(current_user, "fees.fee.petty-cash-approval", "write"):
             return jsonify({"message": "Unauthorized to approve fund allocations"}), 403
 
         data = request.json
         from models import PettyCashFundAllocation
         allocation = PettyCashFundAllocation.query.get_or_404(allocation_id)
+        
+        # Branch Scope
+        is_valid, msg = validate_cross_branch_access(current_user, source_branch_id=allocation.branch_id)
+        if not is_valid:
+            return jsonify({"message": msg}), 403
         
         status = data.get('approval_status')
         if status not in ('Approved', 'Rejected'):
@@ -588,12 +615,19 @@ def get_allocations(current_user):
     try:
         from models import PettyCashFundAllocation, Branch
         academic_year = request.headers.get("X-Academic-Year", "2024-2025")
+        # Feature Permission
+        from helpers import has_permission
+        if not has_permission(current_user, "fees.fee.petty-cash-fund-allocation", "read"):
+            return jsonify({"message": "Unauthorized"}), 403
+
+        branch_val = request.args.get('branch_id') or request.args.get('branch') or request.headers.get('X-Branch') or current_user.branch
+        branch_id = resolve_branch_id(branch_val)
         
-        if current_user.role and current_user.role.lower() not in ("superadmin", "admin", "branch admin", "accountant"):
-            branch_id = resolve_branch_id(current_user.branch)
-        else:
-            branch_val = request.args.get('branch_id') or request.args.get('branch') or request.headers.get('X-Branch') or current_user.branch
-            branch_id = resolve_branch_id(branch_val)
+        # Branch Scope
+        if branch_id:
+            is_valid, msg = validate_cross_branch_access(current_user, source_branch_id=branch_id)
+            if not is_valid:
+                return jsonify({"message": msg}), 403
             
         query = PettyCashFundAllocation.query.filter_by(academic_year=academic_year, is_active=True)
         if branch_id:
@@ -624,8 +658,18 @@ def create_allocation(current_user):
     try:
         from models import PettyCashFundAllocation
         from datetime import datetime
+        # Feature Permission
+        from helpers import has_permission
+        if not has_permission(current_user, "fees.fee.petty-cash-fund-allocation", "write"):
+            return jsonify({"message": "Unauthorized"}), 403
+
         data = request.json
         academic_year = request.headers.get("X-Academic-Year", "2024-2025")
+        
+        # Branch Scope
+        is_valid, msg = validate_cross_branch_access(current_user, source_branch_id=data['branch_id'])
+        if not is_valid:
+            return jsonify({"message": msg}), 403
         
         new_alloc = PettyCashFundAllocation(
             branch_id=data['branch_id'],
@@ -640,7 +684,7 @@ def create_allocation(current_user):
         
         # If approval_status is set to Pending by default in your system, leave it, but here we set to Approved or Pending.
         # It seems the frontend shows "Status", so maybe it should be "Pending" by default unless created by SuperAdmin
-        if current_user.role and current_user.role.lower() in ("superadmin", "admin", "branch admin"):
+        if has_permission(current_user, "fees.fee.petty-cash-approval", "write"):
             new_alloc.approval_status = 'Approved'
             new_alloc.approved_by = current_user.user_id
             new_alloc.approved_at = datetime.utcnow()

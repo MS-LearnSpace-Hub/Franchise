@@ -20,8 +20,8 @@ export interface User {
 export const hasPermission = (user: User | null, permission: string, action: string = "read"): boolean => {
   if (!user) return false;
 
-  // SuperAdmin and Admin always have access
-  if (user.role === "SuperAdmin" || user.role === "Admin") {
+  // SuperAdmin always has access. Admin must rely on explicit permissions from backend.
+  if (user.role === "SuperAdmin") {
     return true;
   }
 
@@ -43,9 +43,16 @@ export const hasPermission = (user: User | null, permission: string, action: str
     // If it's just a boolean
     if (typeof permObj === "boolean") return permObj;
     
-    // If it's an object with actions
-    if (typeof permObj === "object" && action in permObj) {
-      return permObj[action] === true;
+    // If it's an object with actions (backend format: can_read, can_write, etc)
+    if (typeof permObj === "object") {
+      const actionKey = `can_${action}`;
+      if (actionKey in permObj) {
+        return permObj[actionKey] === true;
+      }
+      // Fallback for old format if it existed
+      if (action in permObj) {
+        return permObj[action] === true;
+      }
     }
   }
 

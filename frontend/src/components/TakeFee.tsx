@@ -3,6 +3,7 @@ import api from '../api';
 import { TrashIcon, PrinterIcon } from './icons';
 import FeeReceipt from './FeeReceipt';
 import { Page } from '../App';
+import { useAuth } from '../contexts/AuthContext';
 
 // Removed monthOrder in favor of Sr based dynamic grouping
 
@@ -209,6 +210,7 @@ const InstallmentRow: React.FC<{
 };
 
 const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
+    const { hasPermission } = useAuth();
     const [students, setStudents] = useState<FeeStudent[]>([]);
     const [classes, setClasses] = useState<string[]>([]);
     const [sectionOptions, setSectionOptions] = useState<string[]>([]);
@@ -275,15 +277,7 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
         }
 
         const paymentsToDelete = paymentHistory.filter(p => p.receipt_no === receiptNo);
-        const userRole =
-            (localStorage.getItem('role') ||
-                localStorage.getItem('userRole') ||
-                '').toLowerCase();
-        const canDeleteReceipt = [
-            'admin',
-            'superadmin',
-            'branch admin'
-        ].includes(userRole);
+        const canDeleteReceipt = hasPermission('fees.fee.take-fee', 'delete');
 
         if (!canDeleteReceipt) {
             alert('You do not have permission to cancel receipts.');

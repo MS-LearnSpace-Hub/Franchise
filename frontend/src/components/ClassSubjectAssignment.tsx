@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import api from "../api";
+import { canWrite } from "../utils/permissions";
 
 interface Option {
     id: number | string;
@@ -92,7 +93,7 @@ const ClassSubjectAssignment: React.FC = () => {
                 })) : [];
 
                 // Check user role
-                const isAdmin = user.role === 'Admin';
+                const isAdmin = canWrite(user, 'academic.management.class-subject-assignment');
 
                 // Find the branch that matches storedBranch from Header
                 const matchedBranch = formattedBranches.find((b: any) =>

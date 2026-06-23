@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import api from '../api';
+import { hasPermission } from '../utils/permissions';
 import { ChevronDownIcon, PrinterIcon, EyeIcon } from './icons';
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
@@ -2413,11 +2414,11 @@ export const SearchStudentReport: React.FC<ReportProps> = ({ onViewReceipt }) =>
         return '';
     };
 
-    const userRole = getUserRole();
-    const isAdmin = userRole === 'admin' || userRole === 'superadmin' || userRole === 'super_admin';
-
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    const isAdmin = hasPermission(user, 'fees.fee.take-fee', 'delete'); // Usually, if they can delete/cancel, they can edit
+    
     // DEBUG: Remove after testing
-    console.log('Detected user role:', userRole, '| isAdmin:', isAdmin);
+    console.log('Detected PBAC permission for editing receipts:', isAdmin);
 
     const paymentModes = ["Cash", "UPI", "Card", "Bank Transfer", "Cheque"];
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api';
+import { hasPermission } from '../utils/permissions';
 
 
 interface Ledger {
@@ -55,8 +56,7 @@ const PettyCash: React.FC = () => {
   } catch {
     console.warn('Invalid user data in localStorage');
   }
-  const userRoleStr = (user.role || '').toLowerCase();
-  const isAccountant = ['superadmin', 'admin', 'branch admin'].includes(userRoleStr);
+  const isAccountant = hasPermission(user, 'fees.fee.petty-cash', 'write');
   const [formData, setFormData] = useState<PettyCashTxn & { items: PettyCashItem[] }>({
     transaction_date: new Date().toISOString().split('T')[0],
     voucher_name: '',

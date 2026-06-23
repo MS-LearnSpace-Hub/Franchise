@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import api from '../api';
+import { canWrite } from '../utils/permissions';
 import { useAuth } from '../contexts/AuthContext';
 
 interface School {
@@ -19,7 +20,7 @@ interface BranchForm { branch_name: string; branch_code: string; location_code: 
 
 const FranchiseManagement: React.FC = () => {
   const { user } = useAuth();
-  const isSuperAdmin = user?.role === 'SuperAdmin';
+  const isSuperAdmin = canWrite(user, 'system.franchise.franchise-management');
 
   const [activeTab, setActiveTab] = useState<'schools' | 'locations'>('schools');
   const [schools, setSchools] = useState<School[]>([]);

@@ -297,8 +297,7 @@ const ClassesManagement: React.FC<ClassesManagementProps> = ({ navigateTo }) => 
     });
 
 
-    // Check Role Access
-    const userRole = JSON.parse(localStorage.getItem('user') || '{}').role;
+    // Removed unused userRole
        // List View - First screen
     if (viewMode === 'list') {
         return (

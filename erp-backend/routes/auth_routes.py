@@ -103,8 +103,7 @@ def _resolve_role(role_id=None, role_name=None):
 
 
 def _can_manage_users(user, action="read"):
-    effective_role = get_effective_role_name(user)
-    return effective_role in ("SuperAdmin", "Admin") or has_permission(user, "system.users.management", action)
+    return has_permission(user, "system.users.user-management", action)
 
 @bp.route("/api/users/login", methods=["POST"])
 @limiter.limit("10 per minute")
@@ -350,7 +349,7 @@ def verify_current_password(current_user):
 @bp.route("/api/debug-user/<string:username>", methods=["GET"])
 @token_required
 def debug_user(current_user, username):
-    if current_user.role not in ('Admin', 'SuperAdmin'):
+    if not has_permission(current_user, "system.users.user-management", "read"):
         return jsonify({"error": "Unauthorized"}), 403
     user = User.query.filter_by(username=username).first()
     if not user:
@@ -377,13 +376,15 @@ def list_users(current_user):
     if not _can_manage_users(current_user, "read"):
         # Standard users can only see themselves
         query = query.filter_by(user_id=current_user.user_id)
-    elif current_user.role == 'Admin':
-        # Admin can only see users in their own school
-        if current_user.school_id:
-            query = query.filter_by(school_id=current_user.school_id)
-        else:
-            # Fallback: show only themselves if no school_id set
-            query = query.filter_by(user_id=current_user.user_id)
+    else:
+        allowed_schools = get_user_allowed_schools(current_user)
+        if not allowed_schools['is_unlimited']:
+            # Non-SuperAdmin managers can only see users in their allowed schools
+            if allowed_schools['ids']:
+                query = query.filter(User.school_id.in_(allowed_schools['ids']))
+            else:
+                # Fallback: show only themselves if no school_id set
+                query = query.filter_by(user_id=current_user.user_id)
 
     users = query.order_by(User.user_id.asc()).all()
 
@@ -443,13 +444,16 @@ def create_user(current_user):
             return jsonify({"error": role_error}), 400
         role_name = role_obj.name if role_obj else role
 
-        # Admins can only create non-SuperAdmin users in their own school
-        if current_user.role == 'Admin':
-            if role_name == 'SuperAdmin':
-                return jsonify({"error": "Admins cannot create SuperAdmin users"}), 403
-            if new_school_id and new_school_id != current_user.school_id:
-                return jsonify({"error": "Admins can only create users in their own school"}), 403
-            new_school_id = current_user.school_id
+        # Security Check: Creating SuperAdmin requires higher privileges
+        if role_name == 'SuperAdmin' and not has_permission(current_user, "system.roles.role-permissions", "write"):
+            return jsonify({"error": "Insufficient privileges to create SuperAdmin users"}), 403
+            
+        allowed_schools = get_user_allowed_schools(current_user)
+        if not allowed_schools['is_unlimited']:
+            if new_school_id and new_school_id not in (allowed_schools['ids'] or set()):
+                return jsonify({"error": "Admins can only create users in their allowed schools"}), 403
+            if not new_school_id and allowed_schools['ids']:
+                new_school_id = next(iter(allowed_schools['ids']))
 
         password_error = _validate_password_strength(password)
         if password_error:
@@ -606,13 +610,9 @@ def update_user(current_user, user_id):
     if not user:
         return jsonify({"error": "User not found"}), 404
 
-    # Admins can only manage users within their own school
-    if current_user.role == 'Admin':
-        # Admins must have a school_id to manage other users
-        if not current_user.school_id:
-            if user.user_id != current_user.user_id:
-                return jsonify({"error": "Unauthorized: Admin has no school assignment"}), 403
-        if user.school_id != current_user.school_id:
+    allowed_schools = get_user_allowed_schools(current_user)
+    if not allowed_schools['is_unlimited']:
+        if user.school_id not in (allowed_schools['ids'] or set()):
             return jsonify({"error": "Unauthorized: user belongs to a different school"}), 403
 
     data = request.json or {}
@@ -629,12 +629,12 @@ def update_user(current_user, user_id):
             if role_error:
                 return jsonify({"error": role_error}), 400
             new_role = role_obj.name if role_obj else new_role_name
-            if current_user.role == 'Admin' and new_role == 'SuperAdmin':
-                return jsonify({"error": "Admins cannot assign SuperAdmin role"}), 403
+            if new_role == 'SuperAdmin' and not has_permission(current_user, "system.roles.role-permissions", "write"):
+                return jsonify({"error": "Insufficient privileges to assign SuperAdmin role"}), 403
             user.role = new_role
             user.role_id = role_obj.id if role_obj else None
 
-    if 'school_ids' in data and current_user.role == 'SuperAdmin':
+    if 'school_ids' in data and allowed_schools['is_unlimited']:
         school_ids = data['school_ids'] or []
         UserSchoolAccess.query.filter_by(user_id=user.user_id).delete()
         for sid in school_ids:
@@ -685,8 +685,8 @@ def update_user(current_user, user_id):
             branch_obj = Branch.query.get(new_branch_id)
             if not branch_obj:
                 return jsonify({"error": "Branch not found"}), 404
-            if current_user.role == 'Admin' and branch_obj.school_id != current_user.school_id:
-                return jsonify({"error": "Admins can only assign branches from their own school"}), 403
+            if not allowed_schools['is_unlimited'] and branch_obj.school_id not in (allowed_schools['ids'] or set()):
+                return jsonify({"error": "Admins can only assign branches from their allowed schools"}), 403
             user.default_branch_id = new_branch_id
             user.branch_id = new_branch_id
             user.branch = branch_obj.branch_name
@@ -711,7 +711,7 @@ def update_user(current_user, user_id):
             user.branch_id = None
             user.branch = None
 
-    if 'school_id' in data and current_user.role == 'SuperAdmin':
+    if 'school_id' in data and allowed_schools['is_unlimited']:
         user.default_school_id = data['school_id']
         user.school_id = data['school_id']
         if data['school_id']:
@@ -758,10 +758,9 @@ def delete_user(current_user, user_id):
     if not user:
         return jsonify({"error": "User not found"}), 404
 
-    if current_user.role == 'Admin':
-        if not current_user.school_id:
-            return jsonify({"error": "Unauthorized: Admin has no school assignment"}), 403
-        if user.school_id != current_user.school_id:
+    allowed_schools = get_user_allowed_schools(current_user)
+    if not allowed_schools['is_unlimited']:
+        if user.school_id not in (allowed_schools['ids'] or set()):
             return jsonify({"error": "Unauthorized"}), 403
 
     user.is_active = False
@@ -776,7 +775,7 @@ def delete_user(current_user, user_id):
 @bp.route("/api/setup/migrate-users", methods=["POST"])
 @token_required
 def migrate_users_to_new_system(current_user):
-    if current_user.role not in ('Admin', 'SuperAdmin'):
+    if not has_permission(current_user, "system.franchise.franchise-management", "write"):
         return jsonify({"error": "Unauthorized"}), 403
     try:
         users = User.query.all()
