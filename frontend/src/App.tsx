@@ -45,7 +45,16 @@ export type Page =
   | 'sms-center'
   | 'fund-allocation'
   | 'month-wise-ledger'
-  | 'petty-cash-approval';
+  | 'petty-cash-approval'
+  | 'hr-management'
+  | 'hr-departments'
+  | 'hr-designations'
+  | 'hr-shifts'
+  | 'hr-staff-master'
+  | 'hr-biometric-devices'
+  | 'hr-biometric-mapping'
+  | 'hr-attendance-summary'
+  | 'hr-punch-log';
 
 // Inner component that can access AuthContext
 const AppInner: React.FC = () => {

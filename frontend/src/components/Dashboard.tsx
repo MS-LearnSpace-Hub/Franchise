@@ -40,6 +40,17 @@ import MonthWiseLedger from './MonthWiseLedger';
 import PettyCashApproval from './PettyCashApproval';
 import FinancialLayout from './FinancialLayout';
 import SmsCenter from './SmsCenter';
+import HRManagement from './HRManagement';
+import HRLayout from './HRLayout';
+import { DepartmentMaster } from './DepartmentMaster';
+import { DesignationMaster } from './DesignationMaster';
+import { ShiftMaster } from './ShiftMaster';
+import { StaffMaster } from './StaffMaster';
+
+const hrPages = [
+  'hr-management', 'hr-departments', 'hr-designations', 'hr-shifts', 'hr-staff-master',
+  'hr-biometric-devices', 'hr-biometric-mapping', 'hr-attendance-summary', 'hr-punch-log'
+];
 
 const financialPages = [
   'fee', 'fee-type', 'class-fee-structure', 'assign-special-fee',
@@ -106,6 +117,18 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
               {currentPage === 'month-wise-ledger' && <MonthWiseLedger />}
               {currentPage === 'petty-cash-approval' && <PettyCashApproval />}
             </FinancialLayout>
+          ) : hrPages.includes(currentPage) ? (
+            <HRLayout currentPage={currentPage} navigateTo={navigateTo}>
+              {currentPage === 'hr-management' && <HRManagement navigateTo={navigateTo} />}
+              {currentPage === 'hr-departments' && <DepartmentMaster />}
+              {currentPage === 'hr-designations' && <DesignationMaster />}
+              {currentPage === 'hr-shifts' && <ShiftMaster />}
+              {currentPage === 'hr-staff-master' && <StaffMaster />}
+              {currentPage === 'hr-biometric-devices' && <div className="p-6">Biometric Devices (Coming Soon)</div>}
+              {currentPage === 'hr-biometric-mapping' && <div className="p-6">Staff Biometric Mapping (Coming Soon)</div>}
+              {currentPage === 'hr-attendance-summary' && <div className="p-6">Attendance Summary (Coming Soon)</div>}
+              {currentPage === 'hr-punch-log' && <div className="p-6">Punch Log (Coming Soon)</div>}
+            </HRLayout>
           ) : (
             <>
               {currentPage === 'administration' && <Administration navigateTo={navigateTo} />}

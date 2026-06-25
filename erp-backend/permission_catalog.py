@@ -94,6 +94,12 @@ PERMISSION_CATALOG = [
     permission("System", "Roles", "Role Permissions", "system.roles.role-permissions"),
     permission("System", "Franchise", "Franchise Management", "system.franchise.franchise-management"),
     permission("System", "School", "School Management", "system.school.school-management"),
+
+    permission("HR", "HR", "HR Management", "hr.hr.hr-management"),
+    permission("HR", "HR", "Staff Master", "hr.hr.staff-master"),
+    permission("HR", "HR", "Departments", "hr.hr.departments"),
+    permission("HR", "HR", "Designations", "hr.hr.designations"),
+    permission("HR", "HR", "Shifts", "hr.hr.shifts"),
 ]
 
 LEGACY_PERMISSION_ALIASES = {

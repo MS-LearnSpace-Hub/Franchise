@@ -131,7 +131,8 @@ const Administration: React.FC<AdministrationProps> = ({ navigateTo }) => {
             icon: <UserIcon className="w-8 h-8" />,
             iconBg: 'bg-emerald-50',
             iconColor: 'text-emerald-600',
-            comingSoon: true
+            page: 'hr-management',
+            permission: 'hr.hr.hr-management'
         },
         {
             id: 'team',

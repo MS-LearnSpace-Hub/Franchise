@@ -192,6 +192,7 @@ class User(db.Model, AuditMixin):
     default_school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
     default_branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
     is_active = db.Column(db.Boolean, default=True)
+    staff_id = db.Column(db.Integer, db.ForeignKey('staff_master.id', ondelete='SET NULL'), nullable=True)
 
     # Relationships
     school_obj = db.relationship('School', foreign_keys=[school_id])
@@ -199,6 +200,7 @@ class User(db.Model, AuditMixin):
     role_obj = db.relationship('Role', foreign_keys=[role_id])
     default_school_obj = db.relationship('School', foreign_keys=[default_school_id])
     default_branch_obj = db.relationship('Branch', foreign_keys=[default_branch_id])
+    staff_obj = db.relationship('StaffMaster', foreign_keys=[staff_id])
 
 
 class PasswordResetOTP(db.Model, AuditMixin):
@@ -1114,6 +1116,186 @@ class SmsLog(db.Model, AuditMixin):
         db.Index('idx_sms_log_type',            'sms_type'),
         db.Index('idx_sms_log_school_branch',   'school_id', 'branch_id'),
     )
+
+# ----------------------------------------------------------
+# HR & ATTENDANCE MODELS
+# ----------------------------------------------------------
+
+class DepartmentMaster(db.Model, AuditMixin):
+    __tablename__ = "department_master"
+    __audit_module__ = "HR"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    department_code = db.Column(db.String(50), unique=True, nullable=False)
+    department_name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    display_order = db.Column(db.Integer, default=0)
+    status = db.Column(db.Enum('ACTIVE', 'INACTIVE'), default='ACTIVE')
+
+class DesignationMaster(db.Model, AuditMixin):
+    __tablename__ = "designation_master"
+    __audit_module__ = "HR"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    department_id = db.Column(db.Integer, db.ForeignKey('department_master.id', ondelete='CASCADE'), nullable=False)
+    designation_code = db.Column(db.String(50), unique=True, nullable=False)
+    designation_name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    display_order = db.Column(db.Integer, default=0)
+    status = db.Column(db.Enum('ACTIVE', 'INACTIVE'), default='ACTIVE')
+
+    department = db.relationship('DepartmentMaster', backref=db.backref('designations', lazy=True))
+
+class ShiftMaster(db.Model, AuditMixin):
+    __tablename__ = "shift_master"
+    __audit_module__ = "HR"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    shift_code = db.Column(db.String(50), unique=True, nullable=False)
+    shift_name = db.Column(db.String(100), nullable=False)
+    start_time = db.Column(db.Time, nullable=False)
+    end_time = db.Column(db.Time, nullable=False)
+    grace_in_minutes = db.Column(db.Integer, default=0)
+    grace_out_minutes = db.Column(db.Integer, default=0)
+    minimum_working_minutes = db.Column(db.Integer, default=0)
+    break_minutes = db.Column(db.Integer, default=0)
+    is_night_shift = db.Column(db.Boolean, default=False)
+    allow_overtime = db.Column(db.Boolean, default=False)
+    late_after_grace = db.Column(db.Boolean, default=False)
+    status = db.Column(db.Enum('ACTIVE', 'INACTIVE'), default='ACTIVE')
+
+class StaffMaster(db.Model, AuditMixin):
+    __tablename__ = "staff_master"
+    __audit_module__ = "HR"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
+    department_id = db.Column(db.Integer, db.ForeignKey('department_master.id', ondelete='SET NULL'), nullable=True)
+    designation_id = db.Column(db.Integer, db.ForeignKey('designation_master.id', ondelete='SET NULL'), nullable=True)
+    default_shift_id = db.Column(db.Integer, db.ForeignKey('shift_master.id', ondelete='SET NULL'), nullable=True)
+    reporting_manager_id = db.Column(db.Integer, db.ForeignKey('staff_master.id', ondelete='SET NULL'), nullable=True)
+
+    employee_code = db.Column(db.String(50), unique=True, nullable=False)
+    first_name = db.Column(db.String(100), nullable=False)
+    middle_name = db.Column(db.String(100), nullable=True)
+    last_name = db.Column(db.String(100), nullable=True)
+    display_name = db.Column(db.String(200), nullable=True)
+    
+    gender = db.Column(db.Enum('MALE', 'FEMALE', 'OTHER'), nullable=False)
+    date_of_birth = db.Column(db.Date, nullable=True)
+    joining_date = db.Column(db.Date, nullable=False)
+    confirmation_date = db.Column(db.Date, nullable=True)
+    relieving_date = db.Column(db.Date, nullable=True)
+    
+    employment_type = db.Column(db.Enum('PERMANENT', 'CONTRACT', 'TEMPORARY', 'INTERN', 'PART_TIME'), nullable=False)
+    employment_status = db.Column(db.Enum('ACTIVE', 'PROBATION', 'NOTICE_PERIOD', 'RESIGNED', 'TERMINATED', 'RETIRED'), default='ACTIVE')
+    
+    email = db.Column(db.String(100), nullable=True)
+    mobile = db.Column(db.String(20), nullable=True)
+    photo = db.Column(db.String(255), nullable=True)
+    address = db.Column(db.Text, nullable=True)
+    city = db.Column(db.String(100), nullable=True)
+    state = db.Column(db.String(100), nullable=True)
+    country = db.Column(db.String(100), nullable=True)
+    pincode = db.Column(db.String(20), nullable=True)
+    
+    attendance_source = db.Column(db.Enum('BIOMETRIC', 'MOBILE', 'WEB', 'MANUAL'), default='MANUAL')
+    
+    weekly_off = db.Column(db.String(50), nullable=True)
+    joining_branch = db.Column(db.String(100), nullable=True)
+    attendance_required = db.Column(db.Boolean, default=True)
+    payroll_enabled = db.Column(db.Boolean, default=True)
+
+    branch = db.relationship('Branch', foreign_keys=[branch_id])
+    department = db.relationship('DepartmentMaster', foreign_keys=[department_id])
+    designation = db.relationship('DesignationMaster', foreign_keys=[designation_id])
+    default_shift = db.relationship('ShiftMaster', foreign_keys=[default_shift_id])
+    reporting_manager = db.relationship('StaffMaster', remote_side=[id])
+
+class BiometricDeviceMaster(db.Model, AuditMixin):
+    __tablename__ = "biometric_device_master"
+    __audit_module__ = "HR"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
+    device_code = db.Column(db.String(50), unique=True, nullable=False)
+    device_name = db.Column(db.String(100), nullable=False)
+    device_model = db.Column(db.String(100), nullable=True)
+    manufacturer = db.Column(db.String(100), nullable=True)
+    serial_number = db.Column(db.String(100), nullable=True)
+    ip_address = db.Column(db.String(50), nullable=True)
+    port = db.Column(db.Integer, nullable=True)
+    communication_type = db.Column(db.Enum('API', 'TCP_IP', 'CLOUD'), nullable=True)
+    timezone = db.Column(db.String(50), nullable=True)
+    last_sync_at = db.Column(db.DateTime, nullable=True)
+    status = db.Column(db.Enum('ACTIVE', 'INACTIVE', 'MAINTENANCE'), default='ACTIVE')
+    
+    branch = db.relationship('Branch', foreign_keys=[branch_id])
+
+class StaffBiometricMapping(db.Model, AuditMixin):
+    __tablename__ = "staff_biometric_mapping"
+    __audit_module__ = "HR"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    staff_id = db.Column(db.Integer, db.ForeignKey('staff_master.id', ondelete='CASCADE'), nullable=False)
+    device_id = db.Column(db.Integer, db.ForeignKey('biometric_device_master.id', ondelete='CASCADE'), nullable=False)
+    biometric_id = db.Column(db.String(50), nullable=True)
+    card_number = db.Column(db.String(50), nullable=True)
+    face_registered = db.Column(db.Boolean, default=False)
+    finger_registered = db.Column(db.Boolean, default=False)
+    pin_registered = db.Column(db.Boolean, default=False)
+    is_primary = db.Column(db.Boolean, default=True)
+    status = db.Column(db.Enum('ACTIVE', 'INACTIVE'), default='ACTIVE')
+    
+    staff = db.relationship('StaffMaster', foreign_keys=[staff_id])
+    device = db.relationship('BiometricDeviceMaster', foreign_keys=[device_id])
+
+class BiometricPunchLog(db.Model):
+    __tablename__ = "biometric_punch_log"
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    device_id = db.Column(db.Integer, db.ForeignKey('biometric_device_master.id', ondelete='SET NULL'), nullable=True)
+    staff_id = db.Column(db.Integer, db.ForeignKey('staff_master.id', ondelete='SET NULL'), nullable=True)
+    biometric_id = db.Column(db.String(50), nullable=True)
+    punch_datetime = db.Column(db.DateTime, nullable=False)
+    direction = db.Column(db.Enum('IN', 'OUT', 'UNKNOWN'), default='UNKNOWN')
+    verification_mode = db.Column(db.Enum('FINGER', 'FACE', 'CARD', 'PIN', 'PALM'), nullable=True)
+    raw_data = db.Column(db.JSON, nullable=True)
+    processed = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+    
+    device = db.relationship('BiometricDeviceMaster', foreign_keys=[device_id])
+    staff = db.relationship('StaffMaster', foreign_keys=[staff_id])
+
+class AttendanceHead(db.Model, AuditMixin):
+    __tablename__ = "attendance_head"
+    __audit_module__ = "ATTENDANCE"
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    staff_id = db.Column(db.Integer, db.ForeignKey('staff_master.id', ondelete='CASCADE'), nullable=False)
+    shift_id = db.Column(db.Integer, db.ForeignKey('shift_master.id', ondelete='SET NULL'), nullable=True)
+    attendance_date = db.Column(db.Date, nullable=False)
+    first_in = db.Column(db.DateTime, nullable=True)
+    last_out = db.Column(db.DateTime, nullable=True)
+    working_minutes = db.Column(db.Integer, default=0)
+    late_minutes = db.Column(db.Integer, default=0)
+    early_exit_minutes = db.Column(db.Integer, default=0)
+    overtime_minutes = db.Column(db.Integer, default=0)
+    attendance_status = db.Column(db.Enum('PRESENT', 'ABSENT', 'HALF_DAY', 'LEAVE', 'HOLIDAY', 'WEEK_OFF'), default='ABSENT')
+    generated_from = db.Column(db.Enum('BIOMETRIC', 'MANUAL', 'MOBILE'), default='BIOMETRIC')
+    remarks = db.Column(db.Text, nullable=True)
+    payroll_locked = db.Column(db.Boolean, default=False)
+    attendance_locked = db.Column(db.Boolean, default=False)
+    payroll_processed = db.Column(db.Boolean, default=False)
+    
+    staff = db.relationship('StaffMaster', foreign_keys=[staff_id])
+    shift = db.relationship('ShiftMaster', foreign_keys=[shift_id])
+
+class AttendanceDetail(db.Model, AuditMixin):
+    __tablename__ = "attendance_detail"
+    __audit_module__ = "ATTENDANCE"
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    attendance_id = db.Column(db.BigInteger, db.ForeignKey('attendance_head.id', ondelete='CASCADE'), nullable=False)
+    device_id = db.Column(db.Integer, db.ForeignKey('biometric_device_master.id', ondelete='SET NULL'), nullable=True)
+    punch_datetime = db.Column(db.DateTime, nullable=False)
+    direction = db.Column(db.Enum('IN', 'OUT'), nullable=False)
+    verification_mode = db.Column(db.Enum('FINGER', 'FACE', 'CARD', 'PIN'), nullable=True)
+    
+    attendance = db.relationship('AttendanceHead', backref=db.backref('details', lazy=True, cascade="all, delete-orphan"))
+    device = db.relationship('BiometricDeviceMaster', foreign_keys=[device_id])
+
 
 # ----------------------------------------------------------
 # GLOBAL AUDIT EVENT LISTENERS
