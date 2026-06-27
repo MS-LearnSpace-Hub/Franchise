@@ -51,6 +51,8 @@ export type Page =
   | 'hr-designations'
   | 'hr-shifts'
   | 'hr-staff-master'
+  | 'hr-staff-categories'
+  | 'hr-staff-statuses'
   | 'hr-biometric-devices'
   | 'hr-biometric-mapping'
   | 'hr-attendance-summary'

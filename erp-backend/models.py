@@ -193,6 +193,11 @@ class User(db.Model, AuditMixin):
     default_branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
     is_active = db.Column(db.Boolean, default=True)
     staff_id = db.Column(db.Integer, db.ForeignKey('staff_master.id', ondelete='SET NULL'), nullable=True)
+    # Security / First-login fields
+    is_first_login = db.Column(db.Boolean, nullable=False, default=True)
+    password_changed_at = db.Column(db.DateTime, nullable=True)
+    last_login = db.Column(db.DateTime, nullable=True)
+    failed_login_count = db.Column(db.Integer, nullable=False, default=0)
 
     # Relationships
     school_obj = db.relationship('School', foreign_keys=[school_id])
@@ -637,6 +642,26 @@ class BranchYearSequence(db.Model, AuditMixin):
         db.CheckConstraint('last_admission_no >= 0', name='chk_admission_no_positive'),
         db.CheckConstraint('last_receipt_no >= 0', name='chk_receipt_no_positive'),
     )
+
+class StaffEnrollmentSequence(db.Model, AuditMixin):
+    __tablename__ = "staff_enrollment_sequences"
+    __audit_module__ = "SYSTEM"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    branch_id = db.Column(db.Integer, db.ForeignKey("branches.id"), nullable=True)
+    department_id = db.Column(db.Integer, db.ForeignKey("department_master.id"), nullable=False)
+    
+    staff_code_prefix = db.Column(db.String(20), nullable=False)
+    last_staff_no = db.Column(db.Integer, default=0, nullable=False)
+    
+    employee_id_prefix = db.Column(db.String(20), nullable=False)
+    last_employee_no = db.Column(db.Integer, default=0, nullable=False)
+
+    __table_args__ = (
+        db.UniqueConstraint('branch_id', 'department_id', name='uq_branch_dept_staff_sequence'),
+        db.CheckConstraint('last_staff_no >= 0', name='chk_staff_no_positive'),
+        db.CheckConstraint('last_employee_no >= 0', name='chk_employee_no_positive'),
+    )
+
 
 
 class StudentAcademicRecord(db.Model, AuditMixin):
@@ -1121,22 +1146,71 @@ class SmsLog(db.Model, AuditMixin):
 # HR & ATTENDANCE MODELS
 # ----------------------------------------------------------
 
+class StaffCategoryMaster(db.Model, AuditMixin):
+    """
+    HR Classification: Teaching / Non-Teaching / Menial / Administration / Management.
+    Deliberately a master table (not enum) so HR can add categories without code changes.
+    """
+    __tablename__ = "staff_category_master"
+    __audit_module__ = "HR"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
+    category_code = db.Column(db.String(20), nullable=False)   # e.g. TEACH
+    category_name = db.Column(db.String(100), nullable=False)               # e.g. Teaching
+    description = db.Column(db.Text, nullable=True)
+    display_order = db.Column(db.Integer, default=0)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+
+    __table_args__ = (
+        db.UniqueConstraint('school_id', 'category_code', name='uq_school_category_code'),
+    )
+
+
+class StaffStatusMaster(db.Model, AuditMixin):
+    """
+    Employment status: Active / Probation / Notice Period / Suspended / Resigned / Terminated / Retired.
+    Deliberately a master table (not enum) so HR/Payroll can add statuses without code changes.
+    """
+    __tablename__ = "staff_status_master"
+    __audit_module__ = "HR"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
+    status_code = db.Column(db.String(30), nullable=False)     # e.g. NOTICE_PERIOD
+    status_name = db.Column(db.String(100), nullable=False)                 # e.g. Notice Period
+    description = db.Column(db.Text, nullable=True)
+    display_order = db.Column(db.Integer, default=0)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+
+    __table_args__ = (
+        db.UniqueConstraint('school_id', 'status_code', name='uq_school_status_code'),
+    )
+
+
 class DepartmentMaster(db.Model, AuditMixin):
     __tablename__ = "department_master"
     __audit_module__ = "HR"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    department_code = db.Column(db.String(50), unique=True, nullable=False)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
+    department_code = db.Column(db.String(50), nullable=False)  # legacy free-form code
     department_name = db.Column(db.String(100), nullable=False)
     description = db.Column(db.Text, nullable=True)
     display_order = db.Column(db.Integer, default=0)
+    # Split codes for structured employee code generation
+    department_short_code = db.Column(db.String(10), nullable=True)          # e.g. MT (Mathematics)
+    department_numeric_code = db.Column(db.String(10), nullable=True)        # e.g. 51
     status = db.Column(db.Enum('ACTIVE', 'INACTIVE'), default='ACTIVE')
+
+    __table_args__ = (
+        db.UniqueConstraint('school_id', 'department_code', name='uq_school_dept_code'),
+    )
 
 class DesignationMaster(db.Model, AuditMixin):
     __tablename__ = "designation_master"
     __audit_module__ = "HR"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
     department_id = db.Column(db.Integer, db.ForeignKey('department_master.id', ondelete='CASCADE'), nullable=False)
-    designation_code = db.Column(db.String(50), unique=True, nullable=False)
+    designation_code = db.Column(db.String(50), nullable=False)
     designation_name = db.Column(db.String(100), nullable=False)
     description = db.Column(db.Text, nullable=True)
     display_order = db.Column(db.Integer, default=0)
@@ -1144,11 +1218,16 @@ class DesignationMaster(db.Model, AuditMixin):
 
     department = db.relationship('DepartmentMaster', backref=db.backref('designations', lazy=True))
 
+    __table_args__ = (
+        db.UniqueConstraint('school_id', 'designation_code', name='uq_school_desig_code'),
+    )
+
 class ShiftMaster(db.Model, AuditMixin):
     __tablename__ = "shift_master"
     __audit_module__ = "HR"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    shift_code = db.Column(db.String(50), unique=True, nullable=False)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
+    shift_code = db.Column(db.String(50), nullable=False)
     shift_name = db.Column(db.String(100), nullable=False)
     start_time = db.Column(db.Time, nullable=False)
     end_time = db.Column(db.Time, nullable=False)
@@ -1161,6 +1240,10 @@ class ShiftMaster(db.Model, AuditMixin):
     late_after_grace = db.Column(db.Boolean, default=False)
     status = db.Column(db.Enum('ACTIVE', 'INACTIVE'), default='ACTIVE')
 
+    __table_args__ = (
+        db.UniqueConstraint('school_id', 'shift_code', name='uq_school_shift_code'),
+    )
+
 class StaffMaster(db.Model, AuditMixin):
     __tablename__ = "staff_master"
     __audit_module__ = "HR"
@@ -1170,22 +1253,32 @@ class StaffMaster(db.Model, AuditMixin):
     designation_id = db.Column(db.Integer, db.ForeignKey('designation_master.id', ondelete='SET NULL'), nullable=True)
     default_shift_id = db.Column(db.Integer, db.ForeignKey('shift_master.id', ondelete='SET NULL'), nullable=True)
     reporting_manager_id = db.Column(db.Integer, db.ForeignKey('staff_master.id', ondelete='SET NULL'), nullable=True)
+    # HR Classification (what kind of employee) — separate from security role
+    staff_category_id = db.Column(db.Integer, db.ForeignKey('staff_category_master.id', ondelete='SET NULL'), nullable=True)
+    # Employment status via master table (replaces employment_status enum gradually)
+    staff_status_id = db.Column(db.Integer, db.ForeignKey('staff_status_master.id', ondelete='SET NULL'), nullable=True)
 
-    employee_code = db.Column(db.String(50), unique=True, nullable=False)
+    staff_code = db.Column(db.String(50), unique=True, nullable=False)
+    employee_id = db.Column(db.String(50), unique=True, nullable=True)
+    # Internal running sequence per branch+department — stored so code never needs recomputing
+    employee_sequence = db.Column(db.Integer, nullable=True)
+    # Numeric suffix of staff_code used as biometric device ID (e.g. MSMN51001 → 51001)
+    biometric_id = db.Column(db.String(20), nullable=True, index=True)
     first_name = db.Column(db.String(100), nullable=False)
     middle_name = db.Column(db.String(100), nullable=True)
     last_name = db.Column(db.String(100), nullable=True)
     display_name = db.Column(db.String(200), nullable=True)
-    
+
     gender = db.Column(db.Enum('MALE', 'FEMALE', 'OTHER'), nullable=False)
     date_of_birth = db.Column(db.Date, nullable=True)
     joining_date = db.Column(db.Date, nullable=False)
     confirmation_date = db.Column(db.Date, nullable=True)
     relieving_date = db.Column(db.Date, nullable=True)
-    
+
     employment_type = db.Column(db.Enum('PERMANENT', 'CONTRACT', 'TEMPORARY', 'INTERN', 'PART_TIME'), nullable=False)
+    # DEPRECATED: kept for backward compat. New code uses staff_status_id FK instead.
     employment_status = db.Column(db.Enum('ACTIVE', 'PROBATION', 'NOTICE_PERIOD', 'RESIGNED', 'TERMINATED', 'RETIRED'), default='ACTIVE')
-    
+
     email = db.Column(db.String(100), nullable=True)
     mobile = db.Column(db.String(20), nullable=True)
     photo = db.Column(db.String(255), nullable=True)
@@ -1194,9 +1287,9 @@ class StaffMaster(db.Model, AuditMixin):
     state = db.Column(db.String(100), nullable=True)
     country = db.Column(db.String(100), nullable=True)
     pincode = db.Column(db.String(20), nullable=True)
-    
+
     attendance_source = db.Column(db.Enum('BIOMETRIC', 'MOBILE', 'WEB', 'MANUAL'), default='MANUAL')
-    
+
     weekly_off = db.Column(db.String(50), nullable=True)
     joining_branch = db.Column(db.String(100), nullable=True)
     attendance_required = db.Column(db.Boolean, default=True)
@@ -1207,6 +1300,8 @@ class StaffMaster(db.Model, AuditMixin):
     designation = db.relationship('DesignationMaster', foreign_keys=[designation_id])
     default_shift = db.relationship('ShiftMaster', foreign_keys=[default_shift_id])
     reporting_manager = db.relationship('StaffMaster', remote_side=[id])
+    staff_category = db.relationship('StaffCategoryMaster', foreign_keys=[staff_category_id])
+    staff_status = db.relationship('StaffStatusMaster', foreign_keys=[staff_status_id])
 
 class BiometricDeviceMaster(db.Model, AuditMixin):
     __tablename__ = "biometric_device_master"

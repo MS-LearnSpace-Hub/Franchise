@@ -112,10 +112,14 @@ def login_user():
         data = request.json or {}
         username = data.get("username")
         password = data.get("password")
-        
+
         user = User.query.filter_by(username=username).first()
-        
+
         if not user or not verify_user_password(password, user.password):
+            # Track failed attempts if user exists
+            if user and hasattr(user, 'failed_login_count'):
+                user.failed_login_count = (user.failed_login_count or 0) + 1
+                db.session.commit()
             return jsonify({"error": "invalid credentials"}), 401
 
         if getattr(user, 'is_active', True) is False:
@@ -124,7 +128,14 @@ def login_user():
         # Upgrade legacy plaintext passwords in-place after a successful login.
         if user.password and not str(user.password).startswith(("pbkdf2:", "scrypt:")):
             user.password = hash_user_password(password)
-            db.session.commit()
+
+        # Update login tracking fields
+        if hasattr(user, 'last_login'):
+            user.last_login = datetime.utcnow()
+        if hasattr(user, 'failed_login_count'):
+            user.failed_login_count = 0
+        db.session.commit()
+
     except Exception as e:
         current_app.logger.exception("Login error")
         return jsonify({"error": "Internal login error"}), 500
@@ -193,6 +204,7 @@ def login_user():
     return jsonify({
         "message": "login successful",
         "token": token,
+        "is_first_login": bool(getattr(user, 'is_first_login', False)),
         "user": {
             "user_id": user.user_id,
             "username": user.username,
@@ -202,7 +214,7 @@ def login_user():
             "permissions": get_user_permissions(user),
             "allowed_branches": valid_branches,
             "allowed_schools": valid_schools,
-            # New school + branch context
+            # School + branch context
             "school_id": ctx["school_id"],
             "school_name": ctx["school_name"],
             "school_logo": ctx["school_logo"],

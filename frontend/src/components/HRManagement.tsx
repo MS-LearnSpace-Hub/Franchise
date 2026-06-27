@@ -53,6 +53,24 @@ const HRManagement: React.FC<HRManagementProps> = ({ navigateTo }) => {
             permission: 'hr.hr.shifts'
         },
         {
+            id: 'staff-categories',
+            name: 'Staff Categories',
+            icon: <DocumentIcon className="w-8 h-8" />,
+            iconBg: 'bg-pink-50',
+            iconColor: 'text-pink-600',
+            page: 'hr-staff-categories' as Page,
+            permission: 'hr.hr.staff-categories'
+        },
+        {
+            id: 'staff-statuses',
+            name: 'Staff Statuses',
+            icon: <DocumentIcon className="w-8 h-8" />,
+            iconBg: 'bg-purple-50',
+            iconColor: 'text-purple-600',
+            page: 'hr-staff-statuses' as Page,
+            permission: 'hr.hr.staff-statuses'
+        },
+        {
             id: 'biometric-devices',
             name: 'Biometric Devices',
             icon: <DashboardIcon className="w-8 h-8" />,

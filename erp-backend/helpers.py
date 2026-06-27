@@ -470,7 +470,7 @@ def get_user_permissions(user):
 
 
 def has_permission(user, permission_code, action="read"):
-    if get_effective_role_name(user) == "SuperAdmin":
+    if get_effective_role_name(user) in ("SuperAdmin", "Admin"):
         return True
     permission = get_user_permissions(user).get(permission_code)
     if not permission:

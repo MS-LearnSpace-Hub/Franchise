@@ -38,9 +38,11 @@ const HRLayout: React.FC<HRLayoutProps> = ({ children, currentPage, navigateTo }
             icon: <DocumentIcon className="w-5 h-5" />,
             permission: 'hr.hr.departments', // Base permission
             subItems: [
-                { name: 'Departments', page: 'hr-departments' as Page, icon: <HomeIcon className="w-4 h-4" />, permission: 'hr.hr.departments' },
-                { name: 'Designations', page: 'hr-designations' as Page, icon: <UserIcon className="w-4 h-4" />, permission: 'hr.hr.designations' },
-                { name: 'Shifts', page: 'hr-shifts' as Page, icon: <TimeIcon className="w-4 h-4" />, permission: 'hr.hr.shifts' },
+                { name: 'Departments',      page: 'hr-departments'      as Page, icon: <HomeIcon className="w-4 h-4" />,  permission: 'hr.hr.departments' },
+                { name: 'Designations',     page: 'hr-designations'     as Page, icon: <UserIcon className="w-4 h-4" />,  permission: 'hr.hr.designations' },
+                { name: 'Shifts',           page: 'hr-shifts'           as Page, icon: <TimeIcon className="w-4 h-4" />,  permission: 'hr.hr.shifts' },
+                { name: 'Staff Categories', page: 'hr-staff-categories' as Page, icon: <DocumentIcon className="w-4 h-4" />, permission: 'hr.hr.staff-categories' },
+                { name: 'Staff Statuses',   page: 'hr-staff-statuses'   as Page, icon: <DocumentIcon className="w-4 h-4" />, permission: 'hr.hr.staff-statuses' },
             ]
         },
         {

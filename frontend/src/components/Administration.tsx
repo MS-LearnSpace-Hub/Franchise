@@ -26,7 +26,7 @@ interface AdministrationModule {
     iconColor: string;
     page?: Page;
     comingSoon?: boolean;
-    permission?: string;
+    permission?: string | string[];
 }
 
 const Administration: React.FC<AdministrationProps> = ({ navigateTo }) => {
@@ -132,7 +132,7 @@ const Administration: React.FC<AdministrationProps> = ({ navigateTo }) => {
             iconBg: 'bg-emerald-50',
             iconColor: 'text-emerald-600',
             page: 'hr-management',
-            permission: 'hr.hr.hr-management'
+            permission: ['hr.hr.hr-management', 'hr.hr.staff-master', 'hr.hr.departments', 'hr.hr.designations']
         },
         {
             id: 'team',
@@ -199,9 +199,13 @@ const Administration: React.FC<AdministrationProps> = ({ navigateTo }) => {
         }
     };
 
-    const visibleModules = administrationModules.filter(module =>
-        !module.permission || hasPermission(module.permission, 'read')
-    );
+    const visibleModules = administrationModules.filter(module => {
+        if (!module.permission) return true;
+        if (Array.isArray(module.permission)) {
+            return module.permission.some(p => hasPermission(p, 'read'));
+        }
+        return hasPermission(module.permission, 'read');
+    });
 
     return (
         <div className="min-h-screen bg-slate-50">
