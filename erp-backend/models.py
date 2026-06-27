@@ -643,23 +643,53 @@ class BranchYearSequence(db.Model, AuditMixin):
         db.CheckConstraint('last_receipt_no >= 0', name='chk_receipt_no_positive'),
     )
 
-class StaffEnrollmentSequence(db.Model, AuditMixin):
-    __tablename__ = "staff_enrollment_sequences"
+
+
+class StaffCodeSequence(db.Model, AuditMixin):
+    """
+    Generates STAFF CODES scoped per school + branch + department.
+
+    Format: {branch_code}{dept_numeric_code}{seq:04d}
+    Example: MSMN510001, MSMN510002, MSTC520001
+
+    Each branch+department gets its own independent counter.
+    Locked with FOR UPDATE to prevent race conditions.
+    """
+    __tablename__ = "staff_code_sequences"
     __audit_module__ = "SYSTEM"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    branch_id = db.Column(db.Integer, db.ForeignKey("branches.id"), nullable=True)
-    department_id = db.Column(db.Integer, db.ForeignKey("department_master.id"), nullable=False)
-    
-    staff_code_prefix = db.Column(db.String(20), nullable=False)
-    last_staff_no = db.Column(db.Integer, default=0, nullable=False)
-    
-    employee_id_prefix = db.Column(db.String(20), nullable=False)
-    last_employee_no = db.Column(db.Integer, default=0, nullable=False)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
+    branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='CASCADE'), nullable=False)
+    department_id = db.Column(db.Integer, db.ForeignKey('department_master.id', ondelete='CASCADE'), nullable=False)
+    last_sequence = db.Column(db.Integer, default=0, nullable=False)
 
     __table_args__ = (
-        db.UniqueConstraint('branch_id', 'department_id', name='uq_branch_dept_staff_sequence'),
-        db.CheckConstraint('last_staff_no >= 0', name='chk_staff_no_positive'),
-        db.CheckConstraint('last_employee_no >= 0', name='chk_employee_no_positive'),
+        db.UniqueConstraint('school_id', 'branch_id', 'department_id', name='uq_staff_code_seq'),
+        db.CheckConstraint('last_sequence >= 0', name='chk_staff_code_seq_positive'),
+    )
+
+
+class EmployeeIdSequence(db.Model, AuditMixin):
+    """
+    Generates EMPLOYEE IDs scoped per school + department (branch-independent).
+
+    Format: {school_id}{dept_numeric_code}{seq:04d}
+    Example: 4510001, 4510002  (same counter regardless of branch within AMS school)
+
+    This makes the biometric ID unique school-wide within a department,
+    so a teacher moving branches keeps the same employee ID.
+    Locked with FOR UPDATE to prevent race conditions.
+    """
+    __tablename__ = "employee_id_sequences"
+    __audit_module__ = "SYSTEM"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
+    department_id = db.Column(db.Integer, db.ForeignKey('department_master.id', ondelete='CASCADE'), nullable=False)
+    last_sequence = db.Column(db.Integer, default=0, nullable=False)
+
+    __table_args__ = (
+        db.UniqueConstraint('school_id', 'department_id', name='uq_employee_id_seq'),
+        db.CheckConstraint('last_sequence >= 0', name='chk_employee_id_seq_positive'),
     )
 
 
@@ -1248,6 +1278,8 @@ class StaffMaster(db.Model, AuditMixin):
     __tablename__ = "staff_master"
     __audit_module__ = "HR"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    # Multi-tenant scope — school_id is denormalized from branch for fast filtering
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True, index=True)
     branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
     department_id = db.Column(db.Integer, db.ForeignKey('department_master.id', ondelete='SET NULL'), nullable=True)
     designation_id = db.Column(db.Integer, db.ForeignKey('designation_master.id', ondelete='SET NULL'), nullable=True)
@@ -1295,6 +1327,7 @@ class StaffMaster(db.Model, AuditMixin):
     attendance_required = db.Column(db.Boolean, default=True)
     payroll_enabled = db.Column(db.Boolean, default=True)
 
+    school = db.relationship('School', foreign_keys=[school_id])
     branch = db.relationship('Branch', foreign_keys=[branch_id])
     department = db.relationship('DepartmentMaster', foreign_keys=[department_id])
     designation = db.relationship('DesignationMaster', foreign_keys=[designation_id])

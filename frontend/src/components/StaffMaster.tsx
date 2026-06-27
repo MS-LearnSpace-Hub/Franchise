@@ -68,6 +68,8 @@ export const StaffMaster: React.FC = () => {
     const [roles, setRoles] = useState<SelectOption[]>([]);
     const [categories, setCategories] = useState<SelectOption[]>([]);
     const [statuses, setStatuses] = useState<SelectOption[]>([]);
+    const [managers, setManagers] = useState<SelectOption[]>([]);  // reporting manager dropdown
+    const [managerSearch, setManagerSearch] = useState('');
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [showForm, setShowForm] = useState(false);
@@ -130,16 +132,24 @@ export const StaffMaster: React.FC = () => {
     const fetchMasterData = useCallback(async (branchId?: string) => {
         try {
             const params = branchId ? { branch_id: branchId } : {};
-            const [deptRes, desigRes, shiftRes, catRes, statusRes] = await Promise.all([
+            const [deptRes, desigRes, shiftRes, catRes, statusRes, mgrRes] = await Promise.all([
                 api.get('/hr/departments', { params }),
                 api.get('/hr/designations', { params }),
                 api.get('/hr/shifts', { params }),
                 api.get('/hr/staff-categories', { params }),
                 api.get('/hr/staff-statuses', { params }),
+                api.get('/hr/staff/managers', { params }),
             ]);
 
             setDepartments(
-                (deptRes.data || []).map((d: any) => ({ id: d.id, label: d.department_name }))
+                (deptRes.data || []).map((d: any) => ({
+                    id: d.id,
+                    // Show numeric code in label so HR knows what code to set in dept master
+                    label: d.department_numeric_code
+                        ? `${d.department_name} (${d.department_numeric_code})`
+                        : d.department_name,
+                    numeric_code: d.department_numeric_code,
+                }))
             );
             setDesignations(
                 (desigRes.data || []).map((d: any) => ({
@@ -160,10 +170,20 @@ export const StaffMaster: React.FC = () => {
             setStatuses(
                 (statusRes.data || []).map((s: any) => ({ id: s.id, label: s.status_name }))
             );
+            setManagers(
+                (mgrRes.data || []).map((m: any) => ({
+                    id: m.id,
+                    label: m.display_name,
+                    // Extra context for the dropdown option
+                    sublabel: [m.designation_name, m.staff_code].filter(Boolean).join(' · '),
+                    department_id: m.department_id
+                }))
+            );
         } catch (e) {
             console.error('Failed to load HR master data', e);
         }
     }, []);
+
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -295,17 +315,19 @@ export const StaffMaster: React.FC = () => {
     });
 
     // ── Render helpers ────────────────────────────────────────────────────────
-    const renderInput = ({ label, field, type = 'text', required = false }: { label: string; field: string; type?: string; required?: boolean }) => (
+    const renderInput = ({ label, field, type = 'text', required = false, placeholder, disabled = false }: { label: string; field: string; type?: string; required?: boolean; placeholder?: string; disabled?: boolean }) => (
         <div>
             <label className="block text-xs font-semibold text-slate-600 mb-1 uppercase tracking-wide">
                 {label}{required && <span className="text-red-500 ml-0.5">*</span>}
             </label>
             <input
                 type={type}
-                className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2.5 bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition"
+                className={`w-full text-sm border border-slate-300 rounded-lg px-3 py-2.5 outline-none transition ${disabled ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500'}`}
                 value={(form as any)[field] ?? ''}
                 onChange={(e) => set(field, e.target.value)}
                 required={required}
+                placeholder={placeholder}
+                disabled={disabled}
             />
         </div>
     );
@@ -462,19 +484,13 @@ export const StaffMaster: React.FC = () => {
                             </section>
                         )}
 
-                        {/* ── Identifiers & Hierarchy ──────────────────────── */}
+                        {/* ── Identifiers ───────────────────────────────────── */}
                         <section>
-                            <SectionHeader icon="🪪" title="Identifiers & Hierarchy" subtitle="Staff Code, Employee ID, Biometric ID, and Manager" />
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
-                                {renderInput({ label: "Staff Code", field: "staff_code", placeholder: "Auto-generated if empty" })}
-                                {renderInput({ label: "Employee ID", field: "employee_id", placeholder: "Auto-generated if empty" })}
-                                {renderInput({ label: "Biometric ID", field: "biometric_id", placeholder: "Auto-generated if empty" })}
-                                {renderSelect({
-                                    label: "Reporting Manager",
-                                    field: "reporting_manager_id",
-                                    options: staffList.map(s => ({ id: s.id, label: s.display_name })),
-                                    placeholder: "— Select Manager —"
-                                })}
+                            <SectionHeader icon="🪪" title="Identifiers" subtitle="Staff Code, Employee ID, Biometric ID" />
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                                {renderInput({ label: "Staff Code", field: "staff_code", placeholder: "Auto-generated on save", disabled: true })}
+                                {renderInput({ label: "Employee ID", field: "employee_id", placeholder: "Auto-generated on save", disabled: true })}
+                                {renderInput({ label: "Biometric ID", field: "biometric_id", placeholder: "Auto-generated on save", disabled: true })}
                             </div>
                         </section>
 
@@ -559,17 +575,54 @@ export const StaffMaster: React.FC = () => {
                         {/* ── Employment Details ────────────────────────────── */}
                         <section>
                             <SectionHeader icon="💼" title="Employment Details" />
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
                                 {renderInput({ label: "Joining Date", field: "joining_date", type: "date", required: true })}
                                 {renderInput({ label: "Confirmation Date", field: "confirmation_date", type: "date" })}
-                                {renderSelect({ label: "Department", field: "department_id", options: departments })}
+                                {renderSelect({ label: "Department", field: "department_id", options: departments, required: true })}
                                 {renderSelect({
                                     label: "Designation",
                                     field: "designation_id",
                                     options: filteredDesignations,
+                                    required: true,
                                     placeholder: form.department_id ? 'Select Designation' : 'Select Dept first'
                                 })}
                                 {renderSelect({ label: "Default Shift", field: "default_shift_id", options: shifts })}
+                                
+                                {/* ── Reporting Manager searchable dropdown ──── */}
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-600 mb-1 uppercase tracking-wide">
+                                        Reporting Manager
+                                    </label>
+                                    <input
+                                        type="text"
+                                        className="w-full text-sm border border-slate-300 rounded-t-lg px-3 py-2 bg-slate-50 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition disabled:bg-slate-100 disabled:cursor-not-allowed"
+                                        placeholder="Search by name or designation…"
+                                        value={managerSearch}
+                                        onChange={(e) => setManagerSearch(e.target.value)}
+                                        disabled={!form.department_id || !form.designation_id}
+                                    />
+                                    <select
+                                        className="w-full text-sm border border-slate-300 border-t-0 rounded-b-lg px-3 py-2.5 bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition disabled:bg-slate-100 disabled:cursor-not-allowed"
+                                        value={(form as any)['reporting_manager_id'] ?? ''}
+                                        onChange={(e) => set('reporting_manager_id', e.target.value)}
+                                        disabled={!form.department_id || !form.designation_id}
+                                    >
+                                        <option value="">{form.department_id && form.designation_id ? '— No Manager —' : '— Select Dept & Desig First —'}</option>
+                                        {managers
+                                            .filter(m => m.department_id === Number(form.department_id))
+                                            .filter(m =>
+                                                !managerSearch ||
+                                                m.label.toLowerCase().includes(managerSearch.toLowerCase()) ||
+                                                (m.sublabel || '').toLowerCase().includes(managerSearch.toLowerCase())
+                                            )
+                                            .map(m => (
+                                                <option key={m.id} value={m.id}>
+                                                    {m.label}{m.sublabel ? ` · ${m.sublabel}` : ''}
+                                                </option>
+                                            ))
+                                        }
+                                    </select>
+                                </div>
                             </div>
                         </section>
 

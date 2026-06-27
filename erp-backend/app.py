@@ -221,19 +221,36 @@ def create_app():
     def request_entity_too_large(error):
         return jsonify({'message': 'File too large. Maximum size is 16 MB.'}), 413
 
+    @app.errorhandler(500)
+    def internal_error(error):
+        import traceback
+        with open("global_500_error.log", "w") as f:
+            f.write(traceback.format_exc() or str(error))
+        return jsonify({'error': 'Internal server error', 'trace': traceback.format_exc()}), 500
+        
+    @app.errorhandler(Exception)
+    def handle_exception(e):
+        import traceback
+        with open("global_500_error.log", "w") as f:
+            f.write(traceback.format_exc() or str(e))
+        return jsonify({'error': str(e), 'trace': traceback.format_exc()}), 500
+
     return app
 
 
 if __name__ == "__main__":
     app = create_app()
 
-    # 🔴 RUN ONCE IF TABLES NOT CREATED (DEV ONLY)
-    from extensions import db
+    # Auto-migrate on startup (dev convenience).
+    # Wrapped in try/except so a stale migration state never prevents the server starting.
     from flask_migrate import upgrade
-    from sqlalchemy import inspect, text
     with app.app_context():
-        upgrade()
-        print("[OK] Database upgraded.")
+        try:
+            upgrade()
+            print("[OK] Database is up to date.")
+        except Exception as migrate_err:
+            print(f"[WARN] Migration check failed: {migrate_err}")
+            print("[WARN] Server will still start — run 'flask db upgrade' manually if needed.")
 
     port = int(os.getenv("PORT", 5001))
     debug = os.getenv("FLASK_DEBUG", "false").lower() == "true"
