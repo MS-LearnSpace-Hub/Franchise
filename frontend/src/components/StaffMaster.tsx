@@ -680,205 +680,198 @@ export const StaffMaster: React.FC = () => {
                     </form>
                 </div>
             )}
-            {/* ── Filters ──────────────────────────────────────────────────── */}
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-wrap items-end gap-3 mb-4">
-                {/* Branch Dropdown */}
-                {!isSingleBranch && (
-                    <div className="w-48">
-                        <label className="block text-xs font-semibold text-slate-600 mb-1">Branch</label>
-                        <select
-                            className="w-full text-sm border border-slate-300 rounded-lg bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                            value={searchBranchId}
-                            onChange={(e) => setSearchBranchId(e.target.value)}
-                        >
-                            <option value="">-All Branches-</option>
-                            {allowedBranches.map((b) => (
-                                <option key={b.branch_id} value={b.branch_id}>
-                                    {b.branch_name}
-                                </option>
-                            ))}
-                        </select>
+            {/* ── Filters and List (Hidden when editing/adding) ──────────────── */}
+            {!showForm && (
+                <>
+                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-wrap items-end gap-3 mb-4">
+                        {/* Branch Dropdown */}
+                        {!isSingleBranch && (
+                            <div className="w-48">
+                                <label className="block text-xs font-semibold text-slate-600 mb-1">Branch</label>
+                                <select
+                                    className="w-full text-sm border border-slate-300 rounded-lg bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                    value={searchBranchId}
+                                    onChange={(e) => setSearchBranchId(e.target.value)}
+                                >
+                                    <option value="">-All Branches-</option>
+                                    {allowedBranches.map((b) => (
+                                        <option key={b.branch_id} value={b.branch_id}>
+                                            {b.branch_name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
+
+                        {/* Department Dropdown */}
+                        <div className="w-48">
+                            <label className="block text-xs font-semibold text-slate-600 mb-1">Department</label>
+                            <select
+                                className="w-full text-sm border border-slate-300 rounded-lg bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                value={searchDeptId}
+                                onChange={(e) => setSearchDeptId(e.target.value)}
+                            >
+                                <option value="">All Departments</option>
+                                {departments.map((d) => (
+                                    <option key={d.id} value={d.id}>{d.label}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {/* Status Dropdown */}
+                        <div className="w-40">
+                            <label className="block text-xs font-semibold text-slate-600 mb-1">Status</label>
+                            <select
+                                className="w-full text-sm border border-slate-300 rounded-lg bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                value={searchStatus}
+                                onChange={(e) => setSearchStatus(e.target.value)}
+                            >
+                                <option value="">All</option>
+                                <option value="ACTIVE">Active</option>
+                                <option value="INACTIVE">Inactive</option>
+                            </select>
+                        </div>
+
+                        {/* Search By Dropdown */}
+                        <div className="w-40">
+                            <label className="block text-xs font-semibold text-slate-600 mb-1">Search By</label>
+                            <select
+                                className="w-full text-sm border border-slate-300 rounded-lg bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                value={searchBy}
+                                onChange={(e) => setSearchBy(e.target.value)}
+                            >
+                                <option value="staff_code">Staff Code</option>
+                                <option value="employee_id">Employee ID</option>
+                                <option value="biometric_id">Biometric ID</option>
+                                <option value="first_name">Staff Name</option>
+                                <option value="mobile">Mobile</option>
+                                <option value="email">Email</option>
+                            </select>
+                        </div>
+
+                        {/* Search Input */}
+                        <div className="flex-1 min-w-[200px]">
+                            <label className="block text-xs font-semibold text-slate-600 mb-1">Search Query</label>
+                            <input
+                                type="text"
+                                placeholder="Search..."
+                                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && fetchData()}
+                            />
+                        </div>
+
+                        {/* Search Button */}
+                        <div>
+                            <button
+                                onClick={fetchData}
+                                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg text-sm font-semibold shadow-sm transition-colors"
+                            >
+                                Search
+                            </button>
+                        </div>
                     </div>
-                )}
+                    <div className="mb-4">
+                        <span className="text-xs text-slate-500">
+                            {loading ? 'Loading…' : `${filteredStaff.length} result${filteredStaff.length !== 1 ? 's' : ''}`}
+                        </span>
+                    </div>
 
-                {/* Department Dropdown */}
-                <div className="w-48">
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Department</label>
-                    <select
-                        className="w-full text-sm border border-slate-300 rounded-lg bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                        value={searchDeptId}
-                        onChange={(e) => setSearchDeptId(e.target.value)}
-                    >
-                        <option value="">All Departments</option>
-                        {departments.map((d) => (
-                            <option key={d.id} value={d.id}>{d.label}</option>
-                        ))}
-                    </select>
-                </div>
-
-                {/* Status Dropdown */}
-                <div className="w-40">
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Status</label>
-                    <select
-                        className="w-full text-sm border border-slate-300 rounded-lg bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                        value={searchStatus}
-                        onChange={(e) => setSearchStatus(e.target.value)}
-                    >
-                        <option value="">All</option>
-                        <option value="ACTIVE">Active</option>
-                        <option value="INACTIVE">Inactive</option>
-                    </select>
-                </div>
-
-                {/* Search By Dropdown */}
-                <div className="w-40">
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Search By</label>
-                    <select
-                        className="w-full text-sm border border-slate-300 rounded-lg bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                        value={searchBy}
-                        onChange={(e) => setSearchBy(e.target.value)}
-                    >
-                        <option value="staff_code">Staff Code</option>
-                        <option value="employee_id">Employee ID</option>
-                        <option value="biometric_id">Biometric ID</option>
-                        <option value="first_name">Staff Name</option>
-                        <option value="mobile">Mobile</option>
-                        <option value="email">Email</option>
-                    </select>
-                </div>
-
-                {/* Search Input */}
-                <div className="flex-1 min-w-[200px]">
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Search Query</label>
-                    <input
-                        type="text"
-                        placeholder="Search..."
-                        className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && fetchData()}
-                    />
-                </div>
-
-                {/* Search Button */}
-                <div>
-                    <button
-                        onClick={fetchData}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg text-sm font-semibold shadow-sm transition-colors"
-                    >
-                        Search
-                    </button>
-                </div>
-            </div>
-            <div className="mb-4">
-                <span className="text-xs text-slate-500">
-                    {loading ? 'Loading…' : `${filteredStaff.length} result${filteredStaff.length !== 1 ? 's' : ''}`}
-                </span>
-            </div>
-
-            {/* ── Staff Table ───────────────────────────────────────────────── */}
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                <div className="overflow-x-auto">
-                    <table className="w-full text-sm text-left">
-                        <thead className="bg-slate-50 border-b border-slate-200">
-                            <tr>
-                                <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Employee</th>
-                                <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Category</th>
-                                <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Department / Designation</th>
-                                <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Type</th>
-                                <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
-                                <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Contact</th>
-                                {canWrite && <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">Actions</th>}
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                            {filteredStaff.map((st) => (
-                                <tr key={st.id} className="hover:bg-slate-50 transition-colors">
-                                    <td className="px-4 py-3">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0">
-                                                <span className="text-emerald-700 font-bold text-sm">
-                                                    {st.first_name?.[0] ?? '?'}
-                                                </span>
-                                            </div>
-                                            <div>
-                                                <p className="font-semibold text-slate-800">{st.display_name}</p>
-                                                <div className="flex items-center gap-2 mt-0.5">
-                                                    <span className="font-mono text-xs text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
-                                                        {st.staff_code}
-                                                    </span>
-                                                    {st.employee_id && (
-                                                        <span className="font-mono text-xs text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
-                                                            ID: {st.employee_id}
+                    {/* ── Staff Table ───────────────────────────────────────────────── */}
+                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm text-left">
+                                <thead className="bg-slate-50 border-b border-slate-200">
+                                    <tr>
+                                        <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Employee</th>
+                                        <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Category</th>
+                                        <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Department / Designation</th>
+                                        <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Type</th>
+                                        <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
+                                        <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Contact</th>
+                                        {canWrite && <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">Actions</th>}
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {filteredStaff.map((st) => (
+                                        <tr key={st.id} className="hover:bg-slate-50 transition-colors">
+                                            <td className="px-4 py-3">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                                                        <span className="text-emerald-700 font-bold text-sm">
+                                                            {st.first_name?.[0] ?? '?'}
                                                         </span>
-                                                    )}
+                                                    </div>
+                                                    <div>
+                                                        <p className="font-semibold text-slate-800">{st.display_name}</p>
+                                                        <div className="flex items-center gap-2 mt-0.5">
+                                                            <span className="font-mono text-xs text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                                                                {st.staff_code}
+                                                            </span>
+                                                            {st.employee_id && (
+                                                                <span className="font-mono text-xs text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
+                                                                    ID: {st.employee_id}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td className="px-4 py-3">
-                                        <span className="text-xs font-medium text-slate-700 bg-indigo-50 text-indigo-700 px-2 py-1 rounded-full">
-                                            {st.staff_category_name ?? '—'}
-                                        </span>
-                                    </td>
-                                    <td className="px-4 py-3">
-                                        <p className="font-medium text-slate-700">{st.department_name ?? '—'}</p>
-                                        <p className="text-xs text-slate-400">{st.designation_name ?? ''}</p>
-                                    </td>
-                                    <td className="px-4 py-3 text-slate-600 text-xs capitalize">
-                                        {st.employment_type?.toLowerCase().replace('_', ' ') ?? '—'}
-                                    </td>
-                                    <td className="px-4 py-3">
-                                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${statusColor[st.staff_status_name?.toUpperCase() ?? st.employment_status] ?? 'bg-slate-100 text-slate-600'}`}>
-                                            {st.staff_status_name ?? st.employment_status}
-                                        </span>
-                                    </td>
-                                    <td className="px-4 py-3 text-slate-500 text-xs">
-                                        <p>{st.mobile ?? '—'}</p>
-                                        <p className="truncate max-w-[140px]">{st.email ?? ''}</p>
-                                    </td>
-                                    <td className="px-4 py-3 text-right">
-                                        <div className="flex justify-end gap-2">
-                                            <button
-                                                onClick={() => setViewingStaffId(st.id)}
-                                                className="text-blue-600 hover:text-blue-800 p-1.5 rounded-lg hover:bg-blue-50 transition-colors"
-                                                title="View Profile"
-                                            >
-                                                <EyeIcon className="w-5 h-5" />
-                                            </button>
-                                            {canWrite && (
-                                                <button
-                                                    onClick={() => handleEdit(st.id)}
-                                                    className="text-emerald-600 hover:text-emerald-800 p-1.5 rounded-lg hover:bg-emerald-50 transition-colors"
-                                                    title="Edit Staff"
-                                                >
-                                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <span className="text-xs font-medium text-slate-700 bg-indigo-50 text-indigo-700 px-2 py-1 rounded-full">
+                                                    {st.staff_category_name ?? '—'}
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <p className="font-medium text-slate-700">{st.department_name ?? '—'}</p>
+                                                <p className="text-xs text-slate-400">{st.designation_name ?? ''}</p>
+                                            </td>
+                                            <td className="px-4 py-3 text-slate-600 text-xs capitalize">
+                                                {st.employment_type?.toLowerCase().replace('_', ' ') ?? '—'}
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${statusColor[st.staff_status_name?.toUpperCase() ?? st.employment_status] ?? 'bg-slate-100 text-slate-600'}`}>
+                                                    {st.staff_status_name ?? st.employment_status}
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-3 text-slate-500 text-xs">
+                                                <p>{st.mobile ?? '—'}</p>
+                                                <p className="truncate max-w-[140px]">{st.email ?? ''}</p>
+                                            </td>
+                                            <td className="px-4 py-3 text-right">
+                                                <div className="flex justify-end gap-2">
+                                                    <button
+                                                        onClick={() => setViewingStaffId(st.id)}
+                                                        className="text-blue-600 hover:text-blue-800 p-1.5 rounded-lg hover:bg-blue-50 transition-colors"
+                                                        title="View Profile"
+                                                    >
+                                                        <EyeIcon className="w-5 h-5" />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    {filteredStaff.length === 0 && (
+                                        <tr>
+                                            <td colSpan={canWrite ? 7 : 6} className="px-4 py-12 text-center text-slate-400">
+                                                <div className="flex flex-col items-center gap-2">
+                                                    <svg className="w-8 h-8 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0" />
                                                     </svg>
-                                                </button>
-                                            )}
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
-                            {filteredStaff.length === 0 && (
-                                <tr>
-                                    <td colSpan={canWrite ? 7 : 6} className="px-4 py-12 text-center text-slate-400">
-                                        <div className="flex flex-col items-center gap-2">
-                                            <svg className="w-8 h-8 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0" />
-                                            </svg>
-                                            <span className="text-sm">
-                                                {loading ? 'Loading staff…' : 'No staff found. Add your first staff member above.'}
-                                            </span>
-                                        </div>
-                                    </td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+                                                    <span className="text-sm">
+                                                        {loading ? 'Loading staff…' : 'No staff found. Add your first staff member above.'}
+                                                    </span>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </>
+            )}
         </div>
     );
 };
