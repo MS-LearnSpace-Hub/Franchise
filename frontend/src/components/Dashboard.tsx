@@ -48,11 +48,14 @@ import { ShiftMaster } from './ShiftMaster';
 import { StaffMaster } from './StaffMaster';
 import { StaffCategoryMaster } from './StaffCategoryMaster';
 import { StaffStatusMaster } from './StaffStatusMaster';
+import StaffProfile from './StaffProfile';
+import { Page } from '../App';
 
 const hrPages = [
   'hr-management', 'hr-departments', 'hr-designations', 'hr-shifts', 'hr-staff-master',
   'hr-staff-categories', 'hr-staff-statuses',
-  'hr-biometric-devices', 'hr-biometric-mapping', 'hr-attendance-summary', 'hr-punch-log'
+  'hr-biometric-devices', 'hr-biometric-mapping', 'hr-attendance-summary', 'hr-punch-log',
+  'staff-profile'
 ];
 
 const financialPages = [
@@ -65,9 +68,10 @@ const financialPages = [
 
 interface DashboardProps {
   onLogout: () => void;
+  initialPage?: Page;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
+const Dashboard: React.FC<DashboardProps> = ({ onLogout, initialPage }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const {
     currentPage,
@@ -76,7 +80,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
     goForward,
     canGoBack,
     canGoForward
-  } = useNavigationHistory('dashboard');
+  } = useNavigationHistory(initialPage || 'dashboard');
 
   const toggleSidebar = () => {
     setIsSidebarOpen(!isSidebarOpen);
@@ -133,6 +137,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
               {currentPage === 'hr-biometric-mapping' && <div className="p-6">Staff Biometric Mapping (Coming Soon)</div>}
               {currentPage === 'hr-attendance-summary' && <div className="p-6">Attendance Summary (Coming Soon)</div>}
               {currentPage === 'hr-punch-log' && <div className="p-6">Punch Log (Coming Soon)</div>}
+              {currentPage === 'staff-profile' && <StaffProfile />}
             </HRLayout>
           ) : (
             <>

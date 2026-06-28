@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../api';
 import { useAuth } from '../contexts/AuthContext';
+import StaffProfile from './StaffProfile';
+import { EyeIcon } from './icons';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -73,7 +75,15 @@ export const StaffMaster: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [showForm, setShowForm] = useState(false);
-    const [searchQ, setSearchQ] = useState('');
+    const [viewingStaffId, setViewingStaffId] = useState<number | null>(null);
+
+    // ── Advanced Search State
+    const [searchBranchId, setSearchBranchId] = useState<string>('');
+    const [searchDeptId, setSearchDeptId] = useState<string>('');
+    const [searchStatus, setSearchStatus] = useState<string>('');
+    const [searchBy, setSearchBy] = useState<string>('staff_code');
+    const [searchQuery, setSearchQuery] = useState<string>('');
+
     const [result, setResult] = useState<{
         success: boolean;
         staff_code?: string;
@@ -189,7 +199,7 @@ export const StaffMaster: React.FC = () => {
         try {
             const staffRes = await api.get('/hr/staff');
             setStaffList(staffRes.data || []);
-            
+
             try {
                 const roleRes = await api.get('/rbac/roles');
                 setRoles((roleRes.data?.roles || []).map((r: any) => ({ id: r.id, label: r.name || r.role_name })));
@@ -302,15 +312,7 @@ export const StaffMaster: React.FC = () => {
     };
 
     // ── Filtered list ─────────────────────────────────────────────────────────
-    const filteredStaff = staffList.filter((s) => {
-        const matchSearch =
-            !searchQ ||
-            s.staff_code?.toLowerCase().includes(searchQ.toLowerCase()) ||
-            s.display_name?.toLowerCase().includes(searchQ.toLowerCase()) ||
-            s.mobile?.includes(searchQ) ||
-            s.email?.toLowerCase().includes(searchQ.toLowerCase());
-        return matchSearch;
-    });
+    const filteredStaff = staffList;
 
     // ── Render helpers ────────────────────────────────────────────────────────
     const renderInput = ({ label, field, type = 'text', required = false, placeholder, disabled = false }: { label: string; field: string; type?: string; required?: boolean; placeholder?: string; disabled?: boolean }) => (
@@ -585,7 +587,7 @@ export const StaffMaster: React.FC = () => {
                                     placeholder: form.department_id ? 'Select Designation' : 'Select Dept first'
                                 })}
                                 {renderSelect({ label: "Default Shift", field: "default_shift_id", options: shifts })}
-                                
+
                                 {/* ── Reporting Manager searchable dropdown ──── */}
                                 <div>
                                     <label className="block text-xs font-semibold text-slate-600 mb-1 uppercase tracking-wide">
@@ -678,23 +680,97 @@ export const StaffMaster: React.FC = () => {
                     </form>
                 </div>
             )}
-
             {/* ── Filters ──────────────────────────────────────────────────── */}
-            <div className="flex flex-wrap items-center gap-3">
-                <div className="relative flex-1 min-w-[200px]">
-                    <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z" />
-                    </svg>
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-wrap items-end gap-3 mb-4">
+                {/* Branch Dropdown */}
+                {!isSingleBranch && (
+                    <div className="w-48">
+                        <label className="block text-xs font-semibold text-slate-600 mb-1">Branch</label>
+                        <select
+                            className="w-full text-sm border border-slate-300 rounded-lg bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                            value={searchBranchId}
+                            onChange={(e) => setSearchBranchId(e.target.value)}
+                        >
+                            <option value="">-All Branches-</option>
+                            {allowedBranches.map((b) => (
+                                <option key={b.branch_id} value={b.branch_id}>
+                                    {b.branch_name}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                )}
+
+                {/* Department Dropdown */}
+                <div className="w-48">
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Department</label>
+                    <select
+                        className="w-full text-sm border border-slate-300 rounded-lg bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                        value={searchDeptId}
+                        onChange={(e) => setSearchDeptId(e.target.value)}
+                    >
+                        <option value="">All Departments</option>
+                        {departments.map((d) => (
+                            <option key={d.id} value={d.id}>{d.label}</option>
+                        ))}
+                    </select>
+                </div>
+
+                {/* Status Dropdown */}
+                <div className="w-40">
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Status</label>
+                    <select
+                        className="w-full text-sm border border-slate-300 rounded-lg bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                        value={searchStatus}
+                        onChange={(e) => setSearchStatus(e.target.value)}
+                    >
+                        <option value="">All</option>
+                        <option value="ACTIVE">Active</option>
+                        <option value="INACTIVE">Inactive</option>
+                    </select>
+                </div>
+
+                {/* Search By Dropdown */}
+                <div className="w-40">
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Search By</label>
+                    <select
+                        className="w-full text-sm border border-slate-300 rounded-lg bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                        value={searchBy}
+                        onChange={(e) => setSearchBy(e.target.value)}
+                    >
+                        <option value="staff_code">Staff Code</option>
+                        <option value="employee_id">Employee ID</option>
+                        <option value="biometric_id">Biometric ID</option>
+                        <option value="first_name">Staff Name</option>
+                        <option value="mobile">Mobile</option>
+                        <option value="email">Email</option>
+                    </select>
+                </div>
+
+                {/* Search Input */}
+                <div className="flex-1 min-w-[200px]">
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Search Query</label>
                     <input
-                        id="staff-search"
                         type="text"
-                        placeholder="Search name, code, mobile, email…"
-                        className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
-                        value={searchQ}
-                        onChange={(e) => setSearchQ(e.target.value)}
+                        placeholder="Search..."
+                        className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && fetchData()}
                     />
                 </div>
 
+                {/* Search Button */}
+                <div>
+                    <button
+                        onClick={fetchData}
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg text-sm font-semibold shadow-sm transition-colors"
+                    >
+                        Search
+                    </button>
+                </div>
+            </div>
+            <div className="mb-4">
                 <span className="text-xs text-slate-500">
                     {loading ? 'Loading…' : `${filteredStaff.length} result${filteredStaff.length !== 1 ? 's' : ''}`}
                 </span>
@@ -761,19 +837,28 @@ export const StaffMaster: React.FC = () => {
                                         <p>{st.mobile ?? '—'}</p>
                                         <p className="truncate max-w-[140px]">{st.email ?? ''}</p>
                                     </td>
-                                    {canWrite && (
-                                        <td className="px-4 py-3 text-right">
+                                    <td className="px-4 py-3 text-right">
+                                        <div className="flex justify-end gap-2">
                                             <button
-                                                onClick={() => handleEdit(st.id)}
-                                                className="text-emerald-600 hover:text-emerald-800 p-1.5 rounded-lg hover:bg-emerald-50 transition-colors"
-                                                title="Edit Staff"
+                                                onClick={() => setViewingStaffId(st.id)}
+                                                className="text-blue-600 hover:text-blue-800 p-1.5 rounded-lg hover:bg-blue-50 transition-colors"
+                                                title="View Profile"
                                             >
-                                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                                                </svg>
+                                                <EyeIcon className="w-5 h-5" />
                                             </button>
-                                        </td>
-                                    )}
+                                            {canWrite && (
+                                                <button
+                                                    onClick={() => handleEdit(st.id)}
+                                                    className="text-emerald-600 hover:text-emerald-800 p-1.5 rounded-lg hover:bg-emerald-50 transition-colors"
+                                                    title="Edit Staff"
+                                                >
+                                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                                    </svg>
+                                                </button>
+                                            )}
+                                        </div>
+                                    </td>
                                 </tr>
                             ))}
                             {filteredStaff.length === 0 && (

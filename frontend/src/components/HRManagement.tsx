@@ -62,6 +62,15 @@ const HRManagement: React.FC<HRManagementProps> = ({ navigateTo }) => {
             permission: 'hr.hr.staff-categories'
         },
         {
+            id: 'staff-profile',
+            name: 'Staff Profile',
+            icon: <UserIcon className="w-8 h-8" />,
+            iconBg: 'bg-teal-50',
+            iconColor: 'text-teal-600',
+            page: 'staff-profile' as Page,
+            permission: 'hr.hr.staff-profile'
+        },
+        {
             id: 'staff-statuses',
             name: 'Staff Statuses',
             icon: <DocumentIcon className="w-8 h-8" />,

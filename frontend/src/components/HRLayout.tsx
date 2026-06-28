@@ -48,11 +48,16 @@ const HRLayout: React.FC<HRLayoutProps> = ({ children, currentPage, navigateTo }
         {
             name: 'Staff Directory',
             id: 'staffDirectory',
+            page: 'hr-staff-master' as Page,
             icon: <UserIcon className="w-5 h-5" />,
             permission: 'hr.hr.staff-master',
-            subItems: [
-                { name: 'Staff Master', page: 'hr-staff-master' as Page, icon: <UserIcon className="w-4 h-4" />, permission: 'hr.hr.staff-master' },
-            ]
+        },
+        {
+            name: 'My Profile',
+            id: 'myStaffProfile',
+            page: 'staff-profile' as Page,
+            icon: <UserIcon className="w-5 h-5" />,
+            permission: 'hr.hr.staff-profile',
         },
         {
             name: 'Biometrics',

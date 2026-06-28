@@ -440,6 +440,13 @@ def get_staff(current_user):
         target_school_id = get_target_school_id(current_user)
         branch_id_str = request.headers.get('X-Branch-ID')
         
+        # Additional filters
+        department_id = request.args.get('department_id')
+        designation_id = request.args.get('designation_id')
+        status_type = request.args.get('status') # 'ACTIVE' or 'INACTIVE'
+        search_by = request.args.get('search_by')
+        search_query = request.args.get('search_query')
+        
         query = StaffMaster.query
         
         if target_school_id:
@@ -447,6 +454,31 @@ def get_staff(current_user):
             
         if branch_id_str and branch_id_str.lower() != 'all':
             query = query.filter_by(branch_id=int(branch_id_str))
+            
+        if department_id:
+            query = query.filter_by(department_id=int(department_id))
+            
+        if designation_id:
+            query = query.filter_by(designation_id=int(designation_id))
+            
+        if status_type:
+            # We need to join with StaffStatusMaster to filter by status_type
+            query = query.join(StaffStatusMaster, StaffMaster.staff_status_id == StaffStatusMaster.id).filter(StaffStatusMaster.status_type == status_type)
+            
+        if search_by and search_query:
+            sq = f"%{search_query}%"
+            if search_by == 'staff_code':
+                query = query.filter(StaffMaster.staff_code.ilike(sq))
+            elif search_by == 'employee_id':
+                query = query.filter(StaffMaster.employee_id.ilike(sq))
+            elif search_by == 'biometric_id':
+                query = query.filter(StaffMaster.biometric_id.ilike(sq))
+            elif search_by == 'first_name':
+                query = query.filter(db.or_(StaffMaster.first_name.ilike(sq), StaffMaster.last_name.ilike(sq), StaffMaster.display_name.ilike(sq)))
+            elif search_by == 'mobile':
+                query = query.filter(StaffMaster.mobile.ilike(sq))
+            elif search_by == 'email':
+                query = query.filter(StaffMaster.email.ilike(sq))
             
         staff_list = query.order_by(StaffMaster.id.desc()).all()
         
@@ -479,7 +511,93 @@ def get_staff(current_user):
         logger.exception("Error in get_staff")
         with open('staff_500_error.log', 'w') as f:
             f.write(trace)
-        return jsonify({"error": str(e), "trace": trace}), 500
+        return jsonify({"error": "Failed to fetch staff"}), 500
+
+
+@bp.route('/staff/profile', methods=['GET'])
+@token_required
+@permission_required("hr.hr.staff-profile", "read")
+def get_staff_profile(current_user):
+    try:
+        if not current_user.staff_id:
+            return jsonify({"error": "User is not linked to any staff profile"}), 404
+            
+        s = StaffMaster.query.get(current_user.staff_id)
+        if not s:
+            return jsonify({"error": "Staff profile not found"}), 404
+            
+        result = {
+            "id": s.id,
+            "staff_code": s.staff_code,
+            "employee_id": s.employee_id,
+            "biometric_id": s.biometric_id,
+            "first_name": s.first_name,
+            "last_name": s.last_name,
+            "display_name": s.display_name,
+            "department_name": s.department.department_name if s.department else None,
+            "designation_name": s.designation.designation_name if s.designation else None,
+            "staff_category_name": s.staff_category.category_name if s.staff_category else None,
+            "staff_status_name": s.staff_status.status_name if s.staff_status else None,
+            "employment_type": s.employment_type.value if hasattr(s.employment_type, 'value') else s.employment_type,
+            "employment_status": s.employment_status.value if hasattr(s.employment_status, 'value') else s.employment_status,
+            "mobile": s.mobile,
+            "email": s.email,
+            "gender": s.gender,
+            "date_of_birth": str(s.date_of_birth) if s.date_of_birth else None,
+            "joining_date": str(s.joining_date) if s.joining_date else None,
+            "blood_group": s.blood_group if hasattr(s, 'blood_group') else "-", # fallback
+            "nationality": "Indian", # fallback
+            "qualification": "-", # fallback
+            "uan_no": "-", # fallback
+            "branch_id": s.branch_id
+        }
+        return jsonify(result), 200
+    except Exception as e:
+        import traceback
+        trace = traceback.format_exc()
+        logger.exception("Error in get_staff_profile")
+        return jsonify({"error": "Failed to fetch staff profile"}), 500
+
+@bp.route('/staff/<int:staff_id>/profile', methods=['GET'])
+@token_required
+@permission_required("hr.hr.staff-master", "read")
+def get_staff_profile_by_id(current_user, staff_id):
+    try:
+        s = StaffMaster.query.get(staff_id)
+        if not s:
+            return jsonify({"error": "Staff profile not found"}), 404
+            
+        result = {
+            "id": s.id,
+            "staff_code": s.staff_code,
+            "employee_id": s.employee_id,
+            "biometric_id": s.biometric_id,
+            "first_name": s.first_name,
+            "last_name": s.last_name,
+            "display_name": s.display_name,
+            "department_name": s.department.department_name if s.department else None,
+            "designation_name": s.designation.designation_name if s.designation else None,
+            "staff_category_name": s.staff_category.category_name if s.staff_category else None,
+            "staff_status_name": s.staff_status.status_name if s.staff_status else None,
+            "employment_type": s.employment_type.value if hasattr(s.employment_type, 'value') else s.employment_type,
+            "employment_status": s.employment_status.value if hasattr(s.employment_status, 'value') else s.employment_status,
+            "mobile": s.mobile,
+            "email": s.email,
+            "gender": s.gender,
+            "date_of_birth": str(s.date_of_birth) if s.date_of_birth else None,
+            "joining_date": str(s.joining_date) if s.joining_date else None,
+            "blood_group": s.blood_group if hasattr(s, 'blood_group') else "-", # fallback
+            "nationality": "Indian", # fallback
+            "qualification": "-", # fallback
+            "uan_no": "-", # fallback
+            "branch_id": s.branch_id
+        }
+        return jsonify(result), 200
+    except Exception as e:
+        import traceback
+        trace = traceback.format_exc()
+        logger.exception("Error in get_staff_profile_by_id")
+        return jsonify({"error": "Failed to fetch staff profile"}), 500
 
 
 
