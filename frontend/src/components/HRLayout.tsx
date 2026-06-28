@@ -48,8 +48,15 @@ const HRLayout: React.FC<HRLayoutProps> = ({ children, currentPage, navigateTo }
         {
             name: 'Staff Directory',
             id: 'staffDirectory',
-            page: 'hr-staff-master' as Page,
+            page: 'hr-staff-directory' as Page,
             icon: <UserIcon className="w-5 h-5" />,
+            permission: 'hr.hr.staff-directory', // Or whatever general view permission you have
+        },
+        {
+            name: 'Staff Master',
+            id: 'staffMaster',
+            page: 'hr-staff-master' as Page,
+            icon: <DocumentIcon className="w-5 h-5" />,
             permission: 'hr.hr.staff-master',
         },
         {

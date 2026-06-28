@@ -42,17 +42,18 @@ import FinancialLayout from './FinancialLayout';
 import SmsCenter from './SmsCenter';
 import HRManagement from './HRManagement';
 import HRLayout from './HRLayout';
-import { DepartmentMaster } from './DepartmentMaster';
-import { DesignationMaster } from './DesignationMaster';
-import { ShiftMaster } from './ShiftMaster';
-import { StaffMaster } from './StaffMaster';
+import DepartmentMaster from './DepartmentMaster';
+import DesignationMaster from './DesignationMaster';
+import ShiftMaster from './ShiftMaster';
+import StaffMaster from './StaffMaster';
+import StaffDirectory from './StaffDirectory';
 import { StaffCategoryMaster } from './StaffCategoryMaster';
 import { StaffStatusMaster } from './StaffStatusMaster';
 import StaffProfile from './StaffProfile';
 import { Page } from '../App';
 
 const hrPages = [
-  'hr-management', 'hr-departments', 'hr-designations', 'hr-shifts', 'hr-staff-master',
+  'hr-management', 'hr-departments', 'hr-designations', 'hr-shifts', 'hr-staff-master', 'hr-staff-directory',
   'hr-staff-categories', 'hr-staff-statuses',
   'hr-biometric-devices', 'hr-biometric-mapping', 'hr-attendance-summary', 'hr-punch-log',
   'staff-profile'
@@ -131,6 +132,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout, initialPage }) => {
               {currentPage === 'hr-designations' && <DesignationMaster />}
               {currentPage === 'hr-shifts' && <ShiftMaster />}
               {currentPage === 'hr-staff-master' && <StaffMaster />}
+              {currentPage === 'hr-staff-directory' && <StaffDirectory />}
               {currentPage === 'hr-staff-categories' && <StaffCategoryMaster />}
               {currentPage === 'hr-staff-statuses' && <StaffStatusMaster />}
               {currentPage === 'hr-biometric-devices' && <div className="p-6">Biometric Devices (Coming Soon)</div>}

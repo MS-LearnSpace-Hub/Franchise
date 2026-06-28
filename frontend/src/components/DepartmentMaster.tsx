@@ -140,3 +140,5 @@ export const DepartmentMaster: React.FC = () => {
         </div>
     );
 };
+
+export default DepartmentMaster;

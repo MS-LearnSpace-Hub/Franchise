@@ -163,3 +163,5 @@ export const ShiftMaster: React.FC = () => {
         </div>
     );
 };
+
+export default ShiftMaster;

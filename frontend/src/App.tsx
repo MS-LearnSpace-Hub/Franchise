@@ -57,6 +57,7 @@ export type Page =
   | 'hr-biometric-mapping'
   | 'hr-attendance-summary'
   | 'hr-punch-log'
+  | 'hr-staff-directory'
   | 'staff-profile';
 
 // Inner component that can access AuthContext

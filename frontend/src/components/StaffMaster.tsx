@@ -225,6 +225,11 @@ export const StaffMaster: React.FC = () => {
     const set = (field: string, value: string) =>
         setForm((prev: any) => ({ ...prev, [field]: value }));
 
+    // ── JSX ───────────────────────────────────────────────────────────────────
+    if (viewingStaffId) {
+        return <StaffProfile staffId={viewingStaffId} onBack={() => setViewingStaffId(null)} />;
+    }
+
     const handleEdit = async (staffId: number) => {
         setResult(null);
         try {
@@ -841,6 +846,17 @@ export const StaffMaster: React.FC = () => {
                                             </td>
                                             <td className="px-4 py-3 text-right">
                                                 <div className="flex justify-end gap-2">
+                                                    {canWrite && (
+                                                        <button
+                                                            onClick={() => handleEdit(st.id)}
+                                                            className="text-emerald-600 hover:text-emerald-800 p-1.5 rounded-lg hover:bg-emerald-50 transition-colors"
+                                                            title="Edit Staff"
+                                                        >
+                                                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                                            </svg>
+                                                        </button>
+                                                    )}
                                                     <button
                                                         onClick={() => setViewingStaffId(st.id)}
                                                         className="text-blue-600 hover:text-blue-800 p-1.5 rounded-lg hover:bg-blue-50 transition-colors"
@@ -889,3 +905,5 @@ const SectionHeader: React.FC<{ icon: string; title: string; subtitle?: string }
         </div>
     </div>
 );
+
+export default StaffMaster;

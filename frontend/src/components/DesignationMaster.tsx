@@ -157,3 +157,5 @@ export const DesignationMaster: React.FC = () => {
         </div>
     );
 };
+
+export default DesignationMaster;
