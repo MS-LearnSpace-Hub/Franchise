@@ -19,6 +19,7 @@ const navCategories: { title: string; icon: React.ReactNode; page: Page; permiss
   { title: 'Academic', icon: <AcademicIcon className="w-5 h-5" />, page: 'academic', permission: 'academics.academic.management' },
   { title: 'Financial', icon: <FinancialIcon className="w-5 h-5" />, page: 'fee', permission: 'fees.collections.receipt-entry' },
   { title: 'Administration', icon: <AdministrationIcon className="w-5 h-5" />, page: 'administration', permission: 'administration.students.management' },
+  { title: 'HR & Staff', icon: <UserIcon className="w-5 h-5" />, page: 'hr-management', permission: 'hr.hr.hr-management' },
   { title: 'Setup Your School', icon: <SetupIcon className="w-5 h-5" />, page: 'setup', permission: 'setup.school.setup' },
 ];
 

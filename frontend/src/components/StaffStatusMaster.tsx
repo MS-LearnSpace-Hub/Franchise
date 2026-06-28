@@ -12,26 +12,27 @@ interface StaffStatus {
 }
 
 const statusBadgeColor: Record<string, string> = {
-    ACTIVE:        'bg-emerald-100 text-emerald-800',
-    PROBATION:     'bg-amber-100 text-amber-800',
+    ACTIVE: 'bg-emerald-100 text-emerald-800',
+    PROBATION: 'bg-amber-100 text-amber-800',
     NOTICE_PERIOD: 'bg-orange-100 text-orange-800',
-    SUSPENDED:     'bg-red-100 text-red-800',
-    RESIGNED:      'bg-slate-100 text-slate-600',
-    TERMINATED:    'bg-red-200 text-red-900',
-    RETIRED:       'bg-purple-100 text-purple-800',
+    SUSPENDED: 'bg-red-100 text-red-800',
+    RESIGNED: 'bg-slate-100 text-slate-600',
+    TERMINATED: 'bg-red-200 text-red-900',
+    RETIRED: 'bg-purple-100 text-purple-800',
 };
 
 export const StaffStatusMaster: React.FC = () => {
     const { hasPermission } = useAuth();
     const canWrite = hasPermission('hr.hr.staff-statuses', 'write');
 
-    const [list, setList]         = useState<StaffStatus[]>([]);
-    const [loading, setLoading]   = useState(false);
-    const [saving, setSaving]     = useState(false);
+    const [list, setList] = useState<StaffStatus[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [saving, setSaving] = useState(false);
     const [showForm, setShowForm] = useState(false);
-    const [msg, setMsg]           = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+    const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+    const [editingId, setEditingId] = useState<number | null>(null);
 
-    const blank = { status_code: '', status_name: '', description: '', display_order: 0 };
+    const blank = { status_code: '', status_name: '', description: '', display_order: 0, is_active: true };
     const [form, setForm] = useState(blank);
 
     const fetchData = useCallback(async () => {
@@ -53,12 +54,18 @@ export const StaffStatusMaster: React.FC = () => {
         setSaving(true);
         setMsg(null);
         try {
-            await api.post('/hr/staff-statuses', {
+            const payload = {
                 ...form,
                 status_code: form.status_code.toUpperCase().replace(/\s+/g, '_').trim(),
                 display_order: Number(form.display_order),
-            });
-            setMsg({ type: 'success', text: `Status "${form.status_name}" created.` });
+            };
+            if (editingId) {
+                await api.put(`/hr/staff-statuses/${editingId}`, payload);
+                setMsg({ type: 'success', text: `Status "${form.status_name}" updated.` });
+            } else {
+                await api.post('/hr/staff-statuses', payload);
+                setMsg({ type: 'success', text: `Status "${form.status_name}" created.` });
+            }
             setForm(blank);
             setShowForm(false);
             fetchData();
@@ -68,6 +75,29 @@ export const StaffStatusMaster: React.FC = () => {
             setSaving(false);
         }
     };
+
+    const handleEdit = (s: StaffStatus) => {
+        setEditingId(s.id);
+        setForm({
+            status_code: s.status_code,
+            status_name: s.status_name,
+            description: s.description || '',
+            display_order: s.display_order || 0,
+            is_active: s.is_active
+        });
+        setShowForm(true);
+        window.scrollTo(0, 0);
+    };
+
+    const currentSchoolId = localStorage.getItem('currentSchoolId');
+    if (!currentSchoolId || currentSchoolId === 'all') {
+        return (
+            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm text-center mt-6">
+                <h2 className="text-lg font-bold text-slate-800 mb-2">Staff Status Master</h2>
+                <p className="text-slate-500 text-sm">Please select a specific school from the top navigation to view and manage staff statuses.</p>
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-6">
@@ -162,8 +192,11 @@ export const StaffStatusMaster: React.FC = () => {
                                 disabled={saving}
                                 className="px-6 py-2 text-sm font-semibold bg-violet-600 hover:bg-violet-700 text-white rounded-lg disabled:opacity-60 transition"
                             >
-                                {saving ? 'Saving…' : 'Save Status'}
+                                {saving ? 'Saving…' : editingId ? 'Update Status' : 'Save Status'}
                             </button>
+                            {editingId && (
+                                <button type="button" onClick={() => { setEditingId(null); setForm(blank); setShowForm(false); }} className="px-6 py-2 text-sm font-semibold bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg transition ml-2">Cancel</button>
+                            )}
                         </div>
                     </form>
                 </div>
@@ -180,6 +213,7 @@ export const StaffStatusMaster: React.FC = () => {
                             <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Description</th>
                             <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Order</th>
                             <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Active</th>
+                            {canWrite && <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>}
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -199,6 +233,11 @@ export const StaffStatusMaster: React.FC = () => {
                                         {s.is_active ? 'Active' : 'Inactive'}
                                     </span>
                                 </td>
+                                {canWrite && (
+                                    <td className="px-4 py-3">
+                                        <button onClick={() => handleEdit(s)} className="text-violet-600 hover:text-violet-800 text-sm font-medium">Edit</button>
+                                    </td>
+                                )}
                             </tr>
                         ))}
                         {list.length === 0 && (

@@ -14,6 +14,8 @@ export const DepartmentMaster: React.FC = () => {
     const [departments, setDepartments] = useState<Department[]>([]);
     const [loading, setLoading] = useState(false);
     const [msg, setMsg] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+    const [editingId, setEditingId] = useState<number | null>(null);
+
 
     const [form, setForm] = useState({
         department_code: '',
@@ -42,14 +44,41 @@ export const DepartmentMaster: React.FC = () => {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
-            await api.post('/hr/departments', form);
-            setMsg({ type: 'success', text: 'Department created successfully' });
+            if (editingId) {
+                await api.put(`/hr/departments/${editingId}`, form);
+                setMsg({ type: 'success', text: 'Department updated successfully' });
+            } else {
+                await api.post('/hr/departments', form);
+                setMsg({ type: 'success', text: 'Department created successfully' });
+            }
             setForm({ department_code: '', department_name: '', description: '', display_order: 0, status: 'ACTIVE' });
+            setEditingId(null);
             fetchDepartments();
         } catch (e: any) {
-            setMsg({ type: 'error', text: e.response?.data?.error || 'Failed to create department' });
+            setMsg({ type: 'error', text: e.response?.data?.error || `Failed to ${editingId ? 'update' : 'create'} department` });
         }
     };
+
+    const handleEdit = (d: Department) => {
+        setEditingId(d.id);
+        setForm({
+            department_code: d.department_code,
+            department_name: d.department_name,
+            description: d.description || '',
+            display_order: d.display_order || 0,
+            status: d.status || 'ACTIVE'
+        });
+    };
+
+    const currentSchoolId = localStorage.getItem('currentSchoolId');
+    if (!currentSchoolId || currentSchoolId === 'all') {
+        return (
+            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm text-center">
+                <h2 className="text-lg font-bold text-slate-800 mb-2">Department Master</h2>
+                <p className="text-slate-500 text-sm">Please select a specific school from the top navigation to view and manage departments.</p>
+            </div>
+        );
+    }
 
     return (
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
@@ -64,7 +93,7 @@ export const DepartmentMaster: React.FC = () => {
             <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
                 <div>
                     <label className="block text-xs font-medium text-slate-700 mb-1">Code *</label>
-                    <input type="text" required value={form.department_code} onChange={e => setForm({ ...form, department_code: e.target.value })} className="w-full border rounded p-2 text-sm" />
+                    <input type="text" required value={form.department_code} onChange={e => setForm({ ...form, department_code: e.target.value })} disabled={!!editingId} className="w-full border rounded p-2 text-sm disabled:bg-gray-100" />
                 </div>
                 <div>
                     <label className="block text-xs font-medium text-slate-700 mb-1">Name *</label>
@@ -74,8 +103,11 @@ export const DepartmentMaster: React.FC = () => {
                     <label className="block text-xs font-medium text-slate-700 mb-1">Description</label>
                     <input type="text" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className="w-full border rounded p-2 text-sm" />
                 </div>
-                <div>
-                    <button type="submit" className="bg-indigo-600 text-white px-4 py-2 rounded text-sm hover:bg-indigo-700">Save Department</button>
+                <div className="flex gap-2">
+                    <button type="submit" className="bg-indigo-600 text-white px-4 py-2 rounded text-sm hover:bg-indigo-700">{editingId ? 'Update' : 'Save'} Department</button>
+                    {editingId && (
+                        <button type="button" onClick={() => { setEditingId(null); setForm({ department_code: '', department_name: '', description: '', display_order: 0, status: 'ACTIVE' }); }} className="bg-gray-200 text-gray-700 px-4 py-2 rounded text-sm hover:bg-gray-300">Cancel</button>
+                    )}
                 </div>
             </form>
 
@@ -86,6 +118,7 @@ export const DepartmentMaster: React.FC = () => {
                             <th className="p-2 border-b">Code</th>
                             <th className="p-2 border-b">Name</th>
                             <th className="p-2 border-b">Status</th>
+                            <th className="p-2 border-b">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -94,7 +127,14 @@ export const DepartmentMaster: React.FC = () => {
                                 <tr key={d.id} className="border-b">
                                     <td className="p-2">{d.department_code}</td>
                                     <td className="p-2">{d.department_name}</td>
-                                    <td className="p-2">{d.status}</td>
+                                    <td className="p-2">
+                                        <span className={`px-2 py-1 text-xs rounded-full ${d.status === 'ACTIVE' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                            {d.status}
+                                        </span>
+                                    </td>
+                                    <td className="p-2">
+                                        <button onClick={() => handleEdit(d)} className="text-blue-500 hover:text-blue-700 text-sm">Edit</button>
+                                    </td>
                                 </tr>
                             ))
                         }

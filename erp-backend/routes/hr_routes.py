@@ -435,7 +435,19 @@ def _generate_staff_ids(branch_id, department_id, school_id):
 @permission_required("hr.hr.staff-master", "read")
 def get_staff(current_user):
     try:
-        staff_list = StaffMaster.query.all()
+        target_school_id = get_target_school_id(current_user)
+        branch_id_str = request.headers.get('X-Branch-ID')
+        
+        query = StaffMaster.query
+        
+        if target_school_id:
+            query = query.filter_by(school_id=target_school_id)
+            
+        if branch_id_str and branch_id_str.lower() != 'all':
+            query = query.filter_by(branch_id=int(branch_id_str))
+            
+        staff_list = query.order_by(StaffMaster.id.desc()).all()
+        
         result = [{
             "id": s.id,
             "staff_code": s.staff_code,
@@ -744,3 +756,81 @@ def update_staff(current_user, staff_id):
 
     db.session.commit()
     return jsonify({"message": "Staff updated successfully", "staff_code": s.staff_code}), 200
+
+# ==========================================
+# PUT ENDPOINTS FOR HR MASTERS
+# ==========================================
+
+@bp.route('/designations/<int:desig_id>', methods=['PUT'])
+@token_required
+@permission_required("hr.hr.designations", "write")
+def update_designation(current_user, desig_id):
+    desig = DesignationMaster.query.get_or_404(desig_id)
+    data = request.json or {}
+    if 'designation_name' in data:
+        desig.designation_name = data['designation_name']
+    if 'description' in data:
+        desig.description = data['description']
+    if 'display_order' in data:
+        desig.display_order = data['display_order']
+    if 'status' in data:
+        desig.status = data['status']
+    db.session.commit()
+    return jsonify({"message": "Designation updated"}), 200
+
+@bp.route('/shifts/<int:shift_id>', methods=['PUT'])
+@token_required
+@permission_required("hr.hr.shifts", "write")
+def update_shift(current_user, shift_id):
+    shift = ShiftMaster.query.get_or_404(shift_id)
+    data = request.json or {}
+    if 'shift_name' in data:
+        shift.shift_name = data['shift_name']
+    if 'start_time' in data:
+        shift.start_time = data['start_time']
+    if 'end_time' in data:
+        shift.end_time = data['end_time']
+    if 'grace_time_minutes' in data:
+        shift.grace_time_minutes = data['grace_time_minutes']
+    if 'half_day_hours' in data:
+        shift.half_day_hours = data['half_day_hours']
+    if 'full_day_hours' in data:
+        shift.full_day_hours = data['full_day_hours']
+    if 'is_active' in data:
+        shift.is_active = data['is_active']
+    db.session.commit()
+    return jsonify({"message": "Shift updated"}), 200
+
+@bp.route('/staff-categories/<int:cat_id>', methods=['PUT'])
+@token_required
+@permission_required("hr.hr.staff-master", "write")
+def update_staff_category(current_user, cat_id):
+    cat = StaffCategoryMaster.query.get_or_404(cat_id)
+    data = request.json or {}
+    if 'category_name' in data:
+        cat.category_name = data['category_name']
+    if 'description' in data:
+        cat.description = data['description']
+    if 'display_order' in data:
+        cat.display_order = data['display_order']
+    if 'is_active' in data:
+        cat.is_active = data['is_active']
+    db.session.commit()
+    return jsonify({"message": "Staff category updated"}), 200
+
+@bp.route('/staff-statuses/<int:stat_id>', methods=['PUT'])
+@token_required
+@permission_required("hr.hr.staff-master", "write")
+def update_staff_status(current_user, stat_id):
+    stat = StaffStatusMaster.query.get_or_404(stat_id)
+    data = request.json or {}
+    if 'status_name' in data:
+        stat.status_name = data['status_name']
+    if 'description' in data:
+        stat.description = data['description']
+    if 'display_order' in data:
+        stat.display_order = data['display_order']
+    if 'is_active' in data:
+        stat.is_active = data['is_active']
+    db.session.commit()
+    return jsonify({"message": "Staff status updated"}), 200

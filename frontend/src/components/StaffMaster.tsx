@@ -73,7 +73,6 @@ export const StaffMaster: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [showForm, setShowForm] = useState(false);
-    const [filterBranch, setFilterBranch] = useState<string>('');
     const [searchQ, setSearchQ] = useState('');
     const [result, setResult] = useState<{
         success: boolean;
@@ -304,14 +303,13 @@ export const StaffMaster: React.FC = () => {
 
     // ── Filtered list ─────────────────────────────────────────────────────────
     const filteredStaff = staffList.filter((s) => {
-        const matchBranch = !filterBranch || String(s.branch_id) === filterBranch;
         const matchSearch =
             !searchQ ||
             s.staff_code?.toLowerCase().includes(searchQ.toLowerCase()) ||
             s.display_name?.toLowerCase().includes(searchQ.toLowerCase()) ||
             s.mobile?.includes(searchQ) ||
             s.email?.toLowerCase().includes(searchQ.toLowerCase());
-        return matchBranch && matchSearch;
+        return matchSearch;
     });
 
     // ── Render helpers ────────────────────────────────────────────────────────
@@ -696,20 +694,6 @@ export const StaffMaster: React.FC = () => {
                         onChange={(e) => setSearchQ(e.target.value)}
                     />
                 </div>
-
-                {allowedBranches.length > 1 && (
-                    <select
-                        id="filter-branch"
-                        className="text-sm border border-slate-300 rounded-lg px-3 py-2 bg-white focus:ring-2 focus:ring-emerald-500 outline-none"
-                        value={filterBranch}
-                        onChange={(e) => setFilterBranch(e.target.value)}
-                    >
-                        <option value="">All Branches</option>
-                        {allowedBranches.map((b) => (
-                            <option key={b.branch_id} value={b.branch_id}>{b.branch_name}</option>
-                        ))}
-                    </select>
-                )}
 
                 <span className="text-xs text-slate-500">
                     {loading ? 'Loading…' : `${filteredStaff.length} result${filteredStaff.length !== 1 ? 's' : ''}`}

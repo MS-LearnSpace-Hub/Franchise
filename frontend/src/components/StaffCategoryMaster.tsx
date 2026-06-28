@@ -20,8 +20,9 @@ export const StaffCategoryMaster: React.FC = () => {
     const [saving, setSaving]     = useState(false);
     const [showForm, setShowForm] = useState(false);
     const [msg, setMsg]           = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+    const [editingId, setEditingId] = useState<number | null>(null);
 
-    const blank = { category_code: '', category_name: '', description: '', display_order: 0 };
+    const blank = { category_code: '', category_name: '', description: '', display_order: 0, is_active: true };
     const [form, setForm] = useState(blank);
 
     const fetchData = useCallback(async () => {
@@ -43,12 +44,18 @@ export const StaffCategoryMaster: React.FC = () => {
         setSaving(true);
         setMsg(null);
         try {
-            await api.post('/hr/staff-categories', {
+            const payload = {
                 ...form,
                 category_code: form.category_code.toUpperCase().trim(),
                 display_order: Number(form.display_order),
-            });
-            setMsg({ type: 'success', text: `Category "${form.category_name}" created.` });
+            };
+            if (editingId) {
+                await api.put(`/hr/staff-categories/${editingId}`, payload);
+                setMsg({ type: 'success', text: `Category "${form.category_name}" updated.` });
+            } else {
+                await api.post('/hr/staff-categories', payload);
+                setMsg({ type: 'success', text: `Category "${form.category_name}" created.` });
+            }
             setForm(blank);
             setShowForm(false);
             fetchData();
@@ -58,6 +65,29 @@ export const StaffCategoryMaster: React.FC = () => {
             setSaving(false);
         }
     };
+
+    const handleEdit = (c: Category) => {
+        setEditingId(c.id);
+        setForm({
+            category_code: c.category_code,
+            category_name: c.category_name,
+            description: c.description || '',
+            display_order: c.display_order || 0,
+            is_active: c.is_active
+        });
+        setShowForm(true);
+        window.scrollTo(0, 0);
+    };
+
+    const currentSchoolId = localStorage.getItem('currentSchoolId');
+    if (!currentSchoolId || currentSchoolId === 'all') {
+        return (
+            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm text-center mt-6">
+                <h2 className="text-lg font-bold text-slate-800 mb-2">Staff Categories</h2>
+                <p className="text-slate-500 text-sm">Please select a specific school from the top navigation to view and manage staff categories.</p>
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-6">
@@ -107,6 +137,7 @@ export const StaffCategoryMaster: React.FC = () => {
                                 onChange={e => setForm({ ...form, category_code: e.target.value })}
                                 required
                                 maxLength={20}
+                                disabled={!!editingId}
                             />
                             <p className="text-xs text-slate-400 mt-1">Short unique code. Stored as uppercase.</p>
                         </div>
@@ -152,8 +183,11 @@ export const StaffCategoryMaster: React.FC = () => {
                                 disabled={saving}
                                 className="px-6 py-2 text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg disabled:opacity-60 transition"
                             >
-                                {saving ? 'Saving…' : 'Save Category'}
+                                {saving ? 'Saving…' : editingId ? 'Update Category' : 'Save Category'}
                             </button>
+                            {editingId && (
+                                <button type="button" onClick={() => { setEditingId(null); setForm(blank); setShowForm(false); }} className="px-6 py-2 text-sm font-semibold bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg transition ml-2">Cancel</button>
+                            )}
                         </div>
                     </form>
                 </div>
@@ -170,6 +204,7 @@ export const StaffCategoryMaster: React.FC = () => {
                             <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Description</th>
                             <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Order</th>
                             <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
+                            {canWrite && <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>}
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -189,6 +224,11 @@ export const StaffCategoryMaster: React.FC = () => {
                                         {c.is_active ? 'Active' : 'Inactive'}
                                     </span>
                                 </td>
+                                {canWrite && (
+                                    <td className="px-4 py-3">
+                                        <button onClick={() => handleEdit(c)} className="text-indigo-600 hover:text-indigo-800 text-sm font-medium">Edit</button>
+                                    </td>
+                                )}
                             </tr>
                         ))}
                         {list.length === 0 && (
