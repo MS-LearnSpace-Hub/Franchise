@@ -134,7 +134,6 @@ export const DesignationMaster: React.FC = () => {
                             <th className="p-2 border-b">Code</th>
                             <th className="p-2 border-b">Name</th>
                             <th className="p-2 border-b">Status</th>
-                            <th className="p-2 border-b">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -148,9 +147,6 @@ export const DesignationMaster: React.FC = () => {
                                         <span className={`px-2 py-1 text-xs rounded-full ${d.status === 'ACTIVE' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                                             {d.status}
                                         </span>
-                                    </td>
-                                    <td className="p-2">
-                                        <button onClick={() => handleEdit(d)} className="text-blue-500 hover:text-blue-700 text-sm">Edit</button>
                                     </td>
                                 </tr>
                             ))

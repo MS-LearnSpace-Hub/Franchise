@@ -1,4 +1,4 @@
-from datetime import datetime, date
+from datetime import datetime, date, time
 from extensions import db, get_now
 from decimal import Decimal
 from sqlalchemy import or_, event
@@ -1210,6 +1210,7 @@ class StaffStatusMaster(db.Model, AuditMixin):
     description = db.Column(db.Text, nullable=True)
     display_order = db.Column(db.Integer, default=0)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
+    status_type = db.Column(db.Enum('ACTIVE', 'INACTIVE'), default='ACTIVE', nullable=False)
 
     __table_args__ = (
         db.UniqueConstraint('school_id', 'status_code', name='uq_school_status_code'),
@@ -1468,6 +1469,8 @@ def receive_before_flush(session, flush_context, instances):
         if isinstance(val, datetime):
             return val.isoformat()
         if isinstance(val, date):
+            return val.isoformat()
+        if isinstance(val, time):
             return val.isoformat()
         if isinstance(val, Decimal):
             return float(val)

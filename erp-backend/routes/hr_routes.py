@@ -110,7 +110,8 @@ def get_staff_statuses(current_user):
         "status_name": s.status_name,
         "description": s.description,
         "display_order": s.display_order,
-        "is_active": s.is_active
+        "is_active": s.is_active,
+        "status_type": s.status_type.name if hasattr(s.status_type, 'name') else s.status_type
     } for s in statuses]
     return jsonify(result), 200
 
@@ -133,7 +134,8 @@ def create_staff_status(current_user):
         status_name=data['status_name'],
         description=data.get('description'),
         display_order=data.get('display_order', 0),
-        is_active=data.get('is_active', True)
+        is_active=data.get('is_active', True),
+        status_type=data.get('status_type', 'ACTIVE')
     )
     db.session.add(status)
     db.session.commit()
@@ -754,6 +756,15 @@ def update_staff(current_user, staff_id):
         if field in data:
             setattr(s, field, data[field] or None if data[field] == '' else data[field])
 
+    # Update associated user credentials if staff status changed
+    if 'staff_status_id' in data and data['staff_status_id']:
+        status_master = StaffStatusMaster.query.get(data['staff_status_id'])
+        if status_master:
+            user = User.query.filter_by(staff_id=s.id).first()
+            if user:
+                status_type_val = status_master.status_type.name if hasattr(status_master.status_type, 'name') else status_master.status_type
+                user.is_active = (status_type_val == 'ACTIVE')
+
     db.session.commit()
     return jsonify({"message": "Staff updated successfully", "staff_code": s.staff_code}), 200
 
@@ -832,5 +843,7 @@ def update_staff_status(current_user, stat_id):
         stat.display_order = data['display_order']
     if 'is_active' in data:
         stat.is_active = data['is_active']
+    if 'status_type' in data:
+        stat.status_type = data['status_type']
     db.session.commit()
     return jsonify({"message": "Staff status updated"}), 200

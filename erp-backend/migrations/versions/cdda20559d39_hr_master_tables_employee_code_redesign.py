@@ -104,17 +104,6 @@ def upgrade():
         batch_op.add_column(sa.Column('department_short_code', sa.String(length=10), nullable=True))
         batch_op.add_column(sa.Column('department_numeric_code', sa.String(length=10), nullable=True))
 
-    with op.batch_alter_table('petty_cash', schema=None) as batch_op:
-        batch_op.alter_column('approved_by',
-               existing_type=mysql.VARCHAR(length=100),
-               type_=sa.Integer(),
-               existing_nullable=True)
-        batch_op.create_foreign_key(None, 'users', ['approved_by'], ['user_id'])
-
-    with op.batch_alter_table('petty_cash_fund_allocation', schema=None) as batch_op:
-        batch_op.add_column(sa.Column('remarks', sa.String(length=100), nullable=True))
-        batch_op.drop_column('remark')
-
     with op.batch_alter_table('staff_master', schema=None) as batch_op:
         batch_op.add_column(sa.Column('staff_category_id', sa.Integer(), nullable=True))
         batch_op.add_column(sa.Column('staff_status_id', sa.Integer(), nullable=True))
@@ -151,17 +140,6 @@ def downgrade():
         batch_op.drop_column('employee_sequence')
         batch_op.drop_column('staff_status_id')
         batch_op.drop_column('staff_category_id')
-
-    with op.batch_alter_table('petty_cash_fund_allocation', schema=None) as batch_op:
-        batch_op.add_column(sa.Column('remark', mysql.VARCHAR(length=100), nullable=True))
-        batch_op.drop_column('remarks')
-
-    with op.batch_alter_table('petty_cash', schema=None) as batch_op:
-        batch_op.drop_constraint(None, type_='foreignkey')
-        batch_op.alter_column('approved_by',
-               existing_type=sa.Integer(),
-               type_=mysql.VARCHAR(length=100),
-               existing_nullable=True)
 
     with op.batch_alter_table('department_master', schema=None) as batch_op:
         batch_op.drop_column('department_numeric_code')
