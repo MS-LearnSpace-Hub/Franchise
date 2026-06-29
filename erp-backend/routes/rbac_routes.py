@@ -11,27 +11,24 @@ _sync_lock = threading.Lock()
 
 
 def _require_admin(current_user):
-    if (
-        current_user.role not in ("SuperAdmin", "Admin")
-        and not has_permission(current_user, "system.roles.permissions", "read")
-    ):
+    if not has_permission(current_user, "system.roles.role-permissions", "read"):
         return jsonify({"error": "Unauthorized"}), 403
     return None
 
 
 def _require_role_listing_access(current_user):
     if (
-        current_user.role not in ("SuperAdmin", "Admin")
-        and not has_permission(current_user, "system.roles.permissions", "read")
-        and not has_permission(current_user, "system.users.management", "read")
+        not has_permission(current_user, "system.roles.role-permissions", "read")
+        and not has_permission(current_user, "system.users.user-management", "read")
+        and not has_permission(current_user, "hr.hr.staff-master", "write")
     ):
         return jsonify({"error": "Unauthorized"}), 403
     return None
 
 
 def _require_superadmin(current_user):
-    if current_user.role != "SuperAdmin":
-        return jsonify({"error": "Unauthorized. SuperAdmin only."}), 403
+    if not has_permission(current_user, "system.roles.role-permissions", "write"):
+        return jsonify({"error": "Unauthorized. Role management permission required."}), 403
     return None
 
 
@@ -153,7 +150,7 @@ def list_roles(current_user):
         return error
 
     query = Role.query.order_by(Role.name.asc())
-    if current_user.role != "SuperAdmin":
+    if not has_permission(current_user, "system.roles.role-permissions", "write"):
         query = query.filter(Role.name != "SuperAdmin", Role.is_active == True)
     roles = query.all()
     return jsonify({"roles": [_role_to_dict(role) for role in roles]}), 200
@@ -202,7 +199,7 @@ def get_role(current_user, role_id):
     role = Role.query.get(role_id)
     if not role:
         return jsonify({"error": "Role not found"}), 404
-    if current_user.role != "SuperAdmin" and role.name == "SuperAdmin":
+    if not has_permission(current_user, "system.roles.role-permissions", "write") and role.name == "SuperAdmin":
         return jsonify({"error": "Unauthorized"}), 403
     return jsonify({"role": _role_to_dict(role, True)}), 200
 

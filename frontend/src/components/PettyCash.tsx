@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api';
+import { hasPermission } from '../utils/permissions';
 
 
 interface Ledger {
@@ -29,6 +30,8 @@ interface PettyCashTxn {
   description?: string;
   created_by?: string;
   approved_by?: string;
+  approval_status?: string;
+  approved_at?: string;
   items?: PettyCashItem[];
 }
 
@@ -45,6 +48,7 @@ const PettyCash: React.FC = () => {
 
   // Accordion state - group by month
   const [expandedMonths, setExpandedMonths] = useState<Record<string, boolean>>({});
+  const [summary, setSummary] = useState({ total_allocated: 0, total_payment: 0, net_amount: 0 });
 
   let user: any = {};
   try {
@@ -52,8 +56,7 @@ const PettyCash: React.FC = () => {
   } catch {
     console.warn('Invalid user data in localStorage');
   }
-  const userRoleStr = (user.role || '').toLowerCase();
-  const isAccountant = ['superadmin', 'admin', 'branch admin'].includes(userRoleStr);
+  const isAccountant = hasPermission(user, 'fees.fee.petty-cash', 'write');
   const [formData, setFormData] = useState<PettyCashTxn & { items: PettyCashItem[] }>({
     transaction_date: new Date().toISOString().split('T')[0],
     voucher_name: '',
@@ -86,11 +89,14 @@ const PettyCash: React.FC = () => {
       const response = await api.get('/petty-cash');
       setTransactions(response.data);
 
+      const summaryResponse = await api.get('/petty-cash/summary');
+      setSummary(summaryResponse.data);
+
       // Auto-expand current month
       const currentMonth = new Date().toLocaleString('default', { month: 'long', year: 'numeric' });
       setExpandedMonths(prev => ({ ...prev, [currentMonth]: true }));
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to load transactions');
+      setError(err.response?.data?.message || 'Failed to load data');
     } finally {
       setLoading(false);
     }
@@ -165,7 +171,32 @@ const PettyCash: React.FC = () => {
 
   return (
     <div className="container mx-auto p-6 space-y-6">
-
+      {/* Cash In Hand Summary Section */}
+      <div className="bg-white rounded-lg shadow print:hidden border-l-4 border-blue-600">
+        <div className="p-4 flex flex-col md:flex-row items-center justify-between">
+          <div className="flex items-center space-x-4 mb-4 md:mb-0">
+            <div className="bg-blue-50 p-3 rounded-full">
+              <span className="text-2xl">💰</span>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500 font-medium uppercase tracking-wider">Cash In Hand</p>
+              <h3 className={`text-3xl font-bold ${summary.net_amount < 0 ? 'text-red-600' : 'text-blue-700'}`}>
+                ₹ {summary.net_amount?.toFixed(2) ?? '0.00'}
+              </h3>
+            </div>
+          </div>
+          <div className="flex flex-col md:flex-row space-y-2 md:space-y-0 md:space-x-8">
+            <div className="text-right md:text-left">
+              <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Allocated</p>
+              <p className="text-lg font-semibold text-emerald-600">₹ {summary.total_allocated?.toFixed(2) || '0.00'}</p>
+            </div>
+            <div className="text-right md:text-left">
+              <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Spent</p>
+              <p className="text-lg font-semibold text-rose-600">₹ {summary.total_payment?.toFixed(2) || '0.00'}</p>
+            </div>
+          </div>
+        </div>
+      </div>
       {/* Form Section */}
       <div className="bg-white rounded-lg shadow p-6 print:hidden">
         <h2 className="text-xl font-semibold mb-4 text-gray-800">New Petty Cash Entry</h2>
@@ -386,6 +417,7 @@ const PettyCash: React.FC = () => {
                           <th className="px-4 py-2">Paid To</th>
                           <th className="px-4 py-2">Mode</th>
                           <th className="px-4 py-2 text-right">Amount</th>
+                          <th className="px-4 py-2 text-center">Status</th>
                           <th className="px-4 py-2 text-center">Actions</th>
                         </tr>
                       </thead>
@@ -403,6 +435,15 @@ const PettyCash: React.FC = () => {
                             <td className="px-4 py-2">{t.paid_to || '-'}</td>
                             <td className="px-4 py-2">{t.payment_mode}</td>
                             <td className="px-4 py-2 text-right font-medium">₹{Number(t.amount).toFixed(2)}</td>
+                            <td className="px-4 py-2 text-center">
+                              <span className={`px-2 py-1 rounded text-xs font-medium ${
+                                t.approval_status === 'Approved' ? 'bg-green-100 text-green-800' :
+                                t.approval_status === 'Rejected' ? 'bg-red-100 text-red-800' :
+                                'bg-yellow-100 text-yellow-800'
+                              }`}>
+                                {t.approval_status || 'Pending'}
+                              </span>
+                            </td>
                             <td className="px-4 py-2 text-center">
                               <button onClick={() => setSelectedReceipt(t)} className="text-blue-600 hover:text-blue-800 font-medium px-2 py-1 text-xs border border-blue-600 rounded" title="View Details">
                                 View Details

@@ -1255,9 +1255,6 @@ def demote_students_bulk(current_user):
     if source_year == restore_year:
         return jsonify({"error": "source_year and restore_year cannot be the same"}), 400
         
-    if current_user.role != 'Admin':
-        return jsonify({"error": "Demotion not allowed"}), 403
-
     success_count = 0
     errors = []
     processed_ids = set()

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api';
+import { useAuth } from '../contexts/AuthContext';
 
 const Profile: React.FC = () => {
     // Username State
@@ -31,8 +32,8 @@ const Profile: React.FC = () => {
     const [addUserLoading, setAddUserLoading] = useState(false);
     const [isBranchLocked, setIsBranchLocked] = useState(false);
 
-    // Current user role to show/hide admin features
-    const [currentUserRole, setCurrentUserRole] = useState('');
+    const { user: authUser, hasPermission } = useAuth();
+    const canManageUsers = hasPermission('system.users.user-management', 'write');
 
     useEffect(() => {
         const user = JSON.parse(localStorage.getItem('user') || '{}');
@@ -40,7 +41,6 @@ const Profile: React.FC = () => {
 
         // Set current user data
         if (user) {
-            setCurrentUserRole(user.role || '');
             setUsername(user.username || '');
             setOriginalUsername(user.username || '');
         }
@@ -74,7 +74,7 @@ const Profile: React.FC = () => {
         fetchUserProfile();
 
         // Branch locking logic
-        if (user.role === 'Admin') {
+        if (canManageUsers) {
             if (globalBranch && globalBranch !== 'All') {
                 setSelectedBranches([globalBranch]);
             } else {
@@ -466,7 +466,7 @@ const Profile: React.FC = () => {
                 </div>
 
                 {/* ==================== ADD USER SECTION (ADMIN ONLY) ==================== */}
-                {currentUserRole === 'Admin' && (
+                {canManageUsers && (
                     <div className="mt-8">
                         <div className="bg-white p-6 rounded-lg shadow-md border border-blue-200">
                             <h3 className="text-lg font-semibold text-gray-800 border-b pb-2 mb-4">

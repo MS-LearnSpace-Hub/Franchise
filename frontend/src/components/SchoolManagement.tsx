@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import api from '../api';
+import { canWrite } from '../utils/permissions';
 import { useAuth } from '../contexts/AuthContext';
 import { BuildingOfficeIcon, UserIcon, ShieldCheckIcon } from './icons';
 
@@ -31,7 +32,9 @@ interface Location {
 
 const SchoolManagement: React.FC = () => {
   const { user } = useAuth();
-  const isSuperAdmin = user?.role === 'SuperAdmin';
+  // Use PBAC instead of Admin role check for actions
+  const canManageSchools = canWrite(user, 'setup.school-setup.setup-school');
+  const isGlobalManager = canWrite(user, 'system.franchise.franchise-management');
 
   const [schools, setSchools] = useState<School[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
@@ -127,10 +130,10 @@ const SchoolManagement: React.FC = () => {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">School Management</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            {isSuperAdmin ? 'Full administration of all schools and branches' : 'Manage your assigned schools and branches'}
+            {isGlobalManager ? 'Full administration of all schools and branches' : 'Manage your assigned schools and branches'}
           </p>
         </div>
-        {isSuperAdmin && (
+        {canManageSchools && (
           <button
             onClick={() => {
               setSchoolForm({ school_name: '', school_code: '', address: '', phone: '', email: '', theme_color: '#4f46e5', subscription_plan: 'Standard' });
@@ -180,7 +183,7 @@ const SchoolManagement: React.FC = () => {
                     </span>
                   </div>
                 </div>
-                {isSuperAdmin && (
+                {canManageSchools && (
                   <div className="flex space-x-2">
                     <button
                       onClick={() => {
@@ -223,7 +226,7 @@ const SchoolManagement: React.FC = () => {
               <div className="p-6 flex-1 flex flex-col">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-sm font-semibold text-slate-800">Branches ({school.branches.length})</h3>
-                  {(isSuperAdmin || user?.role === 'Admin') && (
+                  {canManageSchools && (
                     <button
                       onClick={() => {
                         setActiveBranchSchoolId(school.id);

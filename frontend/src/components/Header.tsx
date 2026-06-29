@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronDownIcon, UserIcon, LogoutIcon, MenuIcon, ArrowBackIcon, ArrowForwardIcon, HomeIcon } from './icons';
+import { canWrite, canRead } from '../utils/permissions';
 import { Page } from '../App';
 import api from '../api';
 import Learnspacelogo1 from '../images/Learnspacelogo1.png';
@@ -46,8 +47,11 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, navigateTo, onLogout, go
   const themeColor = isAllSchools ? '#2b8144' : (user.school_theme || '#009746');
 
   // Initialize selected location on mount
+  const canManageGlobal = canWrite(user, 'system.franchise.franchise-management');
+  const canManageSchool = canManageGlobal || canWrite(user, 'setup.school-setup.setup-school');
+
   useEffect(() => {
-    if (user.role === 'Admin' || user.role === 'SuperAdmin') {
+    if (canManageSchool) {
       // Fetch All Branches with metadata
       api.get('/branches').then(res => {
         if (res.data.branches) {
@@ -57,8 +61,8 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, navigateTo, onLogout, go
     }
   }, []); // Run once
 
-  const isSuperAdmin = user.role === 'SuperAdmin';
-  const isAdminLevel = user.role === 'Admin' || isSuperAdmin;
+  const isSuperAdmin = canManageGlobal;
+  const isAdminLevel = canManageSchool;
   const allowedSchools = user.allowed_schools || [];
 
   // ── School options: derived from allBranchesData for Admin/SuperAdmin, or user's allowed_schools ──
@@ -281,7 +285,7 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, navigateTo, onLogout, go
   const [locationList, setLocationList] = useState<string[]>(['All']);
 
   useEffect(() => {
-    if (user.role === 'SuperAdmin') {
+    if (canManageGlobal) {
       api.get('/org/locations')
         .then(res => {
           const locs = res.data.locations || [];
@@ -294,7 +298,7 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, navigateTo, onLogout, go
   }, [user.role]);
 
   useEffect(() => {
-    if (user.role === 'Admin' && allBranchesData.length > 0) {
+    if (isAdminLevel && allBranchesData.length > 0) {
       const branchLocations = Array.from(new Set(
         allBranchesData
           .map(b => b.location_name)
@@ -350,7 +354,7 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, navigateTo, onLogout, go
           <div className="flex items-center space-x-2 md:space-x-4">
 
             {/* Location Dropdown (Admin / SuperAdmin Only) */}
-            {(user.role === 'Admin' || user.role === 'SuperAdmin') && locationList.length > 1 && (
+            {canManageSchool && locationList.length > 1 && (
               <div className="relative mr-2">
                 <button
                   onClick={() => setLocationDropdownOpen(!locationDropdownOpen)}

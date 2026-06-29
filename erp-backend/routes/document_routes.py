@@ -38,7 +38,9 @@ def get_media_base():
 def can_access_student(current_user, student):
     if not student:
         return False
-    if current_user.role == 'Admin' or current_user.branch == 'All':
+    from helpers import get_user_allowed_branches
+    allowed_branches = get_user_allowed_branches(current_user)
+    if allowed_branches.get('is_unlimited'):
         return True
     if student.branch == current_user.branch:
         return True

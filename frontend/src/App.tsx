@@ -42,11 +42,29 @@ export type Page =
   | "deleted-receipts"
   | "fee-concession-report"
   | "adjust-fee-report"
-  | 'sms-center';
+  | 'sms-center'
+  | 'fund-allocation'
+  | 'month-wise-ledger'
+  | 'petty-cash-approval'
+  | 'hr-management'
+  | 'hr-departments'
+  | 'hr-designations'
+  | 'hr-shifts'
+  | 'hr-staff-master'
+  | 'hr-staff-categories'
+  | 'hr-staff-statuses'
+  | 'hr-biometric-devices'
+  | 'hr-biometric-mapping'
+  | 'hr-attendance-summary'
+  | 'hr-punch-log'
+  | 'hr-staff-directory'
+  | 'staff-profile';
 
 // Inner component that can access AuthContext
 const AppInner: React.FC = () => {
-  const { isAuthenticated, setUser, clearUser } = useAuth();
+  const { isAuthenticated, user, setUser, clearUser } = useAuth();
+  // Determine the default landing page
+  const defaultPage: Page = user?.role === 'Admin' || user?.role === 'HR' ? 'dashboard' : 'staff-profile';
 
   const handleLoginSuccess = (user: any) => {
     setUser(user);
@@ -59,7 +77,7 @@ const AppInner: React.FC = () => {
   return (
     <>
       {isAuthenticated ? (
-        <Dashboard onLogout={handleLogout} />
+        <Dashboard onLogout={handleLogout} initialPage={defaultPage} />
       ) : (
         <Login onLoginSuccess={handleLoginSuccess} />
       )}

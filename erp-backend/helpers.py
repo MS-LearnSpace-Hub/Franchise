@@ -168,12 +168,13 @@ def token_required(f):
         
         if not token:
             return jsonify({'error': 'Token is missing!'}), 401
-        
         try:
             data = jwt.decode(token, current_app.config['SECRET_KEY'], algorithms=["HS256"])
             current_user = User.query.filter_by(user_id=data['user_id']).first()
             if not current_user:
                  return jsonify({'error': 'User invalid!'}), 401
+            if getattr(current_user, 'is_active', True) is False:  
+                 return jsonify({'error': 'Account is deactivated'}), 401
                  
             # Store user_id and tenant context in global context
             g.user_id = current_user.user_id
@@ -1068,3 +1069,18 @@ def shift_installments(start_no, branch, year, location):
         inst.installment_no += 1
     if existing:
         db.session.flush() # Apply updates before inserting new one
+
+def get_target_school_id(current_user):
+    from flask import request, g
+    from models import Branch
+    branch_id = request.args.get('branch_id', type=int)
+    if branch_id:
+        branch = Branch.query.get(branch_id)
+        if branch:
+            return branch.school_id
+    if request.headers.get('X-School-ID', '').lower() == 'all':
+        return None
+    if hasattr(g, 'school_id') and g.school_id is not None:
+        return g.school_id
+    return current_user.school_id
+

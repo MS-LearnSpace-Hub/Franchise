@@ -29,7 +29,7 @@ interface Branch {
 const SetExamAttendance: React.FC = () => {
     // --- Context State ---
     const [academicYear, setAcademicYear] = useState(localStorage.getItem('academicYear') || '');
-    const [userRole, setUserRole] = useState('');
+    // Removed userRole
     const [userBranch, setUserBranch] = useState('');
 
     // --- Selection State ---
@@ -60,7 +60,7 @@ const SetExamAttendance: React.FC = () => {
         const userStr = localStorage.getItem('user');
         if (userStr) {
             const user = JSON.parse(userStr);
-            setUserRole(user.role);
+            // Removed setUserRole
             setUserBranch(user.branch);
 
             fetchBranches().then((fetchedBranches) => {

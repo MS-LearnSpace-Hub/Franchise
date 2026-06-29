@@ -632,7 +632,7 @@ def update_concession(current_user, original_title, original_year):
         query = Concession.query.filter_by(title=original_title, academic_year=original_year, branch=new_branch)
 
         deleted = query.delete()
-        if deleted == 0 and current_user.role != 'Admin':
+        if deleted == 0 and not allowed['is_unlimited']:
              return jsonify({"error": "Concession not found or unauthorized to edit global concession"}), 403
             
         created_ids = []

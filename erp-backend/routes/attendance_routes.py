@@ -2,7 +2,7 @@
 from flask import Blueprint, jsonify, request
 from extensions import db, get_today, get_now, to_local_time
 from models import Student, Attendance, Branch, UserBranchAccess, StudentAcademicRecord
-from helpers import token_required, require_academic_year, student_to_dict, get_default_location, ensure_student_editable, get_user_allowed_branches, StudentRecordLockedError
+from helpers import token_required, permission_required, require_academic_year, student_to_dict, get_default_location, ensure_student_editable, get_user_allowed_branches, StudentRecordLockedError, scope_query, get_target_school_id
 from datetime import datetime, date
 from sqlalchemy import or_
 from routes.config_routes import is_weekoff_or_holiday
@@ -566,4 +566,81 @@ def upload_attendance(current_user):
     except Exception as e:
         print(f"Upload Error: {e}")
         traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+# ==========================================
+# STAFF ATTENDANCE ROUTES
+# ==========================================
+from models import AttendanceHead, AttendanceDetail, ShiftMaster, StaffMaster
+
+@bp.route('/staff/summary', methods=['GET'])
+@token_required
+@permission_required("attendance.summary", "read")
+def get_staff_attendance_summary(current_user):
+    try:
+        query = AttendanceHead.query.join(StaffMaster)
+        query = scope_query(query, StaffMaster)
+        
+        target_school_id = get_target_school_id(current_user)
+        if target_school_id:
+            query = query.filter(StaffMaster.school_id == target_school_id)
+            
+        records = query.order_by(AttendanceHead.attendance_date.desc()).limit(100).all()
+        result = [{
+            "id": r.id,
+            "staff_id": r.staff_id,
+            "staff_name": r.staff.display_name if r.staff else None,
+            "attendance_date": str(r.attendance_date),
+            "first_in": str(r.first_in) if r.first_in else None,
+            "last_out": str(r.last_out) if r.last_out else None,
+            "working_minutes": r.working_minutes,
+            "late_minutes": r.late_minutes,
+            "attendance_status": r.attendance_status,
+            "generated_from": r.generated_from,
+            "payroll_locked": r.payroll_locked,
+            "attendance_locked": r.attendance_locked,
+            "payroll_processed": r.payroll_processed
+        } for r in records]
+        return jsonify(result), 200
+    except Exception as e:
+        print(f"Error fetching staff attendance: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@bp.route('/staff/manual', methods=['POST'])
+@token_required
+@permission_required("attendance.manual", "write")
+def add_manual_staff_attendance(current_user):
+    try:
+        data = request.json
+        if not data or not data.get('staff_id') or not data.get('attendance_date') or not data.get('status'):
+            return jsonify({"error": "staff_id, attendance_date, and status are required"}), 400
+            
+        head = AttendanceHead.query.filter_by(
+            staff_id=data['staff_id'], 
+            attendance_date=data['attendance_date']
+        ).first()
+        
+        if not head:
+            head = AttendanceHead(
+                staff_id=data['staff_id'],
+                attendance_date=data['attendance_date'],
+                generated_from='MANUAL'
+            )
+            db.session.add(head)
+            
+        if head.attendance_locked or head.payroll_processed:
+            return jsonify({"error": "Attendance for this date is already locked or processed for payroll"}), 400
+            
+        head.attendance_status = data['status']
+        head.remarks = data.get('remarks')
+        
+        if data.get('first_in'):
+            head.first_in = data['first_in']
+        if data.get('last_out'):
+            head.last_out = data['last_out']
+            
+        db.session.commit()
+        return jsonify({"message": "Manual attendance saved successfully", "id": head.id}), 200
+    except Exception as e:
+        print(f"Error saving manual staff attendance: {e}")
         return jsonify({"error": str(e)}), 500

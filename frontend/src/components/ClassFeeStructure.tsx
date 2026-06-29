@@ -51,7 +51,6 @@ const ClassFeeStructure: React.FC = () => {
     const [newFeeGroup, setNewFeeGroup] = useState('');
     // const [selectedBranch, setSelectedBranch] = useState('All'); // Removed state
     const [selectedLocation, setSelectedLocation] = useState('Hyderabad');
-    const [isAdmin, setIsAdmin] = useState(false);
     // const [isBranchLocked, setIsBranchLocked] = useState(false); // Removed state
 
     const [newAdmissionFees, setNewAdmissionFees] = useState<FeeStructureItem[]>([]);
@@ -87,7 +86,6 @@ const ClassFeeStructure: React.FC = () => {
 
     useEffect(() => {
         const user = JSON.parse(localStorage.getItem('user') || '{}');
-        setIsAdmin(user.role === 'Admin');
 
         if (user.location) {
             setSelectedLocation(user.location);

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
+import { canWrite } from '../utils/permissions';
 import { PencilIcon, TrashIcon } from './icons';
 import { SetupIcon } from './icons';
 import { auth } from '../api';
@@ -24,7 +25,7 @@ const DocumentAdministration: React.FC = () => {
     const isAdminAllBranches = useMemo(() => {
         const user = JSON.parse(localStorage.getItem('user') || '{}');
         const currentBranch = (localStorage.getItem('currentBranch') || '').trim();
-        const isAdmin = user?.role === 'Admin';
+        const isAdmin = canWrite(user, 'setup.school-setup.setup-school');
         const isAllBranches = currentBranch === '' || currentBranch === 'All' || currentBranch === 'All Branches';
         return isAdmin && isAllBranches;
     }, []);

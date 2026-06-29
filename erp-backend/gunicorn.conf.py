@@ -1,5 +1,5 @@
-workers = 2
-threads = 2
+workers = 4
+threads = 4
 timeout = 120
 
 bind = "127.0.0.1:8000"

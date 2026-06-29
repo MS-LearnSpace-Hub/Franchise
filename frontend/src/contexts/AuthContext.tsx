@@ -110,6 +110,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     (code: string, action: "read" | "write" | "append" | "delete" = "read") => {
       if (!user) return false;
       if (user.role === "SuperAdmin") return true;
+
       const permission = user.permissions?.[code];
       if (!permission) return false;
       return Boolean(permission[`can_${action}` as keyof UserPermission]);
