@@ -88,18 +88,21 @@ const HRLayout: React.FC<HRLayoutProps> = ({ children, currentPage, navigateTo }
         }
     ];
 
-    const activeMenu = menuItems.find(item => item.name === activeTab);
+    const activeMenu = menuItems.find(item => 
+        item.page === currentPage || 
+        (item.subItems && item.subItems.some(sub => sub.page === currentPage))
+    ) || menuItems[0];
 
-    // When inside an actual component page, hide the HR Header completely
-    if (currentPage !== 'hr-management') {
-        return (
-            <div className="flex flex-col h-full bg-slate-50 overflow-hidden">
-                <div className="flex-1 overflow-y-auto p-6 relative">
-                    {children}
-                </div>
-            </div>
-        );
-    }
+    const handleTabClick = (item: typeof menuItems[0]) => {
+        if (item.page) {
+            navigateTo(item.page);
+        } else if (item.subItems && item.subItems.length > 0) {
+            const firstAccessible = item.subItems.find(sub => canAccess(sub.permission));
+            if (firstAccessible) {
+                navigateTo(firstAccessible.page);
+            }
+        }
+    };
 
     return (
         <div className="flex flex-col h-full bg-slate-50 overflow-hidden">
@@ -119,14 +122,9 @@ const HRLayout: React.FC<HRLayoutProps> = ({ children, currentPage, navigateTo }
                             canAccess(item.permission) && (
                                 <button
                                     key={item.name}
-                                    onClick={() => {
-                                        setActiveTab(item.name);
-                                        if (item.page) {
-                                            navigateTo(item.page);
-                                        }
-                                    }}
+                                    onClick={() => handleTabClick(item)}
                                     className={`flex items-center space-x-2 px-4 py-3 border-b-2 font-medium text-sm transition-colors
-                                        ${activeTab === item.name 
+                                        ${activeMenu.name === item.name 
                                             ? 'border-emerald-600 text-emerald-600' 
                                             : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
                                         }`}
@@ -140,6 +138,27 @@ const HRLayout: React.FC<HRLayoutProps> = ({ children, currentPage, navigateTo }
                 </div>
 
                 {/* Sub-navigation Menu for Active Tab */}
+                {activeMenu.subItems && activeMenu.subItems.length > 0 && (
+                    <div className="bg-white border-b border-slate-200 px-6 py-2 flex space-x-4 shadow-sm z-10">
+                        {activeMenu.subItems.map(sub => (
+                            canAccess(sub.permission) && (
+                                <button
+                                    key={sub.name}
+                                    onClick={() => navigateTo(sub.page)}
+                                    className={`flex items-center space-x-1 px-3 py-1.5 rounded-md text-sm font-medium transition-colors
+                                        ${currentPage === sub.page
+                                            ? 'bg-emerald-50 text-emerald-700'
+                                            : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                                        }`}
+                                >
+                                    {sub.icon}
+                                    <span>{sub.name}</span>
+                                </button>
+                            )
+                        ))}
+                    </div>
+                )}
+                
                 <div className="flex-1 overflow-hidden relative">
                     <div className="absolute inset-0 overflow-y-auto bg-slate-50 p-6">
                         {children}

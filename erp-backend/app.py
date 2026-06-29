@@ -226,15 +226,18 @@ def create_app():
         import traceback
         with open("global_500_error.log", "w") as f:
             f.write(traceback.format_exc() or str(error))
-        return jsonify({'error': 'Internal server error', 'trace': traceback.format_exc()}), 500
+        return jsonify({'error': 'Internal server error'}), 500
         
+    from werkzeug.exceptions import HTTPException
+
     @app.errorhandler(Exception)
     def handle_exception(e):
+        if isinstance(e, HTTPException):
+            return jsonify({'error': e.description}), e.code
         import traceback
         with open("global_500_error.log", "w") as f:
             f.write(traceback.format_exc() or str(e))
-        return jsonify({'error': str(e), 'trace': traceback.format_exc()}), 500
-
+        return jsonify({'error': 'Internal server error'}), 500
     return app
 
 

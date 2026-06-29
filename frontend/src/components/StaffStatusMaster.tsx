@@ -37,6 +37,8 @@ export const StaffStatusMaster: React.FC = () => {
     const [form, setForm] = useState(blank);
 
     const fetchData = useCallback(async () => {
+        const schoolId = localStorage.getItem('currentSchoolId');
+        if (!schoolId || schoolId === 'all') return;
         setLoading(true);
         try {
             const res = await api.get('/hr/staff-statuses');
@@ -48,7 +50,9 @@ export const StaffStatusMaster: React.FC = () => {
         }
     }, []);
 
-    useEffect(() => { fetchData(); }, [fetchData]);
+    useEffect(() => {
+        fetchData();
+    }, [fetchData]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -262,7 +266,7 @@ export const StaffStatusMaster: React.FC = () => {
                         ))}
                         {list.length === 0 && (
                             <tr>
-                                <td colSpan={6} className="px-4 py-10 text-center text-slate-400 text-sm">
+                                <td colSpan={canWrite ? 7 : 6} className="px-4 py-10 text-center text-slate-400 text-sm">
                                     {loading ? 'Loading…' : 'No statuses found.'}
                                 </td>
                             </tr>

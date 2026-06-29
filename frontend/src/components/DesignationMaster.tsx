@@ -29,6 +29,8 @@ export const DesignationMaster: React.FC = () => {
     });
 
     const fetchData = useCallback(async () => {
+        const schoolId = localStorage.getItem('currentSchoolId');
+        if (!schoolId || schoolId === 'all') return;
         setLoading(true);
         try {
             const [desigRes, deptRes] = await Promise.all([

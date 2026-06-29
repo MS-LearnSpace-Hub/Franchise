@@ -6,28 +6,13 @@ from models import (
     StaffCategoryMaster, StaffStatusMaster, User, Role, Branch,
     StaffCodeSequence, EmployeeIdSequence
 )
-from helpers import permission_required, token_required, get_now, hash_user_password, get_user_allowed_schools
+from helpers import permission_required, token_required, get_now, hash_user_password, get_user_allowed_schools, get_target_school_id, scope_query
 
 bp = Blueprint('hr_bp', __name__)
 logger = logging.getLogger(__name__)
 
 
-
 from sqlalchemy import or_
-
-# ==========================================
-# HELPER FOR MASTER ROUTES
-# ==========================================
-def get_target_school_id(current_user):
-    branch_id = request.args.get('branch_id', type=int)
-    if branch_id:
-        branch = Branch.query.get(branch_id)
-        if branch:
-            return branch.school_id
-    if hasattr(g, 'school_id') and g.school_id:
-        return g.school_id
-    return current_user.school_id
-
 # ==========================================
 # STAFF CATEGORY MASTER ROUTES
 # ==========================================
@@ -448,6 +433,7 @@ def get_staff(current_user):
         search_query = request.args.get('search_query')
         
         query = StaffMaster.query
+        query = scope_query(query, StaffMaster)
         
         if target_school_id:
             query = query.filter_by(school_id=target_school_id)
@@ -654,7 +640,7 @@ def create_staff(current_user):
         if active_status:
             staff_status_id = active_status.id
 
-    # Validate role if provided
+    # Validate role if provided, else fallback to 'stafflogin'
     role_id = data.get('role_id') or None
     role = None
     if role_id:
@@ -663,6 +649,14 @@ def create_staff(current_user):
             return jsonify({"error": f"Role ID {role_id} not found"}), 400
         if not role.is_active:
             return jsonify({"error": "Selected role is inactive"}), 400
+    else:
+        role = Role.query.filter(Role.name.ilike('stafflogin')).first()
+        if not role:
+            role = Role(name='stafflogin', description='Default staff login role', is_active=True, is_system=True)
+            db.session.add(role)
+            db.session.flush()
+        elif not role.is_active:
+            return jsonify({"error": "Configuration Error: Default 'stafflogin' role is inactive."}), 500
 
     try:
         # Generate staff code and employee ID via new independent sequence tables
@@ -726,8 +720,8 @@ def create_staff(current_user):
         user = User(
             username=staff_code,
             password=hash_user_password(staff_code),   # temporary password = staff code
-            role=role.name if role else 'User',
-            role_id=role.id if role else None,
+            role=role.name,
+            role_id=role.id,
             staff_id=staff.id,
             school_id=school_id,
             branch_id=staff.branch_id,
@@ -861,6 +855,21 @@ def update_staff(current_user, staff_id):
     s = StaffMaster.query.get_or_404(staff_id)
     data = request.json or {}
 
+    allowed_schools = get_user_allowed_schools(current_user)
+    if not allowed_schools['is_unlimited']:
+        if not allowed_schools['ids'] or s.school_id not in allowed_schools['ids']:
+            return jsonify({"error": "Forbidden: Cannot update staff outside your permitted schools"}), 403
+
+    if 'branch_id' in data and data['branch_id']:
+        branch = Branch.query.get(data['branch_id'])
+        if not branch:
+            return jsonify({"error": f"Branch ID {data['branch_id']} not found"}), 400
+        if not allowed_schools['is_unlimited']:
+            if not allowed_schools['ids'] or branch.school_id not in allowed_schools['ids']:
+                return jsonify({"error": "You cannot move staff to a branch outside your permitted schools"}), 403
+        s.school_id = branch.school_id
+        s.branch_id = branch.id
+
     updatable_fields = [
         'staff_code', 'employee_id', 'biometric_id',
         'first_name', 'middle_name', 'last_name', 'display_name', 'gender',
@@ -874,12 +883,16 @@ def update_staff(current_user, staff_id):
         if field in data:
             setattr(s, field, data[field] or None if data[field] == '' else data[field])
 
-    # Update associated user credentials if staff status changed
-    if 'staff_status_id' in data and data['staff_status_id']:
-        status_master = StaffStatusMaster.query.get(data['staff_status_id'])
-        if status_master:
-            user = User.query.filter_by(staff_id=s.id).first()
-            if user:
+    # Update associated user credentials if staff status or code changed
+    user = User.query.filter_by(staff_id=s.id).first()
+    if user:
+        if 'staff_code' in data and data['staff_code']:
+            if User.query.filter(User.username == data['staff_code'], User.user_id != user.user_id).first():
+                return jsonify({'error': 'Staff code is already assigned to another user.'}), 409
+            user.username = data['staff_code']
+        if 'staff_status_id' in data and data['staff_status_id']:
+            status_master = StaffStatusMaster.query.get(data['staff_status_id'])
+            if status_master:
                 status_type_val = status_master.status_type.name if hasattr(status_master.status_type, 'name') else status_master.status_type
                 user.is_active = (status_type_val == 'ACTIVE')
 

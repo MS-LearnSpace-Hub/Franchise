@@ -25,7 +25,9 @@ export const DepartmentMaster: React.FC = () => {
         status: 'ACTIVE'
     });
 
-    const fetchDepartments = useCallback(async () => {
+    const fetchData = useCallback(async () => {
+        const schoolId = localStorage.getItem('currentSchoolId');
+        if (!schoolId || schoolId === 'all') return;
         setLoading(true);
         try {
             const res = await api.get('/hr/departments');
@@ -38,8 +40,8 @@ export const DepartmentMaster: React.FC = () => {
     }, []);
 
     useEffect(() => {
-        fetchDepartments();
-    }, [fetchDepartments]);
+        fetchData();
+    }, [fetchData]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -49,11 +51,11 @@ export const DepartmentMaster: React.FC = () => {
                 setMsg({ type: 'success', text: 'Department updated successfully' });
             } else {
                 await api.post('/hr/departments', form);
-                setMsg({ type: 'success', text: 'Department created successfully' });
             }
             setForm({ department_code: '', department_name: '', description: '', display_order: 0, status: 'ACTIVE' });
             setEditingId(null);
-            fetchDepartments();
+            fetchData();
+            setMsg({ type: 'success', text: editingId ? 'Department updated successfully' : 'Department created successfully' });
         } catch (e: any) {
             setMsg({ type: 'error', text: e.response?.data?.error || `Failed to ${editingId ? 'update' : 'create'} department` });
         }

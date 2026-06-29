@@ -29,6 +29,8 @@ export const ShiftMaster: React.FC = () => {
     });
 
     const fetchShifts = useCallback(async () => {
+        const schoolId = localStorage.getItem('currentSchoolId');
+        if (!schoolId || schoolId === 'all') return;
         setLoading(true);
         try {
             const res = await api.get('/hr/shifts');

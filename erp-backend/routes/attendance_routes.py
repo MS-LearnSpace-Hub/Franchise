@@ -2,7 +2,7 @@
 from flask import Blueprint, jsonify, request
 from extensions import db, get_today, get_now, to_local_time
 from models import Student, Attendance, Branch, UserBranchAccess, StudentAcademicRecord
-from helpers import token_required, permission_required, require_academic_year, student_to_dict, get_default_location, ensure_student_editable, get_user_allowed_branches, StudentRecordLockedError
+from helpers import token_required, permission_required, require_academic_year, student_to_dict, get_default_location, ensure_student_editable, get_user_allowed_branches, StudentRecordLockedError, scope_query, get_target_school_id
 from datetime import datetime, date
 from sqlalchemy import or_
 from routes.config_routes import is_weekoff_or_holiday
@@ -578,8 +578,14 @@ from models import AttendanceHead, AttendanceDetail, ShiftMaster, StaffMaster
 @permission_required("attendance.summary", "read")
 def get_staff_attendance_summary(current_user):
     try:
-        # In a real scenario, this would accept filters like date range, staff_id, etc.
-        records = AttendanceHead.query.order_by(AttendanceHead.attendance_date.desc()).limit(100).all()
+        query = AttendanceHead.query.join(StaffMaster)
+        query = scope_query(query, StaffMaster)
+        
+        target_school_id = get_target_school_id(current_user)
+        if target_school_id:
+            query = query.filter(StaffMaster.school_id == target_school_id)
+            
+        records = query.order_by(AttendanceHead.attendance_date.desc()).limit(100).all()
         result = [{
             "id": r.id,
             "staff_id": r.staff_id,

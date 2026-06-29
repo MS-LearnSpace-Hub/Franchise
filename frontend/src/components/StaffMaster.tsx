@@ -90,6 +90,7 @@ export const StaffMaster: React.FC = () => {
         employee_id?: string;
         biometric_id?: string;
         message: string;
+        isUpdate?: boolean;
     } | null>(null);
 
     // ── Form state ────────────────────────────────────────────────────────────
@@ -302,6 +303,7 @@ export const StaffMaster: React.FC = () => {
                 employee_id: res.data.employee_id,
                 biometric_id: res.data.biometric_id,
                 message: res.data.message,
+                isUpdate: !!form.id,
             });
             setForm(blankForm);
             setShowForm(false);
@@ -431,7 +433,7 @@ export const StaffMaster: React.FC = () => {
                                             🔑 Employee ID: {result.employee_id}
                                         </span>
                                     )}
-                                    {result.staff_code && (
+                                    {result.staff_code && !result.isUpdate && (
                                         <span className="inline-flex items-center gap-1.5 bg-amber-100 text-amber-800 text-xs font-semibold px-3 py-1.5 rounded-lg">
                                             🔐 Temporary password = Staff Code (must change on first login)
                                         </span>

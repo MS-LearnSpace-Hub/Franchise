@@ -470,7 +470,7 @@ def get_user_permissions(user):
 
 
 def has_permission(user, permission_code, action="read"):
-    if get_effective_role_name(user) in ("SuperAdmin", "Admin"):
+    if get_effective_role_name(user) == "SuperAdmin":
         return True
     permission = get_user_permissions(user).get(permission_code)
     if not permission:
@@ -1069,3 +1069,18 @@ def shift_installments(start_no, branch, year, location):
         inst.installment_no += 1
     if existing:
         db.session.flush() # Apply updates before inserting new one
+
+def get_target_school_id(current_user):
+    from flask import request, g
+    from models import Branch
+    branch_id = request.args.get('branch_id', type=int)
+    if branch_id:
+        branch = Branch.query.get(branch_id)
+        if branch:
+            return branch.school_id
+    if request.headers.get('X-School-ID', '').lower() == 'all':
+        return None
+    if hasattr(g, 'school_id') and g.school_id is not None:
+        return g.school_id
+    return current_user.school_id
+

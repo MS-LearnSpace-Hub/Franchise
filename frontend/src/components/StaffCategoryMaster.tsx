@@ -26,6 +26,8 @@ export const StaffCategoryMaster: React.FC = () => {
     const [form, setForm] = useState(blank);
 
     const fetchData = useCallback(async () => {
+        const schoolId = localStorage.getItem('currentSchoolId');
+        if (!schoolId || schoolId === 'all') return;
         setLoading(true);
         try {
             const res = await api.get('/hr/staff-categories');
@@ -37,7 +39,9 @@ export const StaffCategoryMaster: React.FC = () => {
         }
     }, []);
 
-    useEffect(() => { fetchData(); }, [fetchData]);
+    useEffect(() => {
+        fetchData();
+    }, [fetchData]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();

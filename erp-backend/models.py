@@ -1280,7 +1280,7 @@ class StaffMaster(db.Model, AuditMixin):
     __audit_module__ = "HR"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     # Multi-tenant scope — school_id is denormalized from branch for fast filtering
-    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True, index=True)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False, index=True)
     branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
     department_id = db.Column(db.Integer, db.ForeignKey('department_master.id', ondelete='SET NULL'), nullable=True)
     designation_id = db.Column(db.Integer, db.ForeignKey('designation_master.id', ondelete='SET NULL'), nullable=True)
@@ -1291,8 +1291,13 @@ class StaffMaster(db.Model, AuditMixin):
     # Employment status via master table (replaces employment_status enum gradually)
     staff_status_id = db.Column(db.Integer, db.ForeignKey('staff_status_master.id', ondelete='SET NULL'), nullable=True)
 
-    staff_code = db.Column(db.String(50), unique=True, nullable=False)
-    employee_id = db.Column(db.String(50), unique=True, nullable=True)
+    __table_args__ = (
+        db.UniqueConstraint('school_id', 'staff_code', name='uq_staff_master_school_staff_code'),
+        db.UniqueConstraint('school_id', 'employee_id', name='uq_staff_master_school_employee_id'),
+    )
+
+    staff_code = db.Column(db.String(50), nullable=False)
+    employee_id = db.Column(db.String(50), nullable=True)
     # Internal running sequence per branch+department — stored so code never needs recomputing
     employee_sequence = db.Column(db.Integer, nullable=True)
     # Numeric suffix of staff_code used as biometric device ID (e.g. MSMN51001 → 51001)
@@ -1359,6 +1364,10 @@ class BiometricDeviceMaster(db.Model, AuditMixin):
 class StaffBiometricMapping(db.Model, AuditMixin):
     __tablename__ = "staff_biometric_mapping"
     __audit_module__ = "HR"
+    __table_args__ = (
+        db.UniqueConstraint('device_id', 'biometric_id', name='uq_biometric_mapping_device_biometric'),
+        db.UniqueConstraint('staff_id', 'device_id', name='uq_biometric_mapping_staff_device'),
+    )
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     staff_id = db.Column(db.Integer, db.ForeignKey('staff_master.id', ondelete='CASCADE'), nullable=False)
     device_id = db.Column(db.Integer, db.ForeignKey('biometric_device_master.id', ondelete='CASCADE'), nullable=False)
@@ -1392,6 +1401,9 @@ class BiometricPunchLog(db.Model):
 class AttendanceHead(db.Model, AuditMixin):
     __tablename__ = "attendance_head"
     __audit_module__ = "ATTENDANCE"
+    __table_args__ = (
+        db.UniqueConstraint('staff_id', 'attendance_date', name='uq_attendance_head_staff_date'),
+    )
     id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
     staff_id = db.Column(db.Integer, db.ForeignKey('staff_master.id', ondelete='CASCADE'), nullable=False)
     shift_id = db.Column(db.Integer, db.ForeignKey('shift_master.id', ondelete='SET NULL'), nullable=True)
