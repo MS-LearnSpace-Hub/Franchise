@@ -1354,10 +1354,22 @@ class BiometricDeviceMaster(db.Model, AuditMixin):
     serial_number = db.Column(db.String(100), nullable=True)
     ip_address = db.Column(db.String(50), nullable=True)
     port = db.Column(db.Integer, nullable=True)
-    communication_type = db.Column(db.Enum('API', 'TCP_IP', 'CLOUD'), nullable=True)
+    communication_type = db.Column(db.Enum('TCP', 'HTTP', 'ADMS', 'SDK'), nullable=True)
+    communication_password = db.Column(db.String(100), nullable=True)
+    sync_mode = db.Column(db.Enum('AUTO', 'MANUAL'), default='AUTO')
+    sync_interval_minutes = db.Column(db.Integer, default=5)
     timezone = db.Column(db.String(50), nullable=True)
-    last_sync_at = db.Column(db.DateTime, nullable=True)
+    
+    # Monitoring & Status
     status = db.Column(db.Enum('ACTIVE', 'INACTIVE', 'MAINTENANCE'), default='ACTIVE')
+    last_seen = db.Column(db.DateTime, nullable=True)
+    last_punch = db.Column(db.DateTime, nullable=True)
+    firmware_version = db.Column(db.String(50), nullable=True)
+    
+    # Sync Status
+    sync_status = db.Column(db.Enum('SUCCESS', 'FAILED', 'PENDING'), default='PENDING')
+    last_successful_sync = db.Column(db.DateTime, nullable=True)
+    pending_punches = db.Column(db.Integer, default=0)
     
     branch = db.relationship('Branch', foreign_keys=[branch_id])
 
@@ -1384,6 +1396,9 @@ class StaffBiometricMapping(db.Model, AuditMixin):
 
 class BiometricPunchLog(db.Model):
     __tablename__ = "biometric_punch_log"
+    __table_args__ = (
+        db.UniqueConstraint('device_id', 'biometric_id', 'punch_datetime', 'verification_mode', name='uq_biometric_punch'),
+    )
     id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
     device_id = db.Column(db.Integer, db.ForeignKey('biometric_device_master.id', ondelete='SET NULL'), nullable=True)
     staff_id = db.Column(db.Integer, db.ForeignKey('staff_master.id', ondelete='SET NULL'), nullable=True)
@@ -1391,7 +1406,16 @@ class BiometricPunchLog(db.Model):
     punch_datetime = db.Column(db.DateTime, nullable=False)
     direction = db.Column(db.Enum('IN', 'OUT', 'UNKNOWN'), default='UNKNOWN')
     verification_mode = db.Column(db.Enum('FINGER', 'FACE', 'CARD', 'PIN', 'PALM'), nullable=True)
-    raw_data = db.Column(db.JSON, nullable=True)
+    
+    # Audit & Troubleshooting Fields
+    raw_packet = db.Column(db.Text, nullable=True)
+    received_ip = db.Column(db.String(50), nullable=True)
+    received_port = db.Column(db.Integer, nullable=True)
+    packet_version = db.Column(db.String(50), nullable=True)
+    retry_count = db.Column(db.Integer, default=0)
+    ack_sent = db.Column(db.Boolean, default=False)
+    processing_error = db.Column(db.Text, nullable=True)
+    
     processed = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
     
