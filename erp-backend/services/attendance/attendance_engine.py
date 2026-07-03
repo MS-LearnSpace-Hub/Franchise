@@ -47,6 +47,7 @@ def process_staging_records():
             if not head:
                 head = AttendanceHead(
                     staff_id=staff.id,
+                    employee_id=p.employee_id,
                     attendance_date=p.attendance_date,
                     first_in=first_in,
                     last_out=last_out if first_in != last_out else None,
@@ -65,14 +66,15 @@ def process_staging_records():
                     if head.last_out: all_times.append(head.last_out)
                         
                     if all_times:
-                        new_first_in = min(all_times)
-                        new_last_out = max(all_times)
-                        
-                        head.first_in = new_first_in
-                        head.last_out = new_last_out if new_first_in != new_last_out else None
+                        head.first_in = min(all_times)
+                        head.last_out = max(all_times) if min(all_times) != max(all_times) else None
                         head.source = 'PAYTIME'
-                        head.attendance_status = calculate_attendance_status(new_first_in, new_last_out if new_first_in != new_last_out else None, staff.default_shift)
-                        head.working_minutes = calculate_working_minutes(new_first_in, new_last_out if new_first_in != new_last_out else None)
+                        head.attendance_status = calculate_attendance_status(head.first_in, head.last_out, staff.default_shift)
+                        head.working_minutes = calculate_working_minutes(head.first_in, head.last_out)
+                    
+                    # Update employee_id if it's missing
+                    if not head.employee_id:
+                        head.employee_id = p.employee_id
             
             # 4. Mark staging as PROCESSED
             p.status = 'PROCESSED'

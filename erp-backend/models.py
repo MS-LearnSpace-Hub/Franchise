@@ -1409,6 +1409,7 @@ class AttendanceHead(db.Model, AuditMixin):
         db.UniqueConstraint('staff_id', 'attendance_date', name='uq_attendance_head_staff_date'),
     )
     id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    employee_id = db.Column(db.String(50), nullable=True) # Direct map from AttendanceStaging or Paytime
     staff_id = db.Column(db.Integer, db.ForeignKey('staff_master.id', ondelete='CASCADE'), nullable=False)
     shift_id = db.Column(db.Integer, db.ForeignKey('shift_master.id', ondelete='SET NULL'), nullable=True)
     attendance_date = db.Column(db.Date, nullable=False)

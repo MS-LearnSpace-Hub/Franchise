@@ -571,9 +571,10 @@ def upload_attendance(current_user):
 # ==========================================
 # STAFF ATTENDANCE ROUTES
 # ==========================================
-from models import AttendanceHead, AttendanceDetail, ShiftMaster, StaffMaster
+from models import AttendanceHead, AttendanceDetail, ShiftMaster, StaffMaster, Branch, School, DepartmentMaster
+from services.attendance.attendance_engine import process_staging_records
 
-@bp.route('/staff/summary', methods=['GET'])
+@bp.route('/api/attendance/staff/summary', methods=['GET'])
 @token_required
 @permission_required("attendance.summary", "read")
 def get_staff_attendance_summary(current_user):
@@ -581,22 +582,60 @@ def get_staff_attendance_summary(current_user):
         query = AttendanceHead.query.join(StaffMaster)
         query = scope_query(query, StaffMaster)
         
+        # Additional joins for enrichment
+        query = query.outerjoin(Branch, StaffMaster.branch_id == Branch.id) \
+                     .outerjoin(School, Branch.school_id == School.id) \
+                     .outerjoin(DepartmentMaster, StaffMaster.department_id == DepartmentMaster.id)
+        
         target_school_id = get_target_school_id(current_user)
         if target_school_id:
             query = query.filter(StaffMaster.school_id == target_school_id)
             
-        records = query.order_by(AttendanceHead.attendance_date.desc()).limit(100).all()
+        # Filters from request
+        branch_id = request.args.get('branch_id')
+        if branch_id and branch_id.lower() != 'all':
+            query = query.filter(StaffMaster.branch_id == int(branch_id))
+            
+        department_id = request.args.get('department_id')
+        if department_id and department_id.lower() != 'all':
+            query = query.filter(StaffMaster.department_id == int(department_id))
+            
+        date_from = request.args.get('date_from')
+        if date_from:
+            query = query.filter(AttendanceHead.attendance_date >= date_from)
+            
+        date_to = request.args.get('date_to')
+        if date_to:
+            query = query.filter(AttendanceHead.attendance_date <= date_to)
+            
+        employee = request.args.get('employee')
+        if employee:
+            query = query.filter(db.or_(
+                StaffMaster.display_name.ilike(f'%{employee}%'),
+                AttendanceHead.employee_id.ilike(f'%{employee}%'),
+                StaffMaster.staff_code.ilike(f'%{employee}%')
+            ))
+            
+        status = request.args.get('status')
+        if status and status.lower() != 'all':
+            query = query.filter(AttendanceHead.attendance_status == status)
+
+        records = query.order_by(AttendanceHead.attendance_date.desc()).limit(200).all()
         result = [{
             "id": r.id,
             "staff_id": r.staff_id,
+            "employee_id": r.employee_id,
             "staff_name": r.staff.display_name if r.staff else None,
+            "branch_name": r.staff.branch.branch_name if r.staff and r.staff.branch else None,
+            "school_name": r.staff.branch.school.school_name if r.staff and r.staff.branch and r.staff.branch.school else None,
+            "department": r.staff.department.department_name if r.staff and r.staff.department else None,
             "attendance_date": str(r.attendance_date),
-            "first_in": str(r.first_in) if r.first_in else None,
-            "last_out": str(r.last_out) if r.last_out else None,
+            "first_in": str(r.first_in.strftime('%H:%M')) if r.first_in else None,
+            "last_out": str(r.last_out.strftime('%H:%M')) if r.last_out else None,
             "working_minutes": r.working_minutes,
             "late_minutes": r.late_minutes,
             "attendance_status": r.attendance_status,
-            "generated_from": r.generated_from,
+            "source": r.source,
             "payroll_locked": r.payroll_locked,
             "attendance_locked": r.attendance_locked,
             "payroll_processed": r.payroll_processed
@@ -604,6 +643,21 @@ def get_staff_attendance_summary(current_user):
         return jsonify(result), 200
     except Exception as e:
         print(f"Error fetching staff attendance: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@bp.route('/api/attendance/sync/process', methods=['POST'])
+@token_required
+@permission_required("attendance.summary", "write")
+def trigger_attendance_sync_process(current_user):
+    try:
+        # Trigger the engine to process any pending records in staging to head
+        processed_count = process_staging_records()
+        return jsonify({
+            "message": "Staging data processed successfully",
+            "processed_count": processed_count
+        }), 200
+    except Exception as e:
+        print(f"Error processing staging data: {e}")
         return jsonify({"error": str(e)}), 500
 
 @bp.route('/staff/manual', methods=['POST'])

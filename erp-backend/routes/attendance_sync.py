@@ -66,15 +66,27 @@ def sync_attendance():
                 first_in = datetime.strptime(first_in_str, '%H:%M:%S').time() if first_in_str else None
                 last_out = datetime.strptime(last_out_str, '%H:%M:%S').time() if last_out_str else None
                 
-                staging_record = AttendanceStaging(
+                # Upsert logic to prevent duplicate staging rows
+                staging_record = AttendanceStaging.query.filter_by(
                     employee_id=emp_code,
-                    attendance_date=attendance_date,
-                    first_in=first_in,
-                    last_out=last_out,
-                    source='PAYTIME',
-                    status='PENDING'
-                )
-                db.session.add(staging_record)
+                    attendance_date=attendance_date
+                ).first()
+                
+                if staging_record:
+                    # Update existing record and set to PENDING so engine re-processes
+                    staging_record.first_in = first_in
+                    staging_record.last_out = last_out
+                    staging_record.status = 'PENDING'
+                else:
+                    staging_record = AttendanceStaging(
+                        employee_id=emp_code,
+                        attendance_date=attendance_date,
+                        first_in=first_in,
+                        last_out=last_out,
+                        source='PAYTIME',
+                        status='PENDING'
+                    )
+                    db.session.add(staging_record)
                 inserted += 1
             except Exception as e:
                 failed += 1
