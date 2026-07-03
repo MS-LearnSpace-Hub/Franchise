@@ -44,6 +44,7 @@ from routes.sms_routes import bp as sms_bp
 # HR & Attendance Modules
 from routes.hr_routes import bp as hr_bp
 from routes.biometric_routes import bp as biometric_bp
+from routes.attendance_sync import attendance_sync_bp
 # -----------------------------
 # LOAD ENV
 # -----------------------------
@@ -161,6 +162,7 @@ def create_app():
     # HR & Attendance Blueprints
     app.register_blueprint(hr_bp, url_prefix="/api/hr")
     app.register_blueprint(biometric_bp, url_prefix="/api/biometric")
+    app.register_blueprint(attendance_sync_bp)
 
     # -----------------------------
     # SERVE UPLOADS (legacy - kept for backward compatibility)

@@ -1,7 +1,7 @@
 import logging
 from flask import Blueprint, request, jsonify
 from extensions import db
-from models import BiometricDeviceMaster, StaffBiometricMapping, BiometricPunchLog
+from models import BiometricDeviceMaster, BiometricPunchLog
 from helpers import permission_required, token_required, get_now, scope_query, get_target_school_id, get_user_allowed_schools
 
 bp = Blueprint('biometric_bp', __name__)
@@ -97,82 +97,6 @@ def create_biometric_device(current_user):
     db.session.commit()
     return jsonify({"message": "Biometric device created successfully", "id": device.id}), 201
 
-# ==========================================
-# STAFF BIOMETRIC MAPPING ROUTES
-# ==========================================
-@bp.route('/mapping', methods=['GET'])
-@token_required
-@permission_required("attendance.biometric", "read")
-def get_staff_mappings(current_user):
-    from models import StaffMaster
-    query = StaffBiometricMapping.query.join(StaffMaster)
-    # Apply branch filtering manually since we join StaffMaster
-    branch_id = request.args.get('branch_id')
-    if branch_id and branch_id.lower() != 'all':
-        try:
-            query = query.filter(StaffMaster.branch_id == int(branch_id))
-        except ValueError:
-            return jsonify({"error": "Invalid branch_id"}), 400
-    elif not branch_id or branch_id.lower() == 'all':
-        target_school_id = get_target_school_id(current_user)
-        if target_school_id:
-            query = query.filter(StaffMaster.school_id == target_school_id)
-            
-    mappings = query.all()
-    result = [{
-        "id": m.id,
-        "staff_id": m.staff_id,
-        "staff_name": m.staff.display_name if m.staff else None,
-        "device_id": m.device_id,
-        "device_name": m.device.device_name if m.device else None,
-        "biometric_id": m.biometric_id,
-        "card_number": m.card_number,
-        "face_registered": m.face_registered,
-        "finger_registered": m.finger_registered,
-        "pin_registered": m.pin_registered,
-        "is_primary": m.is_primary,
-        "status": m.status
-    } for m in mappings]
-    return jsonify(result), 200
-
-@bp.route('/mapping', methods=['POST'])
-@token_required
-@permission_required("attendance.biometric", "write")
-def create_staff_mapping(current_user):
-    data = request.json
-    if not data or not data.get('staff_id') or not data.get('device_id'):
-        return jsonify({"error": "staff_id and device_id are required"}), 400
-        
-    from models import StaffMaster
-    staff = StaffMaster.query.get(data['staff_id'])
-    if not staff:
-        return jsonify({"error": "Invalid staff ID"}), 400
-        
-    device = BiometricDeviceMaster.query.get(data['device_id'])
-    if not device:
-        return jsonify({"error": "Invalid device ID"}), 400
-        
-    allowed_schools = get_user_allowed_schools(current_user)
-    if not allowed_schools['is_unlimited']:
-        if not allowed_schools['ids'] or staff.school_id not in allowed_schools['ids']:
-            return jsonify({"error": "Forbidden: Cannot map staff from this branch"}), 403
-        if not allowed_schools['ids'] or device.school_id not in allowed_schools['ids']:
-            return jsonify({"error": "Forbidden: Cannot map staff to this device"}), 403
-        
-    mapping = StaffBiometricMapping(
-        staff_id=data['staff_id'],
-        device_id=data['device_id'],
-        biometric_id=data.get('biometric_id'),
-        card_number=data.get('card_number'),
-        face_registered=data.get('face_registered', False),
-        finger_registered=data.get('finger_registered', False),
-        pin_registered=data.get('pin_registered', False),
-        is_primary=data.get('is_primary', True),
-        status=data.get('status', 'ACTIVE')
-    )
-    db.session.add(mapping)
-    db.session.commit()
-    return jsonify({"message": "Staff biometric mapping created successfully", "id": mapping.id}), 201
 
 @bp.route('/devices/<int:device_id>', methods=['PUT'])
 @token_required

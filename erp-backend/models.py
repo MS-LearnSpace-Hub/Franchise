@@ -1373,26 +1373,6 @@ class BiometricDeviceMaster(db.Model, AuditMixin):
     
     branch = db.relationship('Branch', foreign_keys=[branch_id])
 
-class StaffBiometricMapping(db.Model, AuditMixin):
-    __tablename__ = "staff_biometric_mapping"
-    __audit_module__ = "HR"
-    __table_args__ = (
-        db.UniqueConstraint('device_id', 'biometric_id', name='uq_biometric_mapping_device_biometric'),
-        db.UniqueConstraint('staff_id', 'device_id', name='uq_biometric_mapping_staff_device'),
-    )
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    staff_id = db.Column(db.Integer, db.ForeignKey('staff_master.id', ondelete='CASCADE'), nullable=False)
-    device_id = db.Column(db.Integer, db.ForeignKey('biometric_device_master.id', ondelete='CASCADE'), nullable=False)
-    biometric_id = db.Column(db.String(50), nullable=True)
-    card_number = db.Column(db.String(50), nullable=True)
-    face_registered = db.Column(db.Boolean, default=False)
-    finger_registered = db.Column(db.Boolean, default=False)
-    pin_registered = db.Column(db.Boolean, default=False)
-    is_primary = db.Column(db.Boolean, default=True)
-    status = db.Column(db.Enum('ACTIVE', 'INACTIVE'), default='ACTIVE')
-    
-    staff = db.relationship('StaffMaster', foreign_keys=[staff_id])
-    device = db.relationship('BiometricDeviceMaster', foreign_keys=[device_id])
 
 class BiometricPunchLog(db.Model):
     __tablename__ = "biometric_punch_log"
@@ -1439,7 +1419,7 @@ class AttendanceHead(db.Model, AuditMixin):
     early_exit_minutes = db.Column(db.Integer, default=0)
     overtime_minutes = db.Column(db.Integer, default=0)
     attendance_status = db.Column(db.Enum('PRESENT', 'ABSENT', 'HALF_DAY', 'LEAVE', 'HOLIDAY', 'WEEK_OFF'), default='ABSENT')
-    generated_from = db.Column(db.Enum('BIOMETRIC', 'MANUAL', 'MOBILE'), default='BIOMETRIC')
+    source = db.Column(db.Enum('PAYTIME', 'MANUAL', 'MOBILE_APP', 'IMPORT', 'API'), default='PAYTIME')
     remarks = db.Column(db.Text, nullable=True)
     payroll_locked = db.Column(db.Boolean, default=False)
     attendance_locked = db.Column(db.Boolean, default=False)
@@ -1461,6 +1441,34 @@ class AttendanceDetail(db.Model, AuditMixin):
     attendance = db.relationship('AttendanceHead', backref=db.backref('details', lazy=True, cascade="all, delete-orphan"))
     device = db.relationship('BiometricDeviceMaster', foreign_keys=[device_id])
 
+class AttendanceStaging(db.Model, AuditMixin):
+    __tablename__ = "attendance_staging"
+    __audit_module__ = "ATTENDANCE"
+    id = db.Column(db.Integer, primary_key=True)
+    employee_id = db.Column(db.String(50), nullable=False)
+    attendance_date = db.Column(db.Date, nullable=False)
+    first_in = db.Column(db.Time, nullable=True)
+    last_out = db.Column(db.Time, nullable=True)
+    source = db.Column(db.String(50), nullable=False, default='PAYTIME')
+    status = db.Column(db.Enum('PENDING', 'PROCESSED', 'FAILED', 'RETRY'), default='PENDING')
+    received_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+    processed_at = db.Column(db.DateTime, nullable=True)
+    error_message = db.Column(db.Text, nullable=True)
+
+class SyncLog(db.Model, AuditMixin):
+    __tablename__ = "sync_log"
+    __audit_module__ = "ATTENDANCE"
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    sync_id = db.Column(db.String(100), unique=True, nullable=False)
+    started_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+    completed_at = db.Column(db.DateTime, nullable=True)
+    duration = db.Column(db.Integer, nullable=True)
+    records_read = db.Column(db.Integer, default=0)
+    records_uploaded = db.Column(db.Integer, default=0)
+    records_failed = db.Column(db.Integer, default=0)
+    errors = db.Column(db.Text, nullable=True)
+    agent_version = db.Column(db.String(50), nullable=True)
+    status = db.Column(db.Enum('SUCCESS', 'FAILED', 'PARTIAL'), default='SUCCESS')
 
 # ----------------------------------------------------------
 # GLOBAL AUDIT EVENT LISTENERS
