@@ -571,7 +571,7 @@ def upload_attendance(current_user):
 # ==========================================
 # STAFF ATTENDANCE ROUTES
 # ==========================================
-from models import AttendanceHead, AttendanceDetail, ShiftMaster, StaffMaster, Branch, School, DepartmentMaster
+from models import AttendanceHead, AttendanceDetail, ShiftMaster, StaffMaster, Branch, School, DepartmentMaster, DesignationMaster
 from services.attendance.attendance_engine import process_staging_records
 
 @bp.route('/api/attendance/staff/summary', methods=['GET'])
@@ -587,7 +587,8 @@ def get_staff_attendance_summary(current_user):
         # Additional joins for enrichment
         query = query.outerjoin(Branch, StaffMaster.branch_id == Branch.id) \
                      .outerjoin(School, Branch.school_id == School.id) \
-                     .outerjoin(DepartmentMaster, StaffMaster.department_id == DepartmentMaster.id)
+                     .outerjoin(DepartmentMaster, StaffMaster.department_id == DepartmentMaster.id) \
+                     .outerjoin(DesignationMaster, StaffMaster.designation_id == DesignationMaster.id)
         
         if is_hr:
             target_school_id = get_target_school_id(current_user)
@@ -628,7 +629,11 @@ def get_staff_attendance_summary(current_user):
         if status and status.lower() != 'all':
             query = query.filter(AttendanceHead.attendance_status == status)
 
-        records = query.order_by(AttendanceHead.attendance_date.desc()).limit(200).all()
+        # If doing a month-wide query, don't limit strictly to 200
+        if date_from and date_to:
+            records = query.order_by(AttendanceHead.attendance_date.desc()).all()
+        else:
+            records = query.order_by(AttendanceHead.attendance_date.desc()).limit(200).all()
         result = [{
             "id": r.id,
             "staff_id": r.staff_id,
@@ -637,6 +642,7 @@ def get_staff_attendance_summary(current_user):
             "branch_name": r.staff.branch.branch_name if r.staff and r.staff.branch else None,
             "school_name": r.staff.branch.school.school_name if r.staff and r.staff.branch and r.staff.branch.school else None,
             "department": r.staff.department.department_name if r.staff and r.staff.department else None,
+            "designation": r.staff.designation.designation_name if r.staff and r.staff.designation else None,
             "attendance_date": str(r.attendance_date),
             "first_in": str(r.first_in.strftime('%H:%M')) if r.first_in else None,
             "last_out": str(r.last_out.strftime('%H:%M')) if r.last_out else None,

@@ -1,33 +1,33 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { hr } from '../api';
 
 const generateMonthOptions = () => {
   const options = [];
   const currentDate = new Date();
-  
+
   for (let i = 0; i < 12; i++) {
     const d = new Date(currentDate.getFullYear(), currentDate.getMonth() - i, 1);
     const year = d.getFullYear();
     const month = d.getMonth();
-    
+
     const firstDay = new Date(year, month, 1);
     const lastDay = new Date(year, month + 1, 0);
-    
+
     const monthNameFull = d.toLocaleDateString('en-US', { month: 'long' });
     const monthNameShort = d.toLocaleDateString('en-US', { month: 'short' });
-    
+
     const value = `${year}-${String(month + 1).padStart(2, '0')}`;
     const firstDayStr = `01 ${monthNameShort} ${year}`;
     const lastDayStr = `${String(lastDay.getDate()).padStart(2, '0')} ${monthNameShort} ${year}`;
-    
+
     const label = `${monthNameFull}-${year}(${firstDayStr} To ${lastDayStr})`;
-    
+
     const localFirstDayStr = new Date(firstDay.getTime() - (firstDay.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
     const localLastDayStr = new Date(lastDay.getTime() - (lastDay.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
-    
+
     options.push({ value, label, firstDay: localFirstDayStr, lastDay: localLastDayStr });
   }
-  
+
   return options;
 };
 
@@ -37,6 +37,7 @@ interface AttendanceRecord {
   staff_name: string;
   branch_name: string;
   department: string;
+  designation?: string;
   attendance_date: string;
   first_in: string | null;
   last_out: string | null;
@@ -44,6 +45,20 @@ interface AttendanceRecord {
   late_minutes: number;
   attendance_status: string;
   source: string;
+}
+
+interface StaffMonthlyData {
+  employee_id: string;
+  staff_name: string;
+  branch_name: string;
+  department: string;
+  designation: string;
+  total_days: number;
+  weekoffs: number;
+  holidays: number;
+  present: number;
+  absent: number;
+  daily_records: Record<string, AttendanceRecord>;
 }
 
 const HRAttendanceSummary: React.FC = () => {
@@ -68,12 +83,19 @@ const HRAttendanceSummary: React.FC = () => {
     setSelectedMonth(val);
     const selectedOpt = monthOptions.find(o => o.value === val);
     if (selectedOpt) {
-        setFilters(prev => ({
-            ...prev,
-            date_from: selectedOpt.firstDay,
-            date_to: selectedOpt.lastDay
-        }));
+      setFilters(prev => ({
+        ...prev,
+        date_from: selectedOpt.firstDay,
+        date_to: selectedOpt.lastDay
+      }));
     }
+  };
+
+  const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    setFilters(prev => ({
+      ...prev,
+      [e.target.name]: e.target.value
+    }));
   };
 
   const fetchAttendance = useCallback(async () => {
@@ -102,68 +124,71 @@ const HRAttendanceSummary: React.FC = () => {
     fetchAttendance();
   }, [fetchAttendance]);
 
-  const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    setFilters(prev => ({
-      ...prev,
-      [e.target.name]: e.target.value
-    }));
-  };
-
-  // Helper functions for deriving table states
-  const getDayOfWeek = (dateString: string) => {
-    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    return days[new Date(dateString).getDay()];
-  };
-
-  const isLateWithin15 = (lateMinutes: number) => lateMinutes > 0 && lateMinutes <= 15 ? 'Yes' : 'No';
-  const isLateAfter15 = (lateMinutes: number) => lateMinutes > 15 ? 'Yes' : 'No';
-  const isEarlyLeaveWithin5 = (status: string) => 'No'; // We don't have early leave minutes yet
-  const isEarlyLeaveBefore5 = (status: string) => 'No'; // Mocked
-  
-  const isLeave = (status: string) => status === 'LEAVE' ? 'Yes' : 'No';
-  const isWeekoff = (status: string) => status === 'WEEK_OFF' ? 'Yes' : 'No';
-  const isHoliday = (status: string) => status === 'HOLIDAY' ? 'Yes' : 'No';
-  
-  const getAttendancePoints = (status: string) => {
-    if (status === 'PRESENT') return '1.00';
-    if (status === 'HALF_DAY') return '0.50';
-    return '0.00';
-  };
-
-  const getSessionState = (inTime: string | null, outTime: string | null, status: string, isMorning: boolean) => {
-    if (status === 'WEEK_OFF') return 'W';
-    if (status === 'HOLIDAY') return 'H';
-    if (status === 'LEAVE') return 'L';
-    if (status === 'ABSENT') return 'A';
-    
-    // Simplistic mockup for Session state
-    if (status === 'PRESENT') return 'P';
-    if (status === 'HALF_DAY') {
-        if (isMorning && inTime && inTime < '13:00') return 'P';
-        if (!isMorning && outTime && outTime > '13:00') return 'P';
-        return 'A';
+  // Derive dates array
+  const datesInMonth = useMemo(() => {
+    const dates: string[] = [];
+    const start = new Date(filters.date_from);
+    const end = new Date(filters.date_to);
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      dates.push(new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0]);
     }
-    return 'A';
+    return dates;
+  }, [filters.date_from, filters.date_to]);
+
+  const monthDisplayFormat = (dateStr: string) => {
+    const d = new Date(dateStr);
+    return `${d.getDate()}-${d.toLocaleDateString('en-US', { month: 'short' })}-${String(d.getFullYear()).slice(-2)}`;
   };
 
-  const renderSessionCell = (val: string) => {
-    if (val === 'P') return <span className="block w-full h-full text-center text-gray-700 bg-white pt-2 pb-2">P</span>;
-    if (val === 'A') return <span className="block w-full h-full text-center text-red-600 bg-red-200 font-medium pt-2 pb-2">A</span>;
-    if (val === 'W') return <span className="block w-full h-full text-center text-white bg-[#ef6e4d] font-medium pt-2 pb-2">W</span>;
-    if (val === 'H') return <span className="block w-full h-full text-center text-white bg-blue-500 font-medium pt-2 pb-2">H</span>;
-    if (val === 'L') return <span className="block w-full h-full text-center text-white bg-yellow-500 font-medium pt-2 pb-2">L</span>;
-    return <span>{val}</span>;
+  // Group records by employee
+  const groupedData = useMemo(() => {
+    const map = new Map<string, StaffMonthlyData>();
+
+    records.forEach(r => {
+      if (!map.has(r.employee_id)) {
+        map.set(r.employee_id, {
+          employee_id: r.employee_id,
+          staff_name: r.staff_name || '-',
+          branch_name: r.branch_name || '-',
+          department: r.department || '-',
+          designation: r.designation || '-',
+          total_days: datesInMonth.length,
+          weekoffs: 0,
+          holidays: 0,
+          present: 0,
+          absent: 0,
+          daily_records: {}
+        });
+      }
+
+      const staff = map.get(r.employee_id)!;
+      staff.daily_records[r.attendance_date] = r;
+
+      // Tally stats based on attendance_status
+      const status = (r.attendance_status || '').toUpperCase();
+      if (status === 'PRESENT' || status === 'HALF_DAY') staff.present++;
+      else if (status === 'ABSENT' || status === 'LEAVE' || status.includes('LEAVE')) staff.absent++;
+      else if (status === 'WEEKOFF' || status === 'WEEK_OFF') staff.weekoffs++;
+      else if (status === 'HOLIDAY') staff.holidays++;
+    });
+
+    return Array.from(map.values());
+  }, [records, datesInMonth.length]);
+
+  const formatTime12h = (timeStr: string | null) => {
+    if (!timeStr) return '-';
+    const [h, m] = timeStr.split(':');
+    let hour = parseInt(h, 10);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    hour = hour % 12 || 12;
+    return `${hour}:${m}${ampm}`;
   };
 
-  const renderYesNo = (val: string) => {
-    if (val === 'Yes') return <span className="block text-center text-red-600 bg-red-100 text-xs px-1 rounded-sm mx-auto">{val}</span>;
-    return <span className="block text-center text-gray-700 text-xs">{val}</span>;
+  const getCellColorClass = (status: string) => {
+    status = (status || '').toUpperCase();
+    if (status === 'ABSENT' || status.includes('LEAVE')) return 'bg-[#d8a87b] text-white'; // Tan color like screenshot
+    return '';
   };
-
-  const renderWeekoffHoliday = (val: string) => {
-    if (val === 'Yes') return <span className="block text-center text-white bg-[#d19c4c] text-xs px-2 py-0.5 rounded-sm mx-auto">{val}</span>;
-    return <span className="block text-center text-gray-700 text-xs">No</span>;
-  }
 
   return (
     <div className="p-4 md:p-6 h-full flex flex-col bg-gray-50">
@@ -172,7 +197,7 @@ const HRAttendanceSummary: React.FC = () => {
           <h1 className="text-2xl font-bold text-gray-900">Attendance Summary</h1>
         </div>
         <div className="flex gap-2 mt-4 sm:mt-0">
-          <button 
+          <button
             onClick={async () => {
               try {
                 setIsSyncing(true);
@@ -199,13 +224,13 @@ const HRAttendanceSummary: React.FC = () => {
           <select value={selectedMonth} onChange={handleMonthChange} className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm py-2 px-3">
             <option value="">-Select-</option>
             {monthOptions.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
             ))}
           </select>
         </div>
         <div>
           <label className="block text-xs font-semibold text-gray-700 mb-1">Employee Search</label>
-          <input type="text" name="employee" placeholder="Name or ID..." value={filters.employee} onChange={handleFilterChange} className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" />
+          <input type="text" name="employee" placeholder="Name or ID..." value={filters.employee} onChange={handleFilterChange} className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm py-2 px-3" />
         </div>
         <div>
           <label className="block text-xs font-semibold text-gray-700 mb-1">Status</label>
@@ -224,143 +249,99 @@ const HRAttendanceSummary: React.FC = () => {
           <div className="p-8 text-center text-gray-500">Loading attendance data...</div>
         ) : error ? (
           <div className="p-8 text-center text-red-500">{error}</div>
-        ) : records.length === 0 ? (
+        ) : groupedData.length === 0 ? (
           <div className="p-8 text-center text-gray-500">No attendance records found for the selected period.</div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left whitespace-nowrap table-fixed border-collapse" style={{ minWidth: '1800px' }}>
-              <thead className="bg-[#f8f9fa] text-gray-800 font-bold border-b border-gray-300 text-xs">
+          <div className="overflow-x-auto overflow-y-auto" style={{ maxHeight: 'calc(100vh - 250px)' }}>
+            <table className="w-full text-xs text-center whitespace-nowrap table-fixed border-collapse" style={{ minWidth: 'max-content' }}>
+              <thead className="bg-[#f8f9fa] text-gray-800 font-bold border-b border-gray-300 sticky top-0 z-10">
                 <tr>
-                  <th rowSpan={2} className="px-1 py-1 border border-gray-300 w-12 text-center">
-                     <div className="rotate-180" style={{ writingMode: 'vertical-rl' }}>S.No</div>
-                  </th>
-                  <th rowSpan={2} className="px-3 py-1 border border-gray-300 w-28 align-bottom">Date</th>
-                  <th rowSpan={2} className="px-3 py-1 border border-gray-300 w-24 align-bottom">Day</th>
-                  <th rowSpan={2} className="px-1 py-1 border border-gray-300 w-12 text-center">
-                     <div className="rotate-180" style={{ writingMode: 'vertical-rl' }}>Modified</div>
-                  </th>
-                  <th rowSpan={2} className="px-1 py-1 border border-gray-300 w-12 text-center">
-                     <div className="rotate-180" style={{ writingMode: 'vertical-rl' }}>Late - within 15 min</div>
-                  </th>
-                  <th rowSpan={2} className="px-1 py-1 border border-gray-300 w-12 text-center">
-                     <div className="rotate-180" style={{ writingMode: 'vertical-rl' }}>Late - after 15 min</div>
-                  </th>
-                  <th rowSpan={2} className="px-1 py-1 border border-gray-300 w-12 text-center">
-                     <div className="rotate-180" style={{ writingMode: 'vertical-rl' }}>Early Leaving - within 5 min</div>
-                  </th>
-                  <th rowSpan={2} className="px-1 py-1 border border-gray-300 w-12 text-center">
-                     <div className="rotate-180" style={{ writingMode: 'vertical-rl' }}>Early Leaving - before 5 min</div>
-                  </th>
-                  <th rowSpan={2} className="px-1 py-1 border border-gray-300 w-12 text-center">
-                     <div className="rotate-180" style={{ writingMode: 'vertical-rl' }}>Leave</div>
-                  </th>
-                  <th rowSpan={2} className="px-1 py-1 border border-gray-300 w-12 text-center">
-                     <div className="rotate-180" style={{ writingMode: 'vertical-rl' }}>Weekoff</div>
-                  </th>
-                  <th rowSpan={2} className="px-1 py-1 border border-gray-300 w-12 text-center">
-                     <div className="rotate-180" style={{ writingMode: 'vertical-rl' }}>Holiday</div>
-                  </th>
-                  <th rowSpan={2} className="px-1 py-1 border border-gray-300 w-12 text-center">
-                     <div className="rotate-180" style={{ writingMode: 'vertical-rl' }}>Attendance</div>
-                  </th>
-                  <th rowSpan={2} className="px-1 py-1 border border-gray-300 w-12 text-center">
-                     <div className="rotate-180" style={{ writingMode: 'vertical-rl' }}>Final Attendance</div>
-                  </th>
-                  <th rowSpan={2} className="px-1 py-1 border border-gray-300 w-12 text-center">
-                     <div className="rotate-180" style={{ writingMode: 'vertical-rl' }}>Modified Attendance</div>
-                  </th>
-                  <th rowSpan={2} className="px-1 py-1 border border-gray-300 w-24 text-center">
-                     <div className="rotate-180" style={{ writingMode: 'vertical-rl' }}>Punching Timings</div>
-                  </th>
-                  <th rowSpan={2} className="px-1 py-1 border border-gray-300 w-20 text-center">
-                     <div className="rotate-180" style={{ writingMode: 'vertical-rl' }}>In Time</div>
-                  </th>
-                  <th rowSpan={2} className="px-1 py-1 border border-gray-300 w-20 text-center">
-                     <div className="rotate-180" style={{ writingMode: 'vertical-rl' }}>Out Time</div>
-                  </th>
-                  <th colSpan={6} className="px-3 py-2 text-center border border-gray-300">
-                    GS 09:00 - 06:00
-                  </th>
+                  <th rowSpan={2} className="px-2 py-2 border border-gray-300 sticky left-0 bg-[#f8f9fa] z-20 w-10 border-r-2">Sno</th>
+                  <th rowSpan={2} className="px-3 py-2 border border-gray-300 sticky left-[40px] bg-[#f8f9fa] z-20 w-32 border-r-2">Staff Employee Id</th>
+                  <th rowSpan={2} className="px-3 py-2 border border-gray-300 sticky left-[168px] bg-[#f8f9fa] z-20 w-48 text-left border-r-2">Staff name</th>
+                  <th rowSpan={2} className="px-3 py-2 border border-gray-300 sticky left-[360px] bg-[#f8f9fa] z-20 w-40 text-left border-r-4 shadow-[4px_0_10px_-5px_rgba(0,0,0,0.1)]">Designation</th>
+
+                  <th rowSpan={2} className="px-2 py-2 border border-gray-300 w-16">Total days</th>
+                  <th rowSpan={2} className="px-2 py-2 border border-gray-300 w-16">WeekOff</th>
+                  <th rowSpan={2} className="px-2 py-2 border border-gray-300 w-16">Holidays</th>
+                  <th rowSpan={2} className="px-2 py-2 border border-gray-300 w-16">Present</th>
+                  <th rowSpan={2} className="px-2 py-2 border border-gray-300 w-16 border-r-4">Absent</th>
+
+                  {datesInMonth.map(date => (
+                    <th key={date} colSpan={2} className="px-2 py-1 border border-gray-300 bg-gray-100 font-extrabold text-[11px] w-[240px] min-w-[240px]">
+                      {monthDisplayFormat(date)}
+                    </th>
+                  ))}
                 </tr>
                 <tr>
-                  <th colSpan={3} className="px-0 py-0 border border-gray-300">
-                    <div className="text-center font-bold mb-1 mt-1">Morning</div>
-                    <div className="text-center text-[10px] text-blue-800 mb-1">(9:00AM - 1:00PM) ?</div>
-                    <div className="grid grid-cols-3 divide-x divide-gray-300 text-center text-xs border-t border-gray-300 h-6 items-center">
-                      <div>Actual ?</div>
-                      <div>Final ?</div>
-                      <div>Modified ?</div>
-                    </div>
-                  </th>
-                  <th colSpan={3} className="px-0 py-0 border border-gray-300">
-                    <div className="text-center font-bold mb-1 mt-1">Afternoon</div>
-                    <div className="text-center text-[10px] text-blue-800 mb-1">(1:01PM - 6:00PM) ?</div>
-                    <div className="grid grid-cols-3 divide-x divide-gray-300 text-center text-xs border-t border-gray-300 h-6 items-center">
-                      <div>Actual ?</div>
-                      <div>Final ?</div>
-                      <div>Modified ?</div>
-                    </div>
-                  </th>
+                  {datesInMonth.map(date => (
+                    <React.Fragment key={`${date}-sub`}>
+                      <th className="px-2 py-2 border border-gray-300 bg-white font-semibold text-xs w-[120px] min-w-[120px]">In Time</th>
+                      <th className="px-2 py-2 border border-gray-300 bg-white font-semibold text-xs w-[120px] min-w-[120px]">Out Time</th>
+                    </React.Fragment>
+                  ))}
                 </tr>
               </thead>
-              <tbody className="bg-white">
-                {records.map((r, idx) => {
-                  const dayOfWeek = getDayOfWeek(r.attendance_date);
-                  const attPoints = getAttendancePoints(r.attendance_status);
-                  
-                  const formatTime12h = (t: string | null) => {
-                      if (!t) return '';
-                      const [h, m] = t.split(':');
-                      const hour = parseInt(h);
-                      const ampm = hour >= 12 ? 'PM' : 'AM';
-                      const hour12 = hour % 12 || 12;
-                      return `${hour12}:${m}${ampm}`;
-                  };
+              <tbody className="divide-y divide-gray-200">
+                {groupedData.map((staff, index) => (
+                  <tr key={staff.employee_id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-2 py-2 border border-gray-300 sticky left-0 bg-white z-10 border-r-2">{index + 1}</td>
+                    <td className="px-3 py-2 border border-gray-300 sticky left-[40px] bg-white z-10 border-r-2">{staff.employee_id}</td>
+                    <td className="px-3 py-2 border border-gray-300 sticky left-[168px] bg-white z-10 text-left font-semibold truncate max-w-[192px] border-r-2" title={staff.staff_name}>{staff.staff_name}</td>
+                    <td className="px-3 py-2 border border-gray-300 sticky left-[360px] bg-white z-10 text-left truncate max-w-[160px] border-r-4 shadow-[4px_0_10px_-5px_rgba(0,0,0,0.1)]" title={staff.designation}>{staff.designation}</td>
 
-                  const punches = [formatTime12h(r.first_in), formatTime12h(r.last_out)].filter(Boolean).join(' ,');
-                  
-                  const morningState = getSessionState(r.first_in, r.last_out, r.attendance_status, true);
-                  const afternoonState = getSessionState(r.first_in, r.last_out, r.attendance_status, false);
+                    <td className="px-2 py-2 border border-gray-300 font-medium">{staff.total_days}</td>
+                    <td className="px-2 py-2 border border-gray-300">{staff.weekoffs}</td>
+                    <td className="px-2 py-2 border border-gray-300">{staff.holidays}</td>
+                    <td className="px-2 py-2 border border-gray-300 font-medium">{staff.present}</td>
+                    <td className="px-2 py-2 border border-gray-300 font-medium text-red-500 border-r-4">{staff.absent}</td>
 
-                  const dateObj = new Date(r.attendance_date);
-                  const formattedDate = dateObj.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+                    {datesInMonth.map(date => {
+                      const record = staff.daily_records[date];
+                      if (!record) {
+                        return (
+                          <React.Fragment key={`${date}-empty`}>
+                            <td className="px-2 py-2 border border-gray-300 text-gray-400">-</td>
+                            <td className="px-2 py-2 border border-gray-300 text-gray-400">-</td>
+                          </React.Fragment>
+                        );
+                      }
 
-                  const isRowWoff = isWeekoff(r.attendance_status) === 'Yes';
-                  const isRowHoliday = isHoliday(r.attendance_status) === 'Yes';
-                  const rowClass = isRowWoff || isRowHoliday ? 'bg-orange-50' : (idx % 2 === 0 ? 'bg-white' : 'bg-[#f4f5f7]');
+                      const status = (record.attendance_status || '').toUpperCase();
+                      const colorClass = getCellColorClass(status);
 
-                  return (
-                    <tr key={r.id} className={`hover:bg-indigo-50 transition-colors ${rowClass}`}>
-                      <td className="px-2 py-1 border border-gray-200 text-center">{idx + 1}</td>
-                      <td className="px-3 py-1 border border-gray-200 text-blue-500 text-sm font-medium">{formattedDate}</td>
-                      <td className="px-3 py-1 border border-gray-200 text-gray-700 text-sm">{dayOfWeek}</td>
-                      <td className="px-2 py-1 border border-gray-200 text-center text-blue-500 font-bold">-</td>
-                      <td className="px-2 py-1 border border-gray-200">{renderYesNo(isLateWithin15(r.late_minutes))}</td>
-                      <td className="px-2 py-1 border border-gray-200">{renderYesNo(isLateAfter15(r.late_minutes))}</td>
-                      <td className="px-2 py-1 border border-gray-200">{renderYesNo(isEarlyLeaveWithin5(r.attendance_status))}</td>
-                      <td className="px-2 py-1 border border-gray-200">{renderYesNo(isEarlyLeaveBefore5(r.attendance_status))}</td>
-                      <td className="px-2 py-1 border border-gray-200">{renderYesNo(isLeave(r.attendance_status))}</td>
-                      <td className="px-2 py-1 border border-gray-200">{renderWeekoffHoliday(isWeekoff(r.attendance_status))}</td>
-                      <td className="px-2 py-1 border border-gray-200">{renderWeekoffHoliday(isHoliday(r.attendance_status))}</td>
-                      
-                      <td className="px-2 py-1 border border-gray-200 text-center text-gray-700">{attPoints}</td>
-                      <td className="px-2 py-1 border border-gray-200 text-center text-gray-700">{attPoints}</td>
-                      <td className="px-2 py-1 border border-gray-200 text-center text-gray-700">{attPoints}</td>
-                      
-                      <td className="px-2 py-1 border border-gray-200 text-center text-gray-700 text-[11px]">{punches}</td>
-                      <td className="px-2 py-1 border border-gray-200 text-center text-gray-700 text-[11px]">{formatTime12h(r.first_in)}</td>
-                      <td className="px-2 py-1 border border-gray-200 text-center text-gray-700 text-[11px]">{formatTime12h(r.last_out)}</td>
-                      
-                      <td className="p-0 border border-gray-200 h-full">{renderSessionCell(morningState)}</td>
-                      <td className="p-0 border border-gray-200 h-full">{renderSessionCell(morningState)}</td>
-                      <td className="p-0 border border-gray-200 h-full">{renderSessionCell(morningState)}</td>
-                      
-                      <td className="p-0 border border-gray-200 h-full">{renderSessionCell(afternoonState)}</td>
-                      <td className="p-0 border border-gray-200 h-full">{renderSessionCell(afternoonState)}</td>
-                      <td className="p-0 border border-gray-200 h-full">{renderSessionCell(afternoonState)}</td>
-                    </tr>
-                  );
-                })}
+                      // If absent/leave, show a spanned block or single block with '1'
+                      if (['ABSENT', 'LEAVE'].some(s => status.includes(s))) {
+                        return (
+                          <td key={`${date}-absent`} colSpan={2} className={`px-2 py-2 border border-gray-300 font-bold ${colorClass}`}>
+                            1
+                          </td>
+                        );
+                      }
+
+                      if (status === 'HALF_DAY') {
+                        return (
+                          <React.Fragment key={`${date}-half`}>
+                            <td className="px-2 py-2 border border-gray-300">{formatTime12h(record.first_in)}</td>
+                            <td className={`px-2 py-2 border border-gray-300 font-bold ${getCellColorClass('ABSENT')}`}>0.5</td>
+                          </React.Fragment>
+                        );
+                      }
+
+                      // Regular punch data
+                      return (
+                        <React.Fragment key={`${date}-punch`}>
+                          <td className={`px-2 py-2 border border-gray-300 ${colorClass}`}>
+                            {formatTime12h(record.first_in)}
+                          </td>
+                          <td className={`px-2 py-2 border border-gray-300 ${colorClass}`}>
+                            {formatTime12h(record.last_out)}
+                          </td>
+                        </React.Fragment>
+                      );
+                    })}
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>

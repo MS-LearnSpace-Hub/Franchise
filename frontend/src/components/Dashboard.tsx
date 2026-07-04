@@ -52,6 +52,7 @@ import { StaffCategoryMaster } from './StaffCategoryMaster';
 import { StaffStatusMaster } from './StaffStatusMaster';
 import StaffProfile from './StaffProfile';
 import { BiometricDevices } from './BiometricDevices';
+import HRPunchLog from './HRPunchLog';
 import { Page } from '../App';
 
 const hrPages = [
@@ -140,7 +141,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout, initialPage }) => {
               {currentPage === 'hr-biometric-devices' && <BiometricDevices />}
               {currentPage === 'hr-biometric-mapping' && <div className="p-6">Staff Biometric Mapping (Coming Soon)</div>}
               {currentPage === 'hr-attendance-summary' && <HRAttendanceSummary />}
-              {currentPage === 'hr-punch-log' && <div className="p-6">Punch Log (Coming Soon)</div>}
+              {currentPage === 'hr-punch-log' && <HRPunchLog />}
               {currentPage === 'staff-profile' && <StaffProfile navigateTo={navigateTo} />}
             </HRLayout>
           ) : (
