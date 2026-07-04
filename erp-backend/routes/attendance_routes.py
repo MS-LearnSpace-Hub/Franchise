@@ -576,9 +576,11 @@ from services.attendance.attendance_engine import process_staging_records
 
 @bp.route('/api/attendance/staff/summary', methods=['GET'])
 @token_required
-@permission_required("attendance.summary", "read")
 def get_staff_attendance_summary(current_user):
     try:
+        from helpers import has_permission
+        is_hr = has_permission(current_user, "attendance.summary", "read")
+
         query = AttendanceHead.query.join(StaffMaster)
         query = scope_query(query, StaffMaster)
         
@@ -587,19 +589,33 @@ def get_staff_attendance_summary(current_user):
                      .outerjoin(School, Branch.school_id == School.id) \
                      .outerjoin(DepartmentMaster, StaffMaster.department_id == DepartmentMaster.id)
         
-        target_school_id = get_target_school_id(current_user)
-        if target_school_id:
-            query = query.filter(StaffMaster.school_id == target_school_id)
-            
-        # Filters from request
-        branch_id = request.args.get('branch_id')
-        if branch_id and branch_id.lower() != 'all':
-            query = query.filter(StaffMaster.branch_id == int(branch_id))
-            
-        department_id = request.args.get('department_id')
-        if department_id and department_id.lower() != 'all':
-            query = query.filter(StaffMaster.department_id == int(department_id))
-            
+        if is_hr:
+            target_school_id = get_target_school_id(current_user)
+            if target_school_id:
+                query = query.filter(StaffMaster.school_id == target_school_id)
+                
+            # Filters from request
+            branch_id = request.args.get('branch_id')
+            if branch_id and branch_id.lower() != 'all':
+                query = query.filter(StaffMaster.branch_id == int(branch_id))
+                
+            department_id = request.args.get('department_id')
+            if department_id and department_id.lower() != 'all':
+                query = query.filter(StaffMaster.department_id == int(department_id))
+                
+            employee = request.args.get('employee')
+            if employee:
+                query = query.filter(db.or_(
+                    StaffMaster.display_name.ilike(f'%{employee}%'),
+                    AttendanceHead.employee_id.ilike(f'%{employee}%'),
+                    StaffMaster.staff_code.ilike(f'%{employee}%')
+                ))
+        else:
+            query = query.filter(db.or_(
+                StaffMaster.employee_id == current_user.username,
+                StaffMaster.staff_code == current_user.username
+            ))
+
         date_from = request.args.get('date_from')
         if date_from:
             query = query.filter(AttendanceHead.attendance_date >= date_from)
@@ -607,14 +623,6 @@ def get_staff_attendance_summary(current_user):
         date_to = request.args.get('date_to')
         if date_to:
             query = query.filter(AttendanceHead.attendance_date <= date_to)
-            
-        employee = request.args.get('employee')
-        if employee:
-            query = query.filter(db.or_(
-                StaffMaster.display_name.ilike(f'%{employee}%'),
-                AttendanceHead.employee_id.ilike(f'%{employee}%'),
-                StaffMaster.staff_code.ilike(f'%{employee}%')
-            ))
             
         status = request.args.get('status')
         if status and status.lower() != 'all':

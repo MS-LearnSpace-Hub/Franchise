@@ -80,9 +80,8 @@ const HRLayout: React.FC<HRLayoutProps> = ({ children, currentPage, navigateTo }
             name: 'Attendance',
             id: 'attendance',
             icon: <ChartBarIcon className="w-5 h-5" />,
-            permission: 'hr.attendance',
             subItems: [
-                { name: 'Attendance Summary', page: 'hr-attendance-summary' as Page, icon: <ChartBarIcon className="w-4 h-4" />, permission: 'hr.attendance.summary' },
+                { name: 'Attendance Summary', page: 'hr-attendance-summary' as Page, icon: <ChartBarIcon className="w-4 h-4" /> },
                 { name: 'Punch Log', page: 'hr-punch-log' as Page, icon: <TimeIcon className="w-4 h-4" />, permission: 'hr.attendance.punch-log' },
             ]
         }

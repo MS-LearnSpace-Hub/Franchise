@@ -26,14 +26,20 @@ interface StaffProfileData {
     nationality: string;
     qualification: string;
     uan_no: string;
+    today_attendance?: {
+        first_in: string | null;
+        last_out: string | null;
+        status: string | null;
+    } | null;
 }
 
 interface StaffProfileProps {
     staffId?: number;
     onBack?: () => void;
+    navigateTo?: (page: string) => void;
 }
 
-const StaffProfile: React.FC<StaffProfileProps> = ({ staffId, onBack }) => {
+const StaffProfile: React.FC<StaffProfileProps> = ({ staffId, onBack, navigateTo }) => {
     const { user } = useAuth();
     const [profile, setProfile] = useState<StaffProfileData | null>(null);
     const [loading, setLoading] = useState(true);
@@ -157,7 +163,7 @@ const StaffProfile: React.FC<StaffProfileProps> = ({ staffId, onBack }) => {
                             <p className="font-semibold text-slate-700">{profile.mobile || '-'}</p>
                         </div>
                         <div>
-                            <p className="text-slate-400 mb-1">Staff Ref Code</p>
+                            <p className="text-slate-400 mb-1">Employee-ID</p>
                             <p className="font-semibold text-slate-700">{profile.employee_id || '-'}</p>
                         </div>
                         <div>
@@ -187,9 +193,14 @@ const StaffProfile: React.FC<StaffProfileProps> = ({ staffId, onBack }) => {
                 <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
                     <div className="flex justify-between items-center mb-6">
                         <h2 className="text-lg font-bold text-slate-800">Today's Attendance</h2>
-                        <button className="text-sm font-semibold text-red-500 hover:text-red-600">
-                            View Attendance &rarr;
-                        </button>
+                        {navigateTo && (
+                            <button
+                                onClick={() => navigateTo('hr-attendance-summary')}
+                                className="text-sm font-semibold text-red-500 hover:text-red-600"
+                            >
+                                View Attendance &rarr;
+                            </button>
+                        )}
                     </div>
 
                     <div className="space-y-4">
@@ -200,7 +211,9 @@ const StaffProfile: React.FC<StaffProfileProps> = ({ staffId, onBack }) => {
                             </div>
                             <div className="text-right">
                                 <p className="text-sm text-slate-500">Check In Time</p>
-                                <p className="font-bold text-slate-700">-</p>
+                                <p className="font-bold text-slate-700">
+                                    {profile.today_attendance?.first_in || '-'}
+                                </p>
                             </div>
                         </div>
                         <div className="flex justify-between items-center py-2 border-t border-slate-100">
@@ -210,7 +223,9 @@ const StaffProfile: React.FC<StaffProfileProps> = ({ staffId, onBack }) => {
                             </div>
                             <div className="text-right">
                                 <p className="text-sm text-slate-500">Check Out Time</p>
-                                <p className="font-bold text-slate-700">-</p>
+                                <p className="font-bold text-slate-700">
+                                    {profile.today_attendance?.last_out || '-'}
+                                </p>
                             </div>
                         </div>
                     </div>

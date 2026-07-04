@@ -105,9 +105,7 @@ const HRManagement: React.FC<HRManagementProps> = ({ navigateTo }) => {
             icon: <ChartBarIcon className="w-8 h-8" />,
             iconBg: 'bg-slate-50',
             iconColor: 'text-slate-600',
-            page: 'hr-attendance-summary' as Page,
-            permission: 'hr.attendance.summary',
-            comingSoon: true
+            page: 'hr-attendance-summary' as Page
         },
         {
             id: 'punch-log',

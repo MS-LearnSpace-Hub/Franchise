@@ -141,7 +141,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout, initialPage }) => {
               {currentPage === 'hr-biometric-mapping' && <div className="p-6">Staff Biometric Mapping (Coming Soon)</div>}
               {currentPage === 'hr-attendance-summary' && <HRAttendanceSummary />}
               {currentPage === 'hr-punch-log' && <div className="p-6">Punch Log (Coming Soon)</div>}
-              {currentPage === 'staff-profile' && <StaffProfile />}
+              {currentPage === 'staff-profile' && <StaffProfile navigateTo={navigateTo} />}
             </HRLayout>
           ) : (
             <>
