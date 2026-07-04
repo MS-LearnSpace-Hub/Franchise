@@ -233,7 +233,7 @@ const HRPunchLog: React.FC = () => {
               <thead className="bg-[#f8f9fa] text-gray-800 font-bold border-b border-gray-300 text-xs">
                 <tr>
                   <th className="px-1 py-1 border border-gray-300 w-12 text-center">
-                    <div className="rotate-180" style={{ writingMode: 'vertical-rl' }}>S.No</div>
+                    <div className="rotate-0" style={{ writingMode: 'horizontal-tb' }}>S.No</div>
                   </th>
                   <th className="px-3 py-1 border border-gray-300 w-28 align-bottom">Employee ID</th>
                   <th className="px-3 py-1 border border-gray-300 w-40 align-bottom">Staff Name</th>
@@ -243,13 +243,13 @@ const HRPunchLog: React.FC = () => {
                   <th className="px-3 py-1 border border-gray-300 w-24 align-bottom">Day</th>
 
                   <th className="px-1 py-1 border border-gray-300 w-24 text-center">
-                    <div className="rotate-180" style={{ writingMode: 'vertical-rl' }}>Punching Timings</div>
+                    <div className="rotate-0" style={{ writingMode: 'horizontal-tb' }}>Punching Timings</div>
                   </th>
                   <th className="px-1 py-1 border border-gray-300 w-20 text-center">
-                    <div className="rotate-180" style={{ writingMode: 'vertical-rl' }}>In Time</div>
+                    <div className="rotate-0" style={{ writingMode: 'horizontal-tb' }}>In Time</div>
                   </th>
                   <th className="px-1 py-1 border border-gray-300 w-20 text-center">
-                    <div className="rotate-180" style={{ writingMode: 'vertical-rl' }}>Out Time</div>
+                    <div className="rotate-0" style={{ writingMode: 'horizontal-tb' }}>Out Time</div>
                   </th>
                 </tr>
               </thead>
