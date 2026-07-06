@@ -66,22 +66,13 @@ const HRLayout: React.FC<HRLayoutProps> = ({ children, currentPage, navigateTo }
             icon: <UserIcon className="w-5 h-5" />,
             permission: 'hr.hr.staff-profile',
         },
-        {
-            name: 'Biometrics',
-            id: 'biometrics',
-            icon: <TimeIcon className="w-5 h-5" />,
-            permission: 'hr.biometrics',
-            subItems: [
-                { name: 'Biometric Devices', page: 'hr-biometric-devices' as Page, icon: <DashboardIcon className="w-4 h-4" />, permission: 'hr.biometrics.devices' },
-                { name: 'Staff Biometric Mapping', page: 'hr-biometric-mapping' as Page, icon: <UserIcon className="w-4 h-4" />, permission: 'hr.biometrics.mapping' },
-            ]
-        },
+
         {
             name: 'Attendance',
             id: 'attendance',
             icon: <ChartBarIcon className="w-5 h-5" />,
             subItems: [
-                { name: 'Attendance Summary', page: 'hr-attendance-summary' as Page, icon: <ChartBarIcon className="w-4 h-4" /> },
+                { name: 'Attendance Summary', page: 'hr-attendance-summary' as Page, icon: <ChartBarIcon className="w-4 h-4" />, permission: 'hr.attendance.summary' },
                 { name: 'Punch Log', page: 'hr-punch-log' as Page, icon: <TimeIcon className="w-4 h-4" />, permission: 'hr.attendance.punch-log' },
             ]
         }

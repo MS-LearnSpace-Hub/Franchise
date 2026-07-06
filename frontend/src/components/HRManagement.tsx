@@ -79,33 +79,15 @@ const HRManagement: React.FC<HRManagementProps> = ({ navigateTo }) => {
             page: 'hr-staff-statuses' as Page,
             permission: 'hr.hr.staff-statuses'
         },
-        {
-            id: 'biometric-devices',
-            name: 'Biometric Devices',
-            icon: <DashboardIcon className="w-8 h-8" />,
-            iconBg: 'bg-slate-50',
-            iconColor: 'text-slate-600',
-            page: 'hr-biometric-devices' as Page,
-            permission: 'hr.biometrics.devices',
-            comingSoon: true
-        },
-        {
-            id: 'biometric-mapping',
-            name: 'Staff Biometric Mapping',
-            icon: <DocumentIcon className="w-8 h-8" />,
-            iconBg: 'bg-slate-50',
-            iconColor: 'text-slate-600',
-            page: 'hr-biometric-mapping' as Page,
-            permission: 'hr.biometrics.mapping',
-            comingSoon: true
-        },
+
         {
             id: 'attendance-summary',
             name: 'Attendance Summary',
             icon: <ChartBarIcon className="w-8 h-8" />,
             iconBg: 'bg-slate-50',
             iconColor: 'text-slate-600',
-            page: 'hr-attendance-summary' as Page
+            page: 'hr-attendance-summary' as Page,
+            permission: 'hr.attendance.summary'
         },
         {
             id: 'punch-log',

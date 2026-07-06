@@ -31,6 +31,8 @@ interface StaffProfileData {
         last_out: string | null;
         status: string | null;
     } | null;
+    school_name: string | null;
+    branch_name: string | null;
 }
 
 interface StaffProfileProps {
@@ -182,6 +184,13 @@ const StaffProfile: React.FC<StaffProfileProps> = ({ staffId, onBack, navigateTo
                         <div>
                             <p className="text-slate-400 mb-1">UAN No</p>
                             <p className="font-semibold text-slate-700">{profile.uan_no}</p>
+                        </div>
+                        <div>
+                            <p className="text-slate-400 mb-1">School & Branch</p>
+                            <p className="font-semibold text-slate-700">
+                                {profile.school_name || 'N/A'}<br />
+                                <span className="text-xs text-slate-500 font-normal">{profile.branch_name || 'N/A'}</span>
+                            </p>
                         </div>
                     </div>
                 </div>

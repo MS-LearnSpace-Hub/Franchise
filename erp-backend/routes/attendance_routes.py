@@ -579,7 +579,7 @@ from services.attendance.attendance_engine import process_staging_records
 def get_staff_attendance_summary(current_user):
     try:
         from helpers import has_permission
-        is_hr = has_permission(current_user, "attendance.summary", "read")
+        is_hr = has_permission(current_user, "hr.attendance.summary", "read")
 
         query = AttendanceHead.query.join(StaffMaster)
         query = scope_query(query, StaffMaster)
@@ -661,7 +661,7 @@ def get_staff_attendance_summary(current_user):
 
 @bp.route('/api/attendance/sync/process', methods=['POST'])
 @token_required
-@permission_required("attendance.summary", "write")
+@permission_required("hr.attendance.summary", "write")
 def trigger_attendance_sync_process(current_user):
     try:
         # Trigger the engine to process any pending records in staging to head
