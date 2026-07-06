@@ -423,7 +423,7 @@ def _generate_staff_ids(branch_id, department_id, school_id):
 def get_staff(current_user):
     try:
         target_school_id = get_target_school_id(current_user)
-        branch_id_str = request.headers.get('X-Branch-ID')
+        branch_id_str = request.args.get('branch_id') or request.headers.get('X-Branch-ID')
         
         # Additional filters
         department_id = request.args.get('department_id')
@@ -484,6 +484,8 @@ def get_staff(current_user):
             "staff_category_name": s.staff_category.category_name if s.staff_category else None,
             "staff_status_id": s.staff_status_id,
             "staff_status_name": s.staff_status.status_name if s.staff_status else None,
+            "school_name": s.school.school_name if hasattr(s, 'school') and s.school else None,
+            "branch_name": s.branch.branch_name if hasattr(s, 'branch') and s.branch else None,
             "employment_type": s.employment_type.value if hasattr(s.employment_type, 'value') else s.employment_type,
             "mobile": s.mobile,
             "email": s.email,
@@ -512,6 +514,18 @@ def get_staff_profile(current_user):
         if not s:
             return jsonify({"error": "Staff profile not found"}), 404
             
+        from models import AttendanceHead
+        from datetime import date
+        today = date.today()
+        today_att = AttendanceHead.query.filter_by(staff_id=s.id, attendance_date=today).first()
+        today_attendance_data = None
+        if today_att:
+            today_attendance_data = {
+                "first_in": str(today_att.first_in.strftime('%H:%M')) if today_att.first_in else None,
+                "last_out": str(today_att.last_out.strftime('%H:%M')) if today_att.last_out else None,
+                "status": today_att.attendance_status
+            }
+            
         result = {
             "id": s.id,
             "staff_code": s.staff_code,
@@ -524,6 +538,8 @@ def get_staff_profile(current_user):
             "designation_name": s.designation.designation_name if s.designation else None,
             "staff_category_name": s.staff_category.category_name if s.staff_category else None,
             "staff_status_name": s.staff_status.status_name if s.staff_status else None,
+            "school_name": s.school.school_name if hasattr(s, 'school') and s.school else None,
+            "branch_name": s.branch.branch_name if hasattr(s, 'branch') and s.branch else None,
             "employment_type": s.employment_type.value if hasattr(s.employment_type, 'value') else s.employment_type,
             "employment_status": s.employment_status.value if hasattr(s.employment_status, 'value') else s.employment_status,
             "mobile": s.mobile,
@@ -535,7 +551,8 @@ def get_staff_profile(current_user):
             "nationality": "Indian", # fallback
             "qualification": "-", # fallback
             "uan_no": "-", # fallback
-            "branch_id": s.branch_id
+            "branch_id": s.branch_id,
+            "today_attendance": today_attendance_data
         }
         return jsonify(result), 200
     except Exception as e:
@@ -565,6 +582,8 @@ def get_staff_profile_by_id(current_user, staff_id):
             "designation_name": s.designation.designation_name if s.designation else None,
             "staff_category_name": s.staff_category.category_name if s.staff_category else None,
             "staff_status_name": s.staff_status.status_name if s.staff_status else None,
+            "school_name": s.school.school_name if hasattr(s, 'school') and s.school else None,
+            "branch_name": s.branch.branch_name if hasattr(s, 'branch') and s.branch else None,
             "employment_type": s.employment_type.value if hasattr(s.employment_type, 'value') else s.employment_type,
             "employment_status": s.employment_status.value if hasattr(s.employment_status, 'value') else s.employment_status,
             "mobile": s.mobile,

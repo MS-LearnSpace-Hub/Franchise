@@ -31,6 +31,7 @@ import FranchiseManagement from './FranchiseManagement';
 import RolePermissions from './RolePermissions';
 import ControlPanel from './ControlPanel';
 import SchoolManagement from './SchoolManagement';
+import HRAttendanceSummary from './HRAttendanceSummary';
 import { useNavigationHistory } from '../hooks/useNavigationHistory';
 import StaffSupport from './StaffSupport';
 import PettyCash from './PettyCash';
@@ -50,6 +51,8 @@ import StaffDirectory from './StaffDirectory';
 import { StaffCategoryMaster } from './StaffCategoryMaster';
 import { StaffStatusMaster } from './StaffStatusMaster';
 import StaffProfile from './StaffProfile';
+import { BiometricDevices } from './BiometricDevices';
+import HRPunchLog from './HRPunchLog';
 import { Page } from '../App';
 
 const hrPages = [
@@ -135,11 +138,11 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout, initialPage }) => {
               {currentPage === 'hr-staff-directory' && <StaffDirectory />}
               {currentPage === 'hr-staff-categories' && <StaffCategoryMaster />}
               {currentPage === 'hr-staff-statuses' && <StaffStatusMaster />}
-              {currentPage === 'hr-biometric-devices' && <div className="p-6">Biometric Devices (Coming Soon)</div>}
+              {currentPage === 'hr-biometric-devices' && <BiometricDevices />}
               {currentPage === 'hr-biometric-mapping' && <div className="p-6">Staff Biometric Mapping (Coming Soon)</div>}
-              {currentPage === 'hr-attendance-summary' && <div className="p-6">Attendance Summary (Coming Soon)</div>}
-              {currentPage === 'hr-punch-log' && <div className="p-6">Punch Log (Coming Soon)</div>}
-              {currentPage === 'staff-profile' && <StaffProfile />}
+              {currentPage === 'hr-attendance-summary' && <HRAttendanceSummary />}
+              {currentPage === 'hr-punch-log' && <HRPunchLog />}
+              {currentPage === 'staff-profile' && <StaffProfile navigateTo={navigateTo} />}
             </HRLayout>
           ) : (
             <>

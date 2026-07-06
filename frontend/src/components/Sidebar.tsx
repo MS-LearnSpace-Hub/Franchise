@@ -39,21 +39,22 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar, navigateTo, cu
       </div>
 
       <div className="p-2 border-b">
-  <div className="flex items-center gap-2 justify-center">
-    
-    {/* Permanent Logo */}
-    <img
-      src={Learnspacelogo}
-      alt="LearnSpace Logo"
-      className="w-18 h-12 object-contain flex-shrink-0"
-    />
-  </div>
-</div>
+        <div className="flex items-center gap-2 justify-center">
+
+          {/* Permanent Logo */}
+          <img
+            src={Learnspacelogo}
+            alt="LearnSpace Logo"
+            className="w-18 h-12 object-contain flex-shrink-0"
+          />
+        </div>
+      </div>
       <nav className="flex-1 px-2 space-y-1 overflow-y-auto">
         {navCategories.filter(cat => canAccess(cat.permission)).map((cat) => (
           <a
             key={cat.title}
             href="#"
+            title={!isOpen ? cat.title : undefined}
             onClick={(e) => { e.preventDefault(); navigateTo(cat.page); }}
             className={`flex items-center p-2 text-sm font-medium rounded-md group ${cat.page === currentPage ? 'bg-green-100 text-green-800' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
           >

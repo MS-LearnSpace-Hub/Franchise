@@ -97,6 +97,7 @@ PERMISSION_CATALOG = [
 
     permission("HR", "HR", "HR Management", "hr.hr.hr-management"),
     permission("HR", "HR", "Staff Master", "hr.hr.staff-master", "Create and manage staff profiles and login access"),
+    permission("HR", "HR", "Staff Directory", "hr.hr.staff-directory", "View staff directory and search staff"),
     permission("HR", "HR", "Staff Profile", "hr.hr.staff-profile", "View individual staff profile"),
     permission("HR", "HR", "Staff Categories", "hr.hr.staff-categories", "Manage staff HR categories (Teaching, Non-Teaching, Menial, etc.)"),
     permission("HR", "HR", "Staff Statuses", "hr.hr.staff-statuses", "Manage employment status master (Active, Probation, etc.)"),

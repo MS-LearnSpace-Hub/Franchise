@@ -190,13 +190,18 @@ const Administration: React.FC<AdministrationProps> = ({ navigateTo }) => {
         }
     };
 
-    const visibleModules = administrationModules.filter(module => {
-        if (!module.permission) return true;
-        if (Array.isArray(module.permission)) {
-            return module.permission.some(p => hasPermission(p, 'read'));
-        }
-        return hasPermission(module.permission, 'read');
-    });
+    const visibleModules = administrationModules
+        .filter(module => {
+            if (!module.permission) return true;
+            if (Array.isArray(module.permission)) {
+                return module.permission.some(p => hasPermission(p, 'read'));
+            }
+            return hasPermission(module.permission, 'read');
+        })
+        .sort((a, b) => {
+            if (a.comingSoon === b.comingSoon) return 0;
+            return a.comingSoon ? 1 : -1;
+        });
 
     return (
         <div className="min-h-screen bg-slate-50">

@@ -24,6 +24,8 @@ interface Staff {
     email: string | null;
     joining_date: string | null;
     branch_id: number | null;
+    branch_name: string | null;
+    school_name: string | null;
 }
 
 interface SelectOption {
@@ -53,12 +55,20 @@ export default function StaffDirectory() {
 
     // ── Available branches for scoping
     // SuperAdmin/Admin see all from allowed_branches; branch-level user sees only their branch
+    const currentSchoolId = localStorage.getItem('currentSchoolId') || String(user?.school_id || '');
     const allowedBranches: Array<{ branch_id: number; branch_name: string; branch_code: string }> =
-        (user?.allowed_branches ?? []).map((b) => ({
-            branch_id: b.branch_id,
-            branch_name: b.branch_name,
-            branch_code: b.branch_code,
-        }));
+        (user?.allowed_branches ?? [])
+            .filter((b: any) => {
+                if (currentSchoolId && currentSchoolId !== 'All' && currentSchoolId !== 'null') {
+                    return String(b.school_id) === currentSchoolId;
+                }
+                return true;
+            })
+            .map((b: any) => ({
+                branch_id: b.branch_id,
+                branch_name: b.branch_name,
+                branch_code: b.branch_code,
+            }));
 
     const isSingleBranch = allowedBranches.length <= 1;
 
@@ -194,10 +204,19 @@ export default function StaffDirectory() {
     }, []);
 
 
-    const fetchData = useCallback(async () => {
+    const fetchData = async () => {
         setLoading(true);
         try {
-            const staffRes = await api.get('/hr/staff');
+            const params: any = {};
+            if (searchBranchId) params.branch_id = searchBranchId;
+            if (searchDeptId) params.department_id = searchDeptId;
+            if (searchStatus) params.status = searchStatus;
+            if (searchQuery) {
+                params.search_by = searchBy;
+                params.search_query = searchQuery;
+            }
+
+            const staffRes = await api.get('/hr/staff', { params });
             setStaffList(staffRes.data || []);
 
             try {
@@ -211,11 +230,12 @@ export default function StaffDirectory() {
         } finally {
             setLoading(false);
         }
-    }, []);
+    };
 
     useEffect(() => {
         fetchData();
-    }, [fetchData]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     useEffect(() => {
         fetchMasterData(form.branch_id);
@@ -539,6 +559,7 @@ export default function StaffDirectory() {
                                 <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Category</th>
                                 <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Department / Designation</th>
                                 <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Type</th>
+                                <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">School & Branch</th>
                                 <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
                                 <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Contact</th>
                                 {canWrite && <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">Actions</th>}
@@ -582,6 +603,10 @@ export default function StaffDirectory() {
                                         {st.employment_type?.toLowerCase().replace('_', ' ') ?? '—'}
                                     </td>
                                     <td className="px-4 py-3">
+                                        <p className="font-medium text-slate-700">{st.school_name ?? '—'}</p>
+                                        <p className="text-xs text-slate-400">{st.branch_name ?? '—'}</p>
+                                    </td>
+                                    <td className="px-4 py-3">
                                         <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${statusColor[st.staff_status_name?.toUpperCase() ?? st.employment_status] ?? 'bg-slate-100 text-slate-600'}`}>
                                             {st.staff_status_name ?? st.employment_status}
                                         </span>
@@ -605,7 +630,7 @@ export default function StaffDirectory() {
                             ))}
                             {filteredStaff.length === 0 && (
                                 <tr>
-                                    <td colSpan={canWrite ? 7 : 6} className="px-4 py-12 text-center text-slate-400">
+                                    <td colSpan={canWrite ? 8 : 7} className="px-4 py-12 text-center text-slate-400">
                                         <div className="flex flex-col items-center gap-2">
                                             <svg className="w-8 h-8 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0" />
