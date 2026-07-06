@@ -1445,6 +1445,14 @@ class AttendanceDetail(db.Model, AuditMixin):
 class AttendanceStaging(db.Model, AuditMixin):
     __tablename__ = "attendance_staging"
     __audit_module__ = "ATTENDANCE"
+
+    __table_args__=(
+        db.UniqueConstraint(
+            "employee_id",
+            "attendance_date",
+            name = "uq_attendance_stating_employee_date"
+        ),
+    )
     id = db.Column(db.Integer, primary_key=True)
     employee_id = db.Column(db.String(50), nullable=False)
     attendance_date = db.Column(db.Date, nullable=False)

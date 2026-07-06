@@ -127,10 +127,10 @@ const HRAttendanceSummary: React.FC = () => {
   // Derive dates array
   const datesInMonth = useMemo(() => {
     const dates: string[] = [];
-    const start = new Date(filters.date_from);
-    const end = new Date(filters.date_to);
-    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-      dates.push(new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0]);
+    const [sy, sm, sd] = filters.date_from.split('-').map(Number);
+    const [ey, em, ed] = filters.date_to.split('-').map(Number);
+    for (let d = new Date(sy, sm - 1, sd); d <= new Date(ey, em - 1, ed); d.setDate(d.getDate() + 1)) {
+      dates.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
     }
     return dates;
   }, [filters.date_from, filters.date_to]);

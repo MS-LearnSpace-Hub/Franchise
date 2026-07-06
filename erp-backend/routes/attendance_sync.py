@@ -115,8 +115,15 @@ def sync_attendance():
         
     except Exception as e:
         db.session.rollback()
-        sync_log.status = 'FAILED'
-        sync_log.errors = str(e)
-        sync_log.completed_at = datetime.utcnow()
+        failure_log = SyncLog(
+            sync_id=sync_id,
+            records_read=len(punches),
+            agent_version=agent_version,
+            started_at=datetime.utcnow(),
+            completed_at=datetime.utcnow(),
+            status='FAILED',
+            errors=str(e)
+        )
+        db.session.add(failure_log)
         db.session.commit()
         return jsonify({'status': 'error', 'message': str(e)}), 500

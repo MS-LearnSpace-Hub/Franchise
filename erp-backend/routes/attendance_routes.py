@@ -665,16 +665,15 @@ def get_staff_attendance_summary(current_user):
 def trigger_attendance_sync_process(current_user):
     try:
         # Trigger the engine to process any pending records in staging to head
-        processed_count = process_staging_records()
+        processed_count, failed_count = process_staging_records()
         return jsonify({
             "message": "Staging data processed successfully",
-            "processed_count": processed_count
+            "processed_count": processed_count,
+            "failed_count": failed_count
         }), 200
     except Exception as e:
         print(f"Error processing staging data: {e}")
-        return jsonify({"error": str(e)}), 500
-
-@bp.route('/staff/manual', methods=['POST'])
+        return jsonify({"error": str(e)}), 500@bp.route('/staff/manual', methods=['POST'])
 @token_required
 @permission_required("attendance.manual", "write")
 def add_manual_staff_attendance(current_user):

@@ -35,10 +35,12 @@ interface StaffProfileData {
     branch_name: string | null;
 }
 
+import { Page } from '../App';
+
 interface StaffProfileProps {
     staffId?: number;
     onBack?: () => void;
-    navigateTo?: (page: string) => void;
+    navigateTo?: (page: Page) => void;
 }
 
 const StaffProfile: React.FC<StaffProfileProps> = ({ staffId, onBack, navigateTo }) => {

@@ -77,6 +77,11 @@ def get_sql_server_punches(config):
         conn = pyodbc.connect(conn_str)
         cursor = conn.cursor()
 
+        last_sync_time = get_last_sync_time()
+
+        if last_sync_time is None:
+            last_sync_time = datetime.datetime.now() - datetime.timedelta(days=7)
+
         query = """
         SELECT
             b.EmpID,
@@ -95,9 +100,9 @@ def get_sql_server_punches(config):
         FROM dbo.AllDataSub a
 
         JOIN dbo.EmpMaster b
-            ON a.EmpCode=b.EmpCode
+            ON a.EmpCode = b.EmpCode
 
-        WHERE a.In_Out_Time >= DATEADD(DAY,-7,GETDATE())
+        WHERE a.In_Out_Time > ?
 
         GROUP BY
             b.EmpID,
@@ -108,7 +113,7 @@ def get_sql_server_punches(config):
             b.EmpID
         """
 
-        cursor.execute(query)
+        cursor.execute(query, (last_sync_time,))
 
         rows = cursor.fetchall()
 
@@ -175,11 +180,11 @@ def process_queue(config):
 def main():
     logging.info("Starting Biometric Sync Agent V8")
     init_db()
-    
+    interval= 60
     while True:
         try:
             config = load_config()
-            interval = config.get('sync_interval', 60)
+            interval = max(5, int(config.get('sync_interval', 60)))
             
             logging.info("Reading from SQL Server...")
             punches = get_sql_server_punches(config)
@@ -198,7 +203,8 @@ def main():
         except Exception as e:
             logging.error(f"Unexpected Agent Error: {str(e)}")
             
-        time.sleep(interval)
+        finally:
+            time.sleep(interval)
 
 if __name__ == '__main__':
     main()
