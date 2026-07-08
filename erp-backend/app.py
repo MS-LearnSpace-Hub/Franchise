@@ -257,6 +257,6 @@ if __name__ == "__main__":
             print(f"[WARN] Migration check failed: {migrate_err}")
             print("[WARN] Server will still start — run 'flask db upgrade' manually if needed.")
 
-    port = int(os.getenv("PORT", 5000))
+    port = int(os.getenv("PORT", 5001))
     debug = os.getenv("FLASK_DEBUG", "false").lower() == "true"
     app.run(host="0.0.0.0", port=port, debug=debug)

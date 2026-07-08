@@ -48,7 +48,7 @@ const FranchiseManagement: React.FC = () => {
   const [branchForm, setBranchForm] = useState<BranchForm>({ branch_name: '', branch_code: '', location_code: '' });
   const [savingBranch, setSavingBranch] = useState(false);
 
-  // Use relative URLs so Vite proxy forwards /static/* to Flask (port 5000)
+  // Use relative URLs so Vite proxy forwards /static/* to Flask (port 5001)
   const API_BASE = '';
 
   const fetchSchools = useCallback(async () => {
