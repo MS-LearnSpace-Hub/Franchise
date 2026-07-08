@@ -17,7 +17,7 @@ export default defineConfig(({ mode }) => {
     },
 
     server: {
-      port: 8001,
+      port: 8000,
       host: true,
       proxy: {
         '/api': {

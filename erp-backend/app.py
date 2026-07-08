@@ -39,8 +39,12 @@ from routes.rbac_routes import bp as rbac_bp
 from routes.petty_cash_routes import petty_cash_bp
 from routes.petty_cash_report_routes import petty_cash_report_bp
 from routes.sms_routes import bp as sms_bp
+from routes.sms_routes import bp as sms_bp
 
-
+# HR & Attendance Modules
+from routes.hr_routes import bp as hr_bp
+from routes.biometric_routes import bp as biometric_bp
+from routes.attendance_sync import attendance_sync_bp
 # -----------------------------
 # LOAD ENV
 # -----------------------------
@@ -102,7 +106,7 @@ def create_app():
     else:
         allowed_origins = [
             r"https://.*\.vercel\.app",
-            "http://localhost:8001",
+            "http://localhost:8000",
             "http://localhost:3000",
             r"http://192\.168\.[0-9]+\.[0-9]+:[0-9]+"
         ]
@@ -154,6 +158,11 @@ def create_app():
     app.register_blueprint(petty_cash_bp, url_prefix="/api/petty-cash")
     app.register_blueprint(petty_cash_report_bp, url_prefix="/api/petty-cash-report")
     app.register_blueprint(sms_bp)
+    
+    # HR & Attendance Blueprints
+    app.register_blueprint(hr_bp, url_prefix="/api/hr")
+    app.register_blueprint(biometric_bp, url_prefix="/api/biometric")
+    app.register_blueprint(attendance_sync_bp)
 
     # -----------------------------
     # SERVE UPLOADS (legacy - kept for backward compatibility)
@@ -214,19 +223,39 @@ def create_app():
     def request_entity_too_large(error):
         return jsonify({'message': 'File too large. Maximum size is 16 MB.'}), 413
 
+    @app.errorhandler(500)
+    def internal_error(error):
+        import traceback
+        with open("global_500_error.log", "w") as f:
+            f.write(traceback.format_exc() or str(error))
+        return jsonify({'error': 'Internal server error'}), 500
+        
+    from werkzeug.exceptions import HTTPException
+
+    @app.errorhandler(Exception)
+    def handle_exception(e):
+        if isinstance(e, HTTPException):
+            return jsonify({'error': e.description}), e.code
+        import traceback
+        with open("global_500_error.log", "w") as f:
+            f.write(traceback.format_exc() or str(e))
+        return jsonify({'error': 'Internal server error'}), 500
     return app
 
 
 if __name__ == "__main__":
     app = create_app()
 
-    # 🔴 RUN ONCE IF TABLES NOT CREATED (DEV ONLY)
-    from extensions import db
+    # Auto-migrate on startup (dev convenience).
+    # Wrapped in try/except so a stale migration state never prevents the server starting.
     from flask_migrate import upgrade
-    from sqlalchemy import inspect, text
     with app.app_context():
-        upgrade()
-        print("[OK] Database upgraded.")
+        try:
+            upgrade()
+            print("[OK] Database is up to date.")
+        except Exception as migrate_err:
+            print(f"[WARN] Migration check failed: {migrate_err}")
+            print("[WARN] Server will still start — run 'flask db upgrade' manually if needed.")
 
     port = int(os.getenv("PORT", 5001))
     debug = os.getenv("FLASK_DEBUG", "false").lower() == "true"

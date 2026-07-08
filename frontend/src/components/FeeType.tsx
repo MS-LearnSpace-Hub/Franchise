@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import api from '../api';
+import axios from "axios";
 
 interface FeeType {
     id?: number;
@@ -119,24 +120,41 @@ const FeeTypeManagement: React.FC = () => {
         e.preventDefault();
 
         try {
-            let globalBranch = localStorage.getItem('currentBranch') || 'All';
+            const globalBranch = localStorage.getItem("currentBranch") || "All";
 
-            const payload = { ...formData, branch: formData.branch || globalBranch || 'All' };
+            const payload = {
+                ...formData,
+                branch: formData.branch || globalBranch || "All",
+            };
 
             if (editingId) {
                 await api.put(`/fee-types/${editingId}`, payload);
+                alert("Fee Type updated successfully.");
             } else {
-                await api.post('/fee-types', payload);
+                await api.post("/fee-types", payload);
+                alert("Fee Type created successfully.");
             }
 
             resetForm();
             fetchFeeTypes();
-        } catch (error) {
-            console.error('Error saving fee type:', error);
-            alert('Error saving fee type. Please try again.');
+
+        } catch (error: unknown) {
+            console.error("Error saving fee type:", error);
+
+            let errorMessage = "Error saving fee type. Please try again.";
+
+            if (axios.isAxiosError(error)) {
+                errorMessage =
+                    error.response?.data?.error ||
+                    error.response?.data?.message ||
+                    error.message;
+            } else if (error instanceof Error) {
+                errorMessage = error.message;
+            }
+
+            alert(errorMessage);
         }
     };
-
     const handleEdit = (feeType: FeeType) => {
         setFormData(feeType);
         setEditingId(feeType.id || null);

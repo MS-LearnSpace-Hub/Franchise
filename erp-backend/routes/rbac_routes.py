@@ -20,6 +20,7 @@ def _require_role_listing_access(current_user):
     if (
         not has_permission(current_user, "system.roles.role-permissions", "read")
         and not has_permission(current_user, "system.users.user-management", "read")
+        and not has_permission(current_user, "hr.hr.staff-master", "write")
     ):
         return jsonify({"error": "Unauthorized"}), 403
     return None

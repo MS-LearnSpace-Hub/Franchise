@@ -85,7 +85,7 @@ const UpdateRebateDate: React.FC = () => {
             const response = await api.put('/update-rebate-date', payload);
 
             setSuccessMessage(`Success: ${response.data.message}`);
-            setTimeout(() => setSuccessMessage(''), 5000);
+            setTimeout(() => setSuccessMessage(''), 5001);
 
             // Clear the local state for this row
             setNewDates(prev => {
@@ -97,7 +97,7 @@ const UpdateRebateDate: React.FC = () => {
         } catch (err: any) {
             console.error("Error updating rebate date", err);
             setError(err.response?.data?.error || 'Failed to update rebate date');
-            setTimeout(() => setError(''), 5000);
+            setTimeout(() => setError(''), 5001);
         } finally {
             setSavingId(null);
         }
@@ -182,10 +182,10 @@ const UpdateRebateDate: React.FC = () => {
                                                 onClick={() => handleSave(inst)}
                                                 disabled={!newDates[inst.id] || savingId === inst.id}
                                                 className={`px-4 py-1.5 rounded text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-violet-500 transition-colors ${!newDates[inst.id]
-                                                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                                        : savingId === inst.id
-                                                            ? 'bg-violet-400 text-white cursor-wait'
-                                                            : 'bg-violet-600 text-white hover:bg-violet-700'
+                                                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                                    : savingId === inst.id
+                                                        ? 'bg-violet-400 text-white cursor-wait'
+                                                        : 'bg-violet-600 text-white hover:bg-violet-700'
                                                     }`}
                                             >
                                                 {savingId === inst.id ? 'Saving...' : 'Update'}

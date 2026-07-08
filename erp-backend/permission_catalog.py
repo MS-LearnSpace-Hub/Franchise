@@ -94,6 +94,20 @@ PERMISSION_CATALOG = [
     permission("System", "Roles", "Role Permissions", "system.roles.role-permissions"),
     permission("System", "Franchise", "Franchise Management", "system.franchise.franchise-management"),
     permission("System", "School", "School Management", "system.school.school-management"),
+
+    permission("HR", "HR", "HR Management", "hr.hr.hr-management"),
+    permission("HR", "HR", "Staff Master", "hr.hr.staff-master", "Create and manage staff profiles and login access"),
+    permission("HR", "HR", "Staff Directory", "hr.hr.staff-directory", "View staff directory and search staff"),
+    permission("HR", "HR", "Staff Profile", "hr.hr.staff-profile", "View individual staff profile"),
+    permission("HR", "HR", "Staff Categories", "hr.hr.staff-categories", "Manage staff HR categories (Teaching, Non-Teaching, Menial, etc.)"),
+    permission("HR", "HR", "Staff Statuses", "hr.hr.staff-statuses", "Manage employment status master (Active, Probation, etc.)"),
+    permission("HR", "HR", "Departments", "hr.hr.departments"),
+    permission("HR", "HR", "Designations", "hr.hr.designations"),
+    permission("HR", "HR", "Shifts", "hr.hr.shifts"),
+    permission("HR", "Biometrics", "Biometric Devices", "hr.biometrics.devices", "Manage biometric device hardware"),
+    permission("HR", "Biometrics", "Staff Biometric Mapping", "hr.biometrics.mapping", "Map staff to biometric devices"),
+    permission("HR", "Attendance", "Attendance Summary", "hr.attendance.summary", "View staff attendance summary"),
+    permission("HR", "Attendance", "Punch Log", "hr.attendance.punch-log", "View raw biometric punch logs"),
 ]
 
 LEGACY_PERMISSION_ALIASES = {

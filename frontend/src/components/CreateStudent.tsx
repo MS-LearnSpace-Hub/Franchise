@@ -119,7 +119,7 @@ const FormField = React.memo(
     return (
       <div className={className}>
         <label htmlFor={inputId} className={LABEL_STYLE}>
-          {label} {required && <span className="text-red-500">*</span>  }
+          {label} {required && <span className="text-red-500">*</span>}
         </label>
         {as === "input" && (
           <input
@@ -246,7 +246,7 @@ const CreateStudent: React.FC<CreateStudentProps> = ({
 
   const initialFormData: Record<string, any> = {
     admissionNo: "",
-    enrollment_no:"",
+    enrollment_no: "",
     first_name: "",
     last_name: "",
     gender: "",
@@ -535,7 +535,7 @@ const CreateStudent: React.FC<CreateStudentProps> = ({
 
           let targetBranch = "";
           const isAllBranch = savedBranch === "All" || savedBranch === "All Branches";
-          
+
           if (savedBranch && !isAllBranch) {
             targetBranch = savedBranch;
           } else if (userBranch) {
@@ -829,7 +829,7 @@ const CreateStudent: React.FC<CreateStudentProps> = ({
   const buildPayload = () => {
     return {
       admission_no: formData.admissionNo,
-      enrollment_no:formData.enrollment_no,
+      enrollment_no: formData.enrollment_no,
       first_name: formData.first_name,
       last_name: formData.last_name,
       gender: formData.gender,
@@ -942,7 +942,7 @@ const CreateStudent: React.FC<CreateStudentProps> = ({
         !formData.section ||
         !formData.Fatherfirstname ||
         !formData.FatherPhone ||
-        !formData.Motherfirstname )
+        !formData.Motherfirstname)
     ) {
       alert("Fill required fields");
       return;
@@ -1074,7 +1074,7 @@ const CreateStudent: React.FC<CreateStudentProps> = ({
               value={formData.admissionNo}
               onChange={handleInputChange}
               disabled={true}
-            />           
+            />
             <FormField
               label="Enrollment No"
               name="enrollment_no"
@@ -1089,14 +1089,15 @@ const CreateStudent: React.FC<CreateStudentProps> = ({
               value={formData.admission_date}
               onChange={handleInputChange}
             />
-            <FormField
+            {/*This RollNumber screen no need to shown in at the time of Creating Student*/}
+            {/*<FormField          
               label="Roll Number"
               name="Roll_Number"
               type="number"
               value={formData.Roll_Number}
               onChange={handleInputChange}
               disabled={isViewMode}
-            />
+            />*/}
             <FormField
               label="Admission Category"
               name="AdmissionCategory"
@@ -1107,7 +1108,7 @@ const CreateStudent: React.FC<CreateStudentProps> = ({
               disabled={isViewMode}
             >
               <option value="">-- Select --</option>
-              <option value="Regular">Regular</option> 
+              <option value="Regular">Regular</option>
               <option value="Day-Scholar">Day-Scholar</option>
             </FormField>
             <FormField

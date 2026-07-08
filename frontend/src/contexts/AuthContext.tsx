@@ -109,6 +109,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const hasPermission = useCallback(
     (code: string, action: "read" | "write" | "append" | "delete" = "read") => {
       if (!user) return false;
+      if (user.role === "SuperAdmin") return true;
 
       const permission = user.permissions?.[code];
       if (!permission) return false;

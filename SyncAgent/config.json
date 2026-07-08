@@ -1,0 +1,10 @@
+{
+   "erp_url": "http://192.168.1.53:5001",
+   "branch_id": 1,
+   "api_key": "your_super_secret_api_key_123",
+   "sql_server": "(local)\\MANTRA2022",
+   "database": "PayTime",
+   "username": "",
+   "password": "",
+   "sync_interval": 60
+}
