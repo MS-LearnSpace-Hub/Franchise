@@ -569,13 +569,13 @@ export const StaffMaster: React.FC = () => {
                         <section>
                             <SectionHeader icon="📞" title="Contact & Address" />
                             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
-                                {renderInput({ label: "Mobile", field: "mobile" })}
-                                {renderInput({ label: "Email", field: "email", type: "email" })}
-                                {renderInput({ label: "Address", field: "address" })}
-                                {renderInput({ label: "City", field: "city" })}
-                                {renderInput({ label: "State", field: "state" })}
-                                {renderInput({ label: "Country", field: "country" })}
-                                {renderInput({ label: "Pincode", field: "pincode" })}
+                                {renderInput({ label: "Mobile", field: "mobile", required: true })}
+                                {renderInput({ label: "Email", field: "email", type: "email", required: true })}
+                                {renderInput({ label: "Address", field: "address", required: true })}
+                                {renderInput({ label: "City", field: "city", required: true })}
+                                {renderInput({ label: "State", field: "state", required: true })}
+                                {renderInput({ label: "Country", field: "country", required: true })}
+                                {renderInput({ label: "Pincode", field: "pincode", required: true })}
                             </div>
                         </section>
 

@@ -114,7 +114,7 @@ export const DesignationMaster: React.FC = () => {
                 </div>
                 <div>
                     <label className="block text-xs font-medium text-slate-700 mb-1">Code *</label>
-                    <input type="text" required value={form.designation_code} onChange={e => setForm({ ...form, designation_code: e.target.value })} disabled={!!editingId} className="w-full border rounded p-2 text-sm disabled:bg-gray-100" />
+                    <input type="text" required value={form.designation_code} onChange={e => setForm({ ...form, designation_code: e.target.value.replace(/^0+/, '') })} disabled={!!editingId} className="w-full border rounded p-2 text-sm disabled:bg-gray-100" />
                 </div>
                 <div>
                     <label className="block text-xs font-medium text-slate-700 mb-1">Name *</label>

@@ -95,7 +95,7 @@ export const DepartmentMaster: React.FC = () => {
             <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
                 <div>
                     <label className="block text-xs font-medium text-slate-700 mb-1">Code *</label>
-                    <input type="text" required value={form.department_code} onChange={e => setForm({ ...form, department_code: e.target.value.replace(/\D/g, '') })} disabled={!!editingId} className="w-full border rounded p-2 text-sm disabled:bg-gray-100" />
+                    <input type="text" required value={form.department_code} onChange={e => setForm({ ...form, department_code: e.target.value.replace(/\D/g, '').replace(/^0+/, '') })} disabled={!!editingId} className="w-full border rounded p-2 text-sm disabled:bg-gray-100" />
                 </div>
                 <div>
                     <label className="block text-xs font-medium text-slate-700 mb-1">Name *</label>
