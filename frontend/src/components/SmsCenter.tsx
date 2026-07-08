@@ -177,12 +177,13 @@ const AttendanceSmsTab: React.FC = () => {
 
 // ─── Tab 2: Fee Due SMS ───────────────────────────────────────────────────────
 const FeeDueSmsTab: React.FC = () => {
-    const [students, setStudents] = useState<any[]>([]);
-    const [selected, setSelected] = useState<Set<number>>(new Set());
-    const [loading, setLoading] = useState(false);
-    const [sending, setSending] = useState(false);
-    const [result, setResult] = useState<{ sent: number; failed: number; skipped: number } | null>(null);
-    const [minDue, setMinDue] = useState('1');
+    const [students, setStudents]   = useState<any[]>([]);
+    const [selected, setSelected]   = useState<Set<number>>(new Set());
+    const [loading, setLoading]     = useState(false);
+    const [sending, setSending]     = useState(false);
+    const [result, setResult]       = useState<{ sent: number; failed: number; skipped: number } | null>(null);
+    const [cutoffDate, setCutoffDate] = useState(new Date().toISOString().split('T')[0]);
+    const [expandedId, setExpandedId] = useState<number | null>(null);
 
     const handleSearch = async () => {
         setLoading(true);
@@ -191,16 +192,14 @@ const FeeDueSmsTab: React.FC = () => {
         setResult(null);
         try {
             const branch = localStorage.getItem('currentBranch') || 'All';
-            const res = await api.get('/reports/fees/due', {
-                params: { branch }
+            const res = await api.get('/reports/fees/due-by-cutoff', {
+                params: { branch, cutoff_date: cutoffDate }
             });
-            const list = (res.data || []).filter((s: any) =>
-                !minDue || s.due_amount >= Number(minDue)
-            );
+            const list = res.data || [];
             setStudents(list);
             setSelected(new Set(list.map((s: any) => s.student_id)));
-        } catch (e) {
-            alert('Failed to fetch fee due list');
+        } catch (e: any) {
+            alert(`Failed to fetch fee due list: ${e.response?.data?.error || e.message}`);
         } finally {
             setLoading(false);
         }
@@ -208,11 +207,12 @@ const FeeDueSmsTab: React.FC = () => {
 
     const handleSend = async () => {
         if (selected.size === 0) return;
-        if (!window.confirm(`Send fee due SMS to ${selected.size} parent(s)?`)) return;
+        if (!window.confirm(`Send fee due SMS to ${selected.size} parent(s) for dues up to ${cutoffDate}?`)) return;
         setSending(true);
         try {
             const res = await api.post('/sms/send-fee-due', {
-                student_ids: Array.from(selected)
+                student_ids: Array.from(selected),
+                cutoff_date: cutoffDate
             });
             setResult(res.data);
             setSelected(new Set());
@@ -226,23 +226,32 @@ const FeeDueSmsTab: React.FC = () => {
     const toggleAll = (checked: boolean) =>
         setSelected(checked ? new Set(students.map(s => s.student_id)) : new Set());
 
+    const totalOverdue = students.reduce((sum, s) => sum + (s.overdue_amount || 0), 0);
+
     return (
         <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Minimum Due Amount (₹)</label>
-                    <input type="number" value={minDue} min="1"
-                        onChange={e => setMinDue(e.target.value)}
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Cutoff Date</label>
+                    <input type="date" value={cutoffDate}
+                        max={new Date().toISOString().split('T')[0]}
+                        onChange={e => setCutoffDate(e.target.value)}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" />
+                    <p className="text-xs text-gray-400 mt-1">Installments due on/before this date</p>
                 </div>
                 <button onClick={handleSearch} disabled={loading}
                     className="bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-md text-sm disabled:bg-gray-400">
-                    {loading ? 'Searching…' : 'Get Students with Due'}
+                    {loading ? 'Searching…' : 'Get Overdue Students'}
                 </button>
                 <button onClick={handleSend} disabled={selected.size === 0 || sending}
                     className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-md text-sm disabled:bg-gray-300 font-medium">
                     {sending ? 'Sending…' : `📱 Send SMS (${selected.size})`}
                 </button>
+                {students.length > 0 && (
+                    <div className="text-sm text-gray-600 flex items-center justify-end">
+                        Total Overdue: <span className="font-bold text-red-600 ml-1">₹{totalOverdue.toLocaleString()}</span>
+                    </div>
+                )}
             </div>
 
             {students.length > 0 && (
@@ -254,7 +263,7 @@ const FeeDueSmsTab: React.FC = () => {
                                 ref={el => { if (el) el.indeterminate = selected.size > 0 && selected.size < students.length; }}
                                 onChange={e => toggleAll(e.target.checked)}
                                 className="h-3.5 w-3.5 accent-violet-600" />
-                            Select all ({students.length} students)
+                            Select all ({students.length} students overdue as of {cutoffDate})
                         </label>
                         {selected.size > 0 && (
                             <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
@@ -271,31 +280,55 @@ const FeeDueSmsTab: React.FC = () => {
                                 <th className="px-3 py-2 text-left font-medium text-gray-500">Class</th>
                                 <th className="px-3 py-2 text-left font-medium text-gray-500">Father</th>
                                 <th className="px-3 py-2 text-left font-medium text-gray-500">Phone</th>
-                                <th className="px-3 py-2 text-right font-medium text-gray-500">Due Amount</th>
+                                <th className="px-3 py-2 text-right font-medium text-gray-500">Overdue (as of cutoff)</th>
+                                <th className="px-3 py-2 w-8"></th>
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
                             {students.map(s => (
-                                <tr key={s.student_id} className="hover:bg-gray-50">
-                                    <td className="px-3 py-2">
-                                        <input type="checkbox"
-                                            checked={selected.has(s.student_id)}
-                                            onChange={() => setSelected(prev => {
-                                                const next = new Set(prev);
-                                                next.has(s.student_id) ? next.delete(s.student_id) : next.add(s.student_id);
-                                                return next;
-                                            })}
-                                            className="h-4 w-4 accent-violet-600 cursor-pointer" />
-                                    </td>
-                                    <td className="px-3 py-2 font-medium">{s.name}</td>
-                                    <td className="px-3 py-2 text-blue-600">{s.admission_no}</td>
-                                    <td className="px-3 py-2">{s.class} {s.section}</td>
-                                    <td className="px-3 py-2 text-gray-500">{s.father_name || '—'}</td>
-                                    <td className="px-3 py-2 text-gray-500">{s.father_mobile || '—'}</td>
-                                    <td className="px-3 py-2 text-right font-semibold text-red-600">
-                                        ₹{s.due_amount?.toLocaleString()}
-                                    </td>
-                                </tr>
+                                <React.Fragment key={s.student_id}>
+                                    <tr className="hover:bg-gray-50">
+                                        <td className="px-3 py-2">
+                                            <input type="checkbox"
+                                                checked={selected.has(s.student_id)}
+                                                onChange={() => setSelected(prev => {
+                                                    const next = new Set(prev);
+                                                    next.has(s.student_id) ? next.delete(s.student_id) : next.add(s.student_id);
+                                                    return next;
+                                                })}
+                                                className="h-4 w-4 accent-violet-600 cursor-pointer" />
+                                        </td>
+                                        <td className="px-3 py-2 font-medium">{s.name}</td>
+                                        <td className="px-3 py-2 text-blue-600">{s.admission_no}</td>
+                                        <td className="px-3 py-2">{s.class} {s.section}</td>
+                                        <td className="px-3 py-2 text-gray-500">{s.father_name || '—'}</td>
+                                        <td className="px-3 py-2 text-gray-500">{s.father_mobile || '—'}</td>
+                                        <td className="px-3 py-2 text-right font-semibold text-red-600">
+                                            ₹{s.overdue_amount?.toLocaleString()}
+                                        </td>
+                                        <td className="px-3 py-2 text-center">
+                                            <button
+                                                onClick={() => setExpandedId(expandedId === s.student_id ? null : s.student_id)}
+                                                className="text-gray-400 hover:text-violet-600 text-xs">
+                                                {expandedId === s.student_id ? '▲' : '▼'}
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    {expandedId === s.student_id && (
+                                        <tr className="bg-gray-50">
+                                            <td colSpan={8} className="px-6 py-2">
+                                                <div className="text-xs text-gray-500 space-y-1">
+                                                    {(s.overdue_installments || []).map((inst: any, i: number) => (
+                                                        <div key={i} className="flex justify-between max-w-md">
+                                                            <span>{inst.title} <span className="text-gray-400">(due {inst.due_date})</span></span>
+                                                            <span className="font-medium text-red-500">₹{inst.due_amount.toLocaleString()}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    )}
+                                </React.Fragment>
                             ))}
                         </tbody>
                     </table>
@@ -303,7 +336,7 @@ const FeeDueSmsTab: React.FC = () => {
             )}
 
             {students.length === 0 && !loading && (
-                <p className="text-center text-gray-400 text-sm py-8">Search above to load students with fee due</p>
+                <p className="text-center text-gray-400 text-sm py-8">Select a cutoff date above and click "Get Overdue Students"</p>
             )}
 
             <ResultBar result={result} />
