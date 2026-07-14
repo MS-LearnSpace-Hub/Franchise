@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { hr } from '../api';
+import * as XLSX from 'xlsx';
+import { saveAs } from 'file-saver';
+import { useAuth } from '../contexts/AuthContext';
 
 const generateMonthOptions = () => {
   const options = [];
@@ -62,6 +65,9 @@ interface StaffMonthlyData {
 }
 
 const HRAttendanceSummary: React.FC = () => {
+  const { user } = useAuth();
+  const isManager = ['SuperAdmin', 'Admin', 'HR', 'Principal', 'Management'].includes(user?.role || '');
+
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -74,7 +80,7 @@ const HRAttendanceSummary: React.FC = () => {
   const [filters, setFilters] = useState({
     date_from: monthOptions[0].firstDay,
     date_to: monthOptions[0].lastDay,
-    employee: '',
+    employee: isManager ? '' : (user?.username || ''),
     status: 'ALL'
   });
 
@@ -139,7 +145,71 @@ const HRAttendanceSummary: React.FC = () => {
     const d = new Date(dateStr);
     return `${d.getDate()}-${d.toLocaleDateString('en-US', { month: 'short' })}-${String(d.getFullYear()).slice(-2)}`;
   };
+  //Excel Report of Employee Punches
 
+  const exportToExcel = () => {
+    const excelData: any[] = [];
+
+    groupedData.forEach((staff, index) => {
+      const row: any = {
+        Sno: index + 1,
+        EmployeeID: staff.employee_id,
+        EmployeeName: staff.staff_name,
+        Designation: staff.designation,
+      };
+
+      datesInMonth.forEach((date) => {
+        const record = staff.daily_records[date];
+
+        if (!record) {
+          row[`${monthDisplayFormat(date)} In`] = '-';
+          row[`${monthDisplayFormat(date)} Out`] = '-';
+          return;
+        }
+
+        const status = (record.attendance_status || '').toUpperCase();
+
+        if (status.includes('ABSENT') || status.includes('LEAVE')) {
+          row[`${monthDisplayFormat(date)} In`] = 'Absent';
+          row[`${monthDisplayFormat(date)} Out`] = 'Absent';
+        } else if (status === 'HALF_DAY') {
+          row[`${monthDisplayFormat(date)} In`] = formatTime12h(record.first_in);
+          row[`${monthDisplayFormat(date)} Out`] = '0.5 Day';
+        } else {
+          row[`${monthDisplayFormat(date)} In`] = formatTime12h(record.first_in);
+          row[`${monthDisplayFormat(date)} Out`] = formatTime12h(record.last_out);
+        }
+      });
+
+      excelData.push(row);
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(excelData);
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(
+      workbook,
+      worksheet,
+      'Attendance Summary'
+    );
+
+    const excelBuffer = XLSX.write(workbook, {
+      bookType: 'xlsx',
+      type: 'array',
+    });
+
+    const file = new Blob(
+      [excelBuffer],
+      {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      }
+    );
+
+    saveAs(
+      file,
+      `AttendanceSummary_${selectedMonth}.xlsx`
+    );
+  };
   // Group records by employee
   const groupedData = useMemo(() => {
     const map = new Map<string, StaffMonthlyData>();
@@ -198,6 +268,13 @@ const HRAttendanceSummary: React.FC = () => {
         </div>
         <div className="flex gap-2 mt-4 sm:mt-0">
           <button
+            onClick={exportToExcel}
+            disabled={loading || groupedData.length === 0}
+            className="px-4 py-2 bg-green-600 border border-transparent rounded-md text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
+          >
+            Download Excel
+          </button>
+          <button
             onClick={async () => {
               try {
                 setIsSyncing(true);
@@ -230,7 +307,7 @@ const HRAttendanceSummary: React.FC = () => {
         </div>
         <div>
           <label className="block text-xs font-semibold text-gray-700 mb-1">Employee Search</label>
-          <input type="text" name="employee" placeholder="Name or ID..." value={filters.employee} onChange={handleFilterChange} className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm py-2 px-3" />
+          <input type="text" name="employee" placeholder="Name or ID..." value={filters.employee} onChange={handleFilterChange} disabled={!isManager} className={`mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm py-2 px-3 ${!isManager ? 'bg-gray-100 cursor-not-allowed' : ''}`} />
         </div>
         <div>
           <label className="block text-xs font-semibold text-gray-700 mb-1">Status</label>
@@ -260,12 +337,12 @@ const HRAttendanceSummary: React.FC = () => {
                   <th rowSpan={2} className="px-3 py-2 border border-gray-300 sticky left-[40px] bg-[#f8f9fa] z-20 w-32 border-r-2">Staff Employee Id</th>
                   <th rowSpan={2} className="px-3 py-2 border border-gray-300 sticky left-[168px] bg-[#f8f9fa] z-20 w-48 text-left border-r-2">Staff name</th>
                   <th rowSpan={2} className="px-3 py-2 border border-gray-300 sticky left-[360px] bg-[#f8f9fa] z-20 w-40 text-left border-r-4 shadow-[4px_0_10px_-5px_rgba(0,0,0,0.1)]">Designation</th>
-
+                  {/* 
                   <th rowSpan={2} className="px-2 py-2 border border-gray-300 w-16">Total days</th>
                   <th rowSpan={2} className="px-2 py-2 border border-gray-300 w-16">WeekOff</th>
                   <th rowSpan={2} className="px-2 py-2 border border-gray-300 w-16">Holidays</th>
                   <th rowSpan={2} className="px-2 py-2 border border-gray-300 w-16">Present</th>
-                  <th rowSpan={2} className="px-2 py-2 border border-gray-300 w-16 border-r-4">Absent</th>
+                  <th rowSpan={2} className="px-2 py-2 border border-gray-300 w-16 border-r-4">Absent</th>*/}
 
                   {datesInMonth.map(date => (
                     <th key={date} colSpan={2} className="px-2 py-1 border border-gray-300 bg-gray-100 font-extrabold text-[11px] w-[240px] min-w-[240px]">
@@ -290,11 +367,11 @@ const HRAttendanceSummary: React.FC = () => {
                     <td className="px-3 py-2 border border-gray-300 sticky left-[168px] bg-white z-10 text-left font-semibold truncate max-w-[192px] border-r-2" title={staff.staff_name}>{staff.staff_name}</td>
                     <td className="px-3 py-2 border border-gray-300 sticky left-[360px] bg-white z-10 text-left truncate max-w-[160px] border-r-4 shadow-[4px_0_10px_-5px_rgba(0,0,0,0.1)]" title={staff.designation}>{staff.designation}</td>
 
-                    <td className="px-2 py-2 border border-gray-300 font-medium">{staff.total_days}</td>
+                    {/*<td className="px-2 py-2 border border-gray-300 font-medium">{staff.total_days}</td>
                     <td className="px-2 py-2 border border-gray-300">{staff.weekoffs}</td>
                     <td className="px-2 py-2 border border-gray-300">{staff.holidays}</td>
                     <td className="px-2 py-2 border border-gray-300 font-medium">{staff.present}</td>
-                    <td className="px-2 py-2 border border-gray-300 font-medium text-red-500 border-r-4">{staff.absent}</td>
+                    <td className="px-2 py-2 border border-gray-300 font-medium text-red-500 border-r-4">{staff.absent}</td>*/}
 
                     {datesInMonth.map(date => {
                       const record = staff.daily_records[date];

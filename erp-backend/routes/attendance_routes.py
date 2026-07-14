@@ -578,8 +578,10 @@ from services.attendance.attendance_engine import process_staging_records
 @token_required
 def get_staff_attendance_summary(current_user):
     try:
-        from helpers import has_permission
-        is_hr = has_permission(current_user, "hr.attendance.summary", "read")
+        from helpers import has_permission, get_effective_role_name
+        has_read_perm = has_permission(current_user, "hr.attendance.summary", "read")
+        effective_role = get_effective_role_name(current_user)
+        is_hr = has_read_perm and effective_role in ["SuperAdmin", "Admin", "HR", "Principal", "Management"]
 
         query = AttendanceHead.query.join(StaffMaster)
         query = scope_query(query, StaffMaster)
