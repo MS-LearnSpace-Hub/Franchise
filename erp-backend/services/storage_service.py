@@ -1,5 +1,6 @@
 import os
 import boto3
+from botocore.config import Config
 from botocore.exceptions import ClientError
 from werkzeug.utils import secure_filename
 import uuid
@@ -17,7 +18,8 @@ def get_s3_client():
         's3',
         endpoint_url=oci_endpoint_url,
         aws_access_key_id=oci_access_key,
-        aws_secret_access_key=oci_secret_key
+        aws_secret_access_key=oci_secret_key,
+        config=Config(signature_version='s3')
     )
 
 def upload_file_to_storage(file_stream, filename, folder=""):
@@ -45,11 +47,13 @@ def upload_file_to_storage(file_stream, filename, folder=""):
         content_type = 'application/octet-stream'
 
     try:
-        s3_client.upload_fileobj(
-            file_stream,
-            bucket_name,
-            object_key,
-            ExtraArgs={'ContentType': content_type}
+        # Read the file into memory to avoid chunked transfer encoding (which OCI rejects for PutObject)
+        file_content = file_stream.read()
+        s3_client.put_object(
+            Bucket=bucket_name,
+            Key=object_key,
+            Body=file_content,
+            ContentType=content_type
         )
         return object_key
     except ClientError as e:

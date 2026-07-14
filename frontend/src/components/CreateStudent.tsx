@@ -1002,9 +1002,10 @@ const CreateStudent: React.FC<CreateStudentProps> = ({
         if (onSave) onSave(res.data.student, exit);
       }
 
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error saving student:", error);
-      alert("Failed to save student.");
+      const errorMsg = error.response?.data?.error || error.response?.data?.message || error.message || "Failed to save student";
+      alert(`Failed to save student: ${errorMsg}`);
     }
 
   };
