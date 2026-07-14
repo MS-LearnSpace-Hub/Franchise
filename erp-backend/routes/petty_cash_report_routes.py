@@ -430,15 +430,22 @@ def export_excel(current_user):
 @token_required
 def month_wise_ledger(current_user):
     try:
+        from helpers import has_permission, validate_cross_branch_access
+        # Feature Permission
+        if not has_permission(current_user, "fees.fee.petty-cash-report", "read"):
+            return jsonify({"message": "Unauthorized"}), 403
+
         academic_year = request.headers.get("X-Academic-Year", "2024-2025")
 
-        if current_user.role and current_user.role.lower() in ("superadmin", "admin", "branch admin", "accountant"):
-            branch_val = request.args.get("branch_id") or request.headers.get("X-Branch") or current_user.branch
-            from routes.petty_cash_routes import resolve_branch_id
-            branch_id = resolve_branch_id(branch_val)
-        else:
-            from routes.petty_cash_routes import resolve_branch_id
-            branch_id = resolve_branch_id(current_user.branch)
+        branch_val = request.args.get("branch_id") or request.headers.get("X-Branch") or current_user.branch
+        from routes.petty_cash_routes import resolve_branch_id
+        branch_id = resolve_branch_id(branch_val)
+
+        # Branch Scope
+        if branch_id:
+            is_valid, msg = validate_cross_branch_access(current_user, source_branch_id=branch_id)
+            if not is_valid:
+                return jsonify({"message": msg}), 403
 
         if not branch_id:
             return jsonify({"message": "Valid Branch required"}), 400
@@ -545,15 +552,22 @@ def month_wise_ledger(current_user):
 @token_required
 def ledger_details(current_user):
     try:
+        from helpers import has_permission, validate_cross_branch_access
+        # Feature Permission
+        if not has_permission(current_user, "fees.fee.petty-cash-report", "read"):
+            return jsonify({"message": "Unauthorized"}), 403
+
         academic_year = request.headers.get("X-Academic-Year", "2024-2025")
         
-        if current_user.role and current_user.role.lower() in ("superadmin", "admin", "branch admin", "accountant"):
-            branch_val = request.args.get("branch_id") or request.headers.get("X-Branch") or current_user.branch
-            from routes.petty_cash_routes import resolve_branch_id
-            branch_id = resolve_branch_id(branch_val)
-        else:
-            from routes.petty_cash_routes import resolve_branch_id
-            branch_id = resolve_branch_id(current_user.branch)
+        branch_val = request.args.get("branch_id") or request.headers.get("X-Branch") or current_user.branch
+        from routes.petty_cash_routes import resolve_branch_id
+        branch_id = resolve_branch_id(branch_val)
+
+        # Branch Scope
+        if branch_id:
+            is_valid, msg = validate_cross_branch_access(current_user, source_branch_id=branch_id)
+            if not is_valid:
+                return jsonify({"message": msg}), 403
 
         if not branch_id:
             return jsonify({"message": "Valid Branch required"}), 400

@@ -4,7 +4,7 @@ from flask import Blueprint, jsonify, request, current_app, send_from_directory
 from extensions import db
 from models import Branch, School, OrgMaster, User, UserBranchAccess, ClassMaster, ClassSection
 from services.sequence_service import SequenceService
-from helpers import token_required, require_academic_year, get_branch_query_filter, get_user_allowed_branches
+from helpers import token_required, require_academic_year, get_branch_query_filter, get_user_allowed_branches, has_permission, validate_cross_branch_access
 from datetime import date, datetime
 from sqlalchemy import or_ 
 # pyrefly: ignore [missing-import]
@@ -82,9 +82,9 @@ def get_all_schools(current_user):
 @bp.route("/api/schools", methods=["POST"])
 @token_required
 def create_school(current_user):
-    """Create a new school (SuperAdmin only)."""
-    if current_user.role != 'SuperAdmin':
-        return jsonify({"error": "Unauthorized. SuperAdmin only."}), 403
+    """Create a new school."""
+    if not has_permission(current_user, "setup.school-setup.setup-school", "write"):
+        return jsonify({"error": "Unauthorized"}), 403
 
     data = request.json or {}
     school_name = (data.get("school_name") or "").strip()
@@ -121,16 +121,18 @@ def create_school(current_user):
 @bp.route("/api/schools/<int:school_id>", methods=["PUT"])
 @token_required
 def update_school(current_user, school_id):
-    """Update school details. SuperAdmin can update any; Admin can update their own."""
-    if current_user.role not in ('SuperAdmin', 'Admin'):
+    """Update school details."""
+    if not has_permission(current_user, "setup.school-setup.setup-school", "write"):
         return jsonify({"error": "Unauthorized"}), 403
 
     school = School.query.get(school_id)
     if not school or not school.is_active:
         return jsonify({"error": "School not found"}), 404
 
-    if current_user.role == 'Admin' and school.id != current_user.school_id:
-        return jsonify({"error": "Unauthorized: not your school"}), 403
+    # School Scope Validation
+    is_valid, error = validate_cross_branch_access(current_user, target_school_ids=[school.id])
+    if not is_valid:
+        return jsonify({"error": error}), 403
 
     data = request.json or {}
     for field in ('school_name', 'school_code', 'address', 'phone', 'email',
@@ -151,9 +153,9 @@ def update_school(current_user, school_id):
 @bp.route("/api/schools/<int:school_id>", methods=["DELETE"])
 @token_required
 def delete_school(current_user, school_id):
-    """Soft-delete a school (SuperAdmin only)."""
-    if current_user.role != 'SuperAdmin':
-        return jsonify({"error": "Unauthorized. SuperAdmin only."}), 403
+    """Soft-delete a school."""
+    if not has_permission(current_user, "setup.school-setup.setup-school", "delete"):
+        return jsonify({"error": "Unauthorized"}), 403
 
     school = School.query.get(school_id)
     if not school:
@@ -172,15 +174,17 @@ def delete_school(current_user, school_id):
 @token_required
 def upload_school_logo(current_user, school_id):
     """Upload a logo image for a school."""
-    if current_user.role not in ('SuperAdmin', 'Admin'):
+    if not has_permission(current_user, "setup.school-setup.setup-school", "write"):
         return jsonify({"error": "Unauthorized"}), 403
 
     school = School.query.get(school_id)
     if not school or not school.is_active:
         return jsonify({"error": "School not found"}), 404
 
-    if current_user.role == 'Admin' and school.id != current_user.school_id:
-        return jsonify({"error": "Unauthorized: not your school"}), 403
+    # School Scope Validation
+    is_valid, error = validate_cross_branch_access(current_user, target_school_ids=[school.id])
+    if not is_valid:
+        return jsonify({"error": error}), 403
 
     if 'logo' not in request.files:
         return jsonify({"error": "No file provided. Use field name 'logo'"}), 400
@@ -192,14 +196,17 @@ def upload_school_logo(current_user, school_id):
     if not _allowed_logo(file.filename):
         return jsonify({"error": f"File type not allowed. Use: {', '.join(ALLOWED_LOGO_EXTENSIONS)}"}), 400
 
-    # Ensure upload directory exists
-    folder = get_logo_folder()
-    os.makedirs(folder, exist_ok=True)
-
     ext = file.filename.rsplit('.', 1)[1].lower()
     filename = f"school_{school_id}.{ext}"
-    filepath = os.path.join(folder, filename)
-    file.save(filepath)
+    
+    try:
+        from services.storage_service import upload_file_to_storage
+        upload_file_to_storage(file, filename, folder="franchise/public/logos")
+    except (ValueError, ImportError):
+        folder = get_logo_folder()
+        os.makedirs(folder, exist_ok=True)
+        filepath = os.path.join(folder, filename)
+        file.save(filepath)
 
     logo_url = f"/static/logos/{filename}"
     school.logo_url = logo_url
@@ -217,6 +224,18 @@ def upload_school_logo(current_user, school_id):
 
 @bp.route("/static/logos/<path:filename>", methods=["GET"])
 def serve_logo(filename):
+    try:
+        from services.storage_service import get_file_stream
+        stream = get_file_stream(f"franchise/public/logos/{filename}")
+    except ImportError:
+        stream = None
+
+    if stream:
+        from flask import send_file
+        import io
+        ext = filename.rsplit('.', 1)[-1].lower()
+        mimetype = f"image/{ext}" if ext != 'jpg' else "image/jpeg"
+        return send_file(io.BytesIO(stream.read()), mimetype=mimetype)
     return send_from_directory(get_logo_folder(), filename)
 
 
@@ -258,8 +277,8 @@ def get_all_branches(current_user):
 @bp.route("/api/branches", methods=["POST"])
 @token_required
 def create_branch(current_user):
-    """Create a branch and tie it to a school (SuperAdmin or Admin)."""
-    if current_user.role not in ('SuperAdmin', 'Admin'):
+    """Create a branch and tie it to a school."""
+    if not has_permission(current_user, "setup.school-setup.setup-school", "write"):
         return jsonify({"error": "Unauthorized"}), 403
 
     data = request.json or {}
@@ -271,9 +290,19 @@ def create_branch(current_user):
     if not branch_code or not branch_name:
         return jsonify({"error": "branch_code and branch_name are required"}), 400
 
-    # Admin can only create branches in their own school
-    if current_user.role == 'Admin':
-        school_id = current_user.school_id
+    if not school_id:
+        # Fallback to current user's school if creating for themselves
+        from helpers import resolve_user_scope
+        scope = resolve_user_scope(current_user)
+        school_id = scope['school_id']
+        
+        if not school_id:
+             return jsonify({"error": "School ID is required to create a branch"}), 400
+
+    # Ensure user has access to create branches under this school_id
+    is_valid, error = validate_cross_branch_access(current_user, target_school_ids=[school_id])
+    if not is_valid:
+        return jsonify({"error": error}), 403
 
     if school_id:
         school = School.query.get(school_id)
@@ -316,22 +345,28 @@ def create_branch(current_user):
 @bp.route("/api/branches/<int:branch_id>", methods=["PUT"])
 @token_required
 def update_branch(current_user, branch_id):
-    if current_user.role not in ('SuperAdmin', 'Admin'):
+    if not has_permission(current_user, "setup.school-setup.setup-school", "write"):
         return jsonify({"error": "Unauthorized"}), 403
 
     branch = Branch.query.get(branch_id)
     if not branch or not branch.is_active:
         return jsonify({"error": "Branch not found"}), 404
 
-    if current_user.role == 'Admin' and branch.school_id != current_user.school_id:
-        return jsonify({"error": "Unauthorized: branch belongs to a different school"}), 403
+    # Validate they have access to the branch's school
+    is_valid, error = validate_cross_branch_access(current_user, target_school_ids=[branch.school_id])
+    if not is_valid:
+        return jsonify({"error": error}), 403
 
     data = request.json or {}
     for field in ('branch_name', 'branch_code', 'location_code'):
         if field in data:
             setattr(branch, field, data[field])
 
-    if 'school_id' in data and current_user.role == 'SuperAdmin':
+    if 'school_id' in data:
+        # User wants to reassign branch to another school. Verify access to NEW school too.
+        is_valid, error = validate_cross_branch_access(current_user, target_school_ids=[data['school_id']])
+        if not is_valid:
+            return jsonify({"error": f"Cannot reassign to unauthorized school: {error}"}), 403
         branch.school_id = data['school_id']
     branch.updated_by = current_user.user_id
     branch.updated_at = datetime.now()
@@ -347,15 +382,16 @@ def update_branch(current_user, branch_id):
 @bp.route("/api/branches/<int:branch_id>", methods=["DELETE"])
 @token_required
 def delete_branch(current_user, branch_id):
-    if current_user.role not in ('SuperAdmin', 'Admin'):
+    if not has_permission(current_user, "setup.school-setup.setup-school", "delete"):
         return jsonify({"error": "Unauthorized"}), 403
 
     branch = Branch.query.get(branch_id)
     if not branch:
         return jsonify({"error": "Branch not found"}), 404
 
-    if current_user.role == 'Admin' and branch.school_id != current_user.school_id:
-        return jsonify({"error": "Unauthorized"}), 403
+    is_valid, error = validate_cross_branch_access(current_user, target_school_ids=[branch.school_id])
+    if not is_valid:
+        return jsonify({"error": error}), 403
 
     branch.is_active = False
     try:
@@ -384,8 +420,8 @@ def get_all_locations():
 @bp.route("/api/org/locations", methods=["POST"])
 @token_required
 def create_location(current_user):
-    if current_user.role != 'SuperAdmin':
-        return jsonify({"error": "SuperAdmin only"}), 403
+    if not has_permission(current_user, "system.franchise.franchise-management", "write"):
+        return jsonify({"error": "Unauthorized"}), 403
     
     data = request.json or {}
     name = data.get("name")
@@ -428,8 +464,8 @@ def get_all_academic_years():
 @bp.route("/api/setup/seed-branches", methods=["POST"])
 @token_required
 def seed_branches(current_user):
-    if current_user.role != 'SuperAdmin':
-        return jsonify({"error":"Unauthorized. SuperAdmin only"}), 403
+    if not has_permission(current_user, "system.franchise.franchise-management", "write"):
+        return jsonify({"error":"Unauthorized"}), 403
     
     locations = ["Hyderabad", "Mumbai", "Bangalore", "Delhi", "Chennai"]
     seeded_info = []

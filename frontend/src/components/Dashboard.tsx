@@ -31,6 +31,7 @@ import FranchiseManagement from './FranchiseManagement';
 import RolePermissions from './RolePermissions';
 import ControlPanel from './ControlPanel';
 import SchoolManagement from './SchoolManagement';
+import HRAttendanceSummary from './HRAttendanceSummary';
 import { useNavigationHistory } from '../hooks/useNavigationHistory';
 import StaffSupport from './StaffSupport';
 import PettyCash from './PettyCash';
@@ -40,6 +41,26 @@ import MonthWiseLedger from './MonthWiseLedger';
 import PettyCashApproval from './PettyCashApproval';
 import FinancialLayout from './FinancialLayout';
 import SmsCenter from './SmsCenter';
+import HRManagement from './HRManagement';
+import HRLayout from './HRLayout';
+import DepartmentMaster from './DepartmentMaster';
+import DesignationMaster from './DesignationMaster';
+import ShiftMaster from './ShiftMaster';
+import StaffMaster from './StaffMaster';
+import StaffDirectory from './StaffDirectory';
+import { StaffCategoryMaster } from './StaffCategoryMaster';
+import { StaffStatusMaster } from './StaffStatusMaster';
+import StaffProfile from './StaffProfile';
+import { BiometricDevices } from './BiometricDevices';
+import HRPunchLog from './HRPunchLog';
+import { Page } from '../App';
+
+const hrPages = [
+  'hr-management', 'hr-departments', 'hr-designations', 'hr-shifts', 'hr-staff-master', 'hr-staff-directory',
+  'hr-staff-categories', 'hr-staff-statuses',
+  'hr-biometric-devices', 'hr-biometric-mapping', 'hr-attendance-summary', 'hr-punch-log',
+  'staff-profile'
+];
 
 const financialPages = [
   'fee', 'fee-type', 'class-fee-structure', 'assign-special-fee',
@@ -51,9 +72,10 @@ const financialPages = [
 
 interface DashboardProps {
   onLogout: () => void;
+  initialPage?: Page;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
+const Dashboard: React.FC<DashboardProps> = ({ onLogout, initialPage }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const {
     currentPage,
@@ -62,7 +84,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
     goForward,
     canGoBack,
     canGoForward
-  } = useNavigationHistory('dashboard');
+  } = useNavigationHistory(initialPage || 'dashboard');
 
   const toggleSidebar = () => {
     setIsSidebarOpen(!isSidebarOpen);
@@ -106,6 +128,22 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
               {currentPage === 'month-wise-ledger' && <MonthWiseLedger />}
               {currentPage === 'petty-cash-approval' && <PettyCashApproval />}
             </FinancialLayout>
+          ) : hrPages.includes(currentPage) ? (
+            <HRLayout currentPage={currentPage} navigateTo={navigateTo}>
+              {currentPage === 'hr-management' && <HRManagement navigateTo={navigateTo} />}
+              {currentPage === 'hr-departments' && <DepartmentMaster />}
+              {currentPage === 'hr-designations' && <DesignationMaster />}
+              {currentPage === 'hr-shifts' && <ShiftMaster />}
+              {currentPage === 'hr-staff-master' && <StaffMaster />}
+              {currentPage === 'hr-staff-directory' && <StaffDirectory />}
+              {currentPage === 'hr-staff-categories' && <StaffCategoryMaster />}
+              {currentPage === 'hr-staff-statuses' && <StaffStatusMaster />}
+              {currentPage === 'hr-biometric-devices' && <BiometricDevices />}
+              {currentPage === 'hr-biometric-mapping' && <div className="p-6">Staff Biometric Mapping (Coming Soon)</div>}
+              {currentPage === 'hr-attendance-summary' && <HRAttendanceSummary />}
+              {currentPage === 'hr-punch-log' && <HRPunchLog />}
+              {currentPage === 'staff-profile' && <StaffProfile navigateTo={navigateTo} />}
+            </HRLayout>
           ) : (
             <>
               {currentPage === 'administration' && <Administration navigateTo={navigateTo} />}

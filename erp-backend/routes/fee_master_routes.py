@@ -338,6 +338,7 @@ def create_class_fee_structure(current_user):
     
     # Check if this is a bulk create request (frontend sends 'fees' array)
     if "fees" in data and isinstance(data["fees"], list):
+        update_assigned_students = data.get("update_assigned_students", False)
         created_ids = []
         class_name = data.get("class")
         academic_year = data.get("academic_year", "2025-2026")
@@ -406,6 +407,10 @@ def create_class_fee_structure(current_user):
                 fs.branch_id = branch_id
                 if school_id is not None:
                     fs.school_id = school_id
+                
+                if update_assigned_students:
+                    from helpers import update_assigned_student_fees
+                    update_assigned_student_fees(fs, fee_item)
             else:
                 # CREATE new record
                 fs = ClassFeeStructure(
@@ -632,7 +637,7 @@ def update_concession(current_user, original_title, original_year):
         query = Concession.query.filter_by(title=original_title, academic_year=original_year, branch=new_branch)
 
         deleted = query.delete()
-        if deleted == 0 and current_user.role != 'Admin':
+        if deleted == 0 and not allowed['is_unlimited']:
              return jsonify({"error": "Concession not found or unauthorized to edit global concession"}), 403
             
         created_ids = []

@@ -476,7 +476,86 @@ def report_fee_installment_wise(current_user):
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    
+@bp.route("/api/reports/fees/due-by-cutoff", methods=["GET"])
+@token_required
+def report_fee_due_by_cutoff(current_user):
+    """
+    Get students with overdue installments AS OF a cutoff date.
+    Only sums installments whose due_date <= cutoff_date and are still unpaid.
+    Query params: cutoff_date (YYYY-MM-DD, required), branch (optional)
+    """
+    try:
+        h_year, err, code = require_academic_year()
+        if err: return err, code
 
+        cutoff_str = request.args.get("cutoff_date")
+        if not cutoff_str:
+            return jsonify({"error": "cutoff_date is required"}), 400
+
+        try:
+            cutoff_date = datetime.strptime(cutoff_str, "%Y-%m-%d").date()
+        except ValueError:
+            return jsonify({"error": "Invalid cutoff_date format. Use YYYY-MM-DD"}), 400
+
+        req_branch = request.headers.get("X-Branch") or request.args.get("branch")
+        branch_val, allowed_names, is_unlimited = get_report_allowed_branches(current_user, req_branch)
+
+        # Pull all active installments due on/before cutoff, for this academic year
+        query = db.session.query(StudentFee, Student).join(
+            Student, StudentFee.student_id == Student.student_id
+        ).filter(
+            StudentFee.academic_year == h_year,
+            Student.academic_year == h_year,
+            StudentFee.is_active == True,
+            StudentFee.due_date != None,
+            StudentFee.due_date <= cutoff_date,
+            StudentFee.due_amount > 0
+        )
+
+        if not is_unlimited:
+            if branch_val == "AllowedOnly":
+                query = query.filter(Student.branch.in_(list(allowed_names)))
+            else:
+                query = query.filter(Student.branch == branch_val)
+        else:
+            if branch_val != "All":
+                query = query.filter(Student.branch == branch_val)
+
+        rows = query.all()
+
+        # Aggregate per student: sum only the qualifying (overdue-as-of-cutoff) installments
+        student_map = {}
+        for sf, s in rows:
+            if s.student_id not in student_map:
+                student_map[s.student_id] = {
+                    "student_id": s.student_id,
+                    "name": f"{s.first_name} {s.StudentMiddleName or ''} {s.last_name}".strip(),
+                    "admission_no": s.admission_no,
+                    "class": s.clazz,
+                    "section": s.section,
+                    "father_name": s.Fatherfirstname,
+                    "father_mobile": s.FatherPhone,
+                    "branch": s.branch,
+                    "overdue_amount": 0.0,
+                    "overdue_installments": []
+                }
+            student_map[s.student_id]["overdue_amount"] += float(sf.due_amount or 0)
+            title = f"{sf.month} Fee" if sf.month and sf.month != "One-Time" else (sf.fee_type.feetype if sf.fee_type else "Fee")
+            student_map[s.student_id]["overdue_installments"].append({
+                "title": title,
+                "due_date": sf.due_date.isoformat(),
+                "due_amount": float(sf.due_amount or 0)
+            })
+
+        output = [v for v in student_map.values() if v["overdue_amount"] > 0]
+        output.sort(key=lambda x: -x["overdue_amount"])
+
+        return jsonify(output), 200
+
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 @bp.route("/api/reports/fees/due", methods=["GET"])
 @token_required

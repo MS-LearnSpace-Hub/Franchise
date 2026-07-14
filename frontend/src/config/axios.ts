@@ -9,7 +9,7 @@ const getApiBaseUrl = () => {
         return '';
     } else {
         // Network access - use direct backend URL 
-        return `http://${hostname}:5000`;
+        return `http://${hostname}:5001`;
     }
 };
 

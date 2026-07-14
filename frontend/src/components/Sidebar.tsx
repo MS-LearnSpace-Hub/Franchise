@@ -19,12 +19,15 @@ const navCategories: { title: string; icon: React.ReactNode; page: Page; permiss
   { title: 'Academic', icon: <AcademicIcon className="w-5 h-5" />, page: 'academic', permission: 'academics.academic.management' },
   { title: 'Financial', icon: <FinancialIcon className="w-5 h-5" />, page: 'fee', permission: 'fees.collections.receipt-entry' },
   { title: 'Administration', icon: <AdministrationIcon className="w-5 h-5" />, page: 'administration', permission: 'administration.students.management' },
+  { title: 'HR & Staff', icon: <UserIcon className="w-5 h-5" />, page: 'hr-management', permission: 'hr.hr.hr-management,hr.hr.staff-profile' },
   { title: 'Setup Your School', icon: <SetupIcon className="w-5 h-5" />, page: 'setup', permission: 'setup.school.setup' },
 ];
 
 const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar, navigateTo, currentPage }) => {
   const { user, hasPermission } = useAuth();
-  const canAccess = (permission: string) => hasPermission(permission, 'read');
+  const canAccess = (permission: string) => {
+    return permission.split(',').some(p => hasPermission(p.trim(), 'read'));
+  };
 
   return (
     <aside className={`flex-shrink-0 bg-white border-r border-gray-200 flex flex-col transition-all duration-300 ${isOpen ? 'w-64' : 'w-0 overflow-hidden md:w-20'} md:relative absolute h-full z-10 md:z-auto`}>
@@ -36,21 +39,22 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar, navigateTo, cu
       </div>
 
       <div className="p-2 border-b">
-  <div className="flex items-center gap-2 justify-center">
-    
-    {/* Permanent Logo */}
-    <img
-      src={Learnspacelogo}
-      alt="LearnSpace Logo"
-      className="w-18 h-12 object-contain flex-shrink-0"
-    />
-  </div>
-</div>
+        <div className="flex items-center gap-2 justify-center">
+
+          {/* Permanent Logo */}
+          <img
+            src={Learnspacelogo}
+            alt="LearnSpace Logo"
+            className="w-18 h-12 object-contain flex-shrink-0"
+          />
+        </div>
+      </div>
       <nav className="flex-1 px-2 space-y-1 overflow-y-auto">
         {navCategories.filter(cat => canAccess(cat.permission)).map((cat) => (
           <a
             key={cat.title}
             href="#"
+            title={!isOpen ? cat.title : undefined}
             onClick={(e) => { e.preventDefault(); navigateTo(cat.page); }}
             className={`flex items-center p-2 text-sm font-medium rounded-md group ${cat.page === currentPage ? 'bg-green-100 text-green-800' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
           >

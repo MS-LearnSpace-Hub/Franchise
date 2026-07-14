@@ -1090,9 +1090,9 @@ def search_students(current_user):
             )
 
         # Branch filtering
-        if current_user.role != 'Admin':
-            if current_user.branch and current_user.branch != 'All':
-                query = query.filter(Student.branch == current_user.branch)
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited']:
+            query = query.filter(Student.branch.in_(list(allowed['names'])))
         else:
             if h_branch and h_branch not in ("All", "AllBranches", "All Branches"):
                 query = query.filter(Student.branch == h_branch)
@@ -1134,8 +1134,9 @@ def get_student_receipts(current_user, student_id):
         if not student:
             return jsonify({"error": "Student not found"}), 404
 
-        if current_user.role != 'Admin':
-            if current_user.branch and current_user.branch != 'All' and student.branch != current_user.branch:
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited']:
+            if student.branch not in allowed['names']:
                 return jsonify({"error": "Unauthorized"}), 403
 
         query = FeePayment.query.filter(
@@ -1225,7 +1226,8 @@ def update_receipt_details(current_user, receipt_no):
     """Update editable fields of a receipt (Admin only)."""
     try:
         # ADMIN ONLY
-        if current_user.role not in ['Admin','SuperAdmin','Branch Admin']:
+        from helpers import has_permission
+        if not has_permission(current_user, 'fees.fee.take-fee', 'delete'):
             return jsonify({"error": "Only Admins can edit receipt details"}), 403
 
         data = request.json or {}

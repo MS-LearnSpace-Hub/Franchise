@@ -261,6 +261,25 @@ export const auth = {
   },
 };
 
+export const hr = {
+  getStaffAttendanceSummary: async (params?: any) => {
+    try {
+      const response = await api.get('/attendance/staff/summary', { params });
+      return handleApiResponse(response);
+    } catch (error: any) {
+      throw handleApiError(error);
+    }
+  },
+  processAttendanceSync: async () => {
+    try {
+      const response = await api.post('/attendance/sync/process');
+      return handleApiResponse(response);
+    } catch (error: any) {
+      throw handleApiError(error);
+    }
+  }
+};
+
 // Export the configured API instance
 export default api;
 

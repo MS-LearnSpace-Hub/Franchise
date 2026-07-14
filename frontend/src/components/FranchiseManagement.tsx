@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import api from '../api';
+import { canWrite } from '../utils/permissions';
 import { useAuth } from '../contexts/AuthContext';
 
 interface School {
@@ -19,7 +20,7 @@ interface BranchForm { branch_name: string; branch_code: string; location_code: 
 
 const FranchiseManagement: React.FC = () => {
   const { user } = useAuth();
-  const isSuperAdmin = user?.role === 'SuperAdmin';
+  const isSuperAdmin = canWrite(user, 'system.franchise.franchise-management');
 
   const [activeTab, setActiveTab] = useState<'schools' | 'locations'>('schools');
   const [schools, setSchools] = useState<School[]>([]);
@@ -47,7 +48,7 @@ const FranchiseManagement: React.FC = () => {
   const [branchForm, setBranchForm] = useState<BranchForm>({ branch_name: '', branch_code: '', location_code: '' });
   const [savingBranch, setSavingBranch] = useState(false);
 
-  // Use relative URLs so Vite proxy forwards /static/* to Flask (port 5000)
+  // Use relative URLs so Vite proxy forwards /static/* to Flask (port 5001)
   const API_BASE = '';
 
   const fetchSchools = useCallback(async () => {

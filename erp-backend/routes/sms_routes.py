@@ -278,10 +278,16 @@ def send_fee_receipt_sms(current_user):
 @bp.route("/api/sms/send-fee-due", methods=["POST"])
 @token_required
 def send_fee_due_sms(current_user):
+    import os
+    import requests as req_lib
     try:
-        import os, requests as req_lib
+        from flask import g
+        from models import StudentFee
+        from sqlalchemy import func
+
         data        = request.json or {}
         student_ids = data.get("student_ids", [])
+        cutoff_str  = data.get("cutoff_date")  # optional: only sum overdue-as-of-cutoff
 
         if not student_ids:
             return jsonify({"error": "student_ids are required"}), 400
@@ -289,28 +295,34 @@ def send_fee_due_sms(current_user):
         h_year, err, code = require_academic_year()
         if err: return err, code
 
-        from models import StudentFee
-        from sqlalchemy import func
-
-        rows = db.session.query(
+        base_query = db.session.query(
             Student,
             func.sum(StudentFee.due_amount).label("total_due"),
         ).join(StudentFee).filter(
             Student.student_id.in_(student_ids),
             StudentFee.academic_year == h_year,
-            StudentFee.is_active == True
-        ).group_by(Student.student_id).all()
+            StudentFee.is_active == True,
+            StudentFee.due_amount > 0
+        )
+
+        if cutoff_str:
+            cutoff_date = datetime.strptime(cutoff_str, "%Y-%m-%d").date()
+            base_query = base_query.filter(
+                StudentFee.due_date != None,
+                StudentFee.due_date <= cutoff_date
+            )
+
+        rows = base_query.group_by(Student.student_id).all()
 
         allowed = get_user_allowed_branches(current_user)
         if not allowed["is_unlimited"]:
             rows = [r for r in rows if r[0].branch in allowed["names"]]
 
-        username = os.environ.get("SMS_AUTH_KEY", "")
-        password = os.environ.get("SMS_AUTH_TOKEN", "")
-        sender   = os.environ.get("SMS_SENDER_ID", "SCHOOL")
+        username    = os.environ.get("SMS_AUTH_KEY", "")
+        password    = os.environ.get("SMS_AUTH_TOKEN", "")
+        sender      = os.environ.get("SMS_SENDER_ID", "SCHOOL")
         template_id = os.environ.get("SMS_DUE_TEMPLATE_ID", "")
 
-        from flask import g
         school_id = getattr(g, 'school_id', None)
         branch_id = getattr(g, 'branch_id', None)
         sent_by   = getattr(g, 'user_id',   None)
@@ -324,6 +336,10 @@ def send_fee_due_sms(current_user):
 
             if len(phone) != 10 or not phone.isdigit():
                 skipped += 1
+                _log_sms("FEE_DUE", phone or str(raw_phone), "", "skipped",
+                         student_id=s.student_id, reason="No valid phone number",
+                         sent_by=sent_by, school_id=school_id,
+                         branch_id=s.branch_id or branch_id)
                 results.append({
                     "student_id": s.student_id,
                     "name": f"{s.first_name} {s.last_name}",
@@ -333,7 +349,11 @@ def send_fee_due_sms(current_user):
                 continue
 
             phone_with_code = f"91{phone}"
-            message = "Dear Parent, Kindly clear the fee dues as soon as possible. If the fees is cleared kindly ignore. MSDC Asif Nagar. MS Educational and Welfare Trust."
+            message = (
+                "Dear Parent, Kindly clear the fee dues as soon as possible. "
+                "If the fees is cleared kindly ignore. MSDC Asif Nagar. "
+                "MS Educational and Welfare Trust."
+            )
 
             payload = {
                 "Text":               message,
@@ -438,19 +458,14 @@ def sms_reports(current_user):
         effective_branch_id = int(filter_branch_id) if filter_branch_id else b_id
         effective_school_id = int(filter_school_id) if filter_school_id else s_id
 
-        if role != 'SuperAdmin':
-            # Always scope to school
-            if effective_school_id:
-                q = q.filter(SmsLog.school_id == effective_school_id)
-            # Always scope to branch when resolved
-            if effective_branch_id:
-                q = q.filter(SmsLog.branch_id == effective_branch_id)
-        else:
-            # SuperAdmin: still respect explicit param if provided
-            if effective_branch_id:
-                q = q.filter(SmsLog.branch_id == effective_branch_id)
-            if effective_school_id:
-                q = q.filter(SmsLog.school_id == effective_school_id)
+        allowed_b = get_user_allowed_branches(current_user)
+        if not allowed_b['is_unlimited']:
+            q = q.filter(SmsLog.branch_id.in_(allowed_b['ids']))
+
+        if effective_branch_id:
+            q = q.filter(SmsLog.branch_id == effective_branch_id)
+        if effective_school_id:
+            q = q.filter(SmsLog.school_id == effective_school_id)
 
         if sms_type:
             q = q.filter(SmsLog.sms_type == sms_type)
@@ -466,7 +481,8 @@ def sms_reports(current_user):
             func.sum(case((SmsLog.status == "skipped", 1), else_=0)).label("skipped"),
         ).filter(SmsLog.sent_at >= from_dt, SmsLog.sent_at <= to_dt)
 
-        if role != 'SuperAdmin':
+        if not allowed_b['is_unlimited']:
+            stats_q = stats_q.filter(SmsLog.branch_id.in_(allowed_b['ids']))
             if s_id:
                 stats_q = stats_q.filter((SmsLog.school_id == s_id) | (SmsLog.school_id.is_(None)))
             if b_id:
@@ -499,7 +515,8 @@ def sms_reports(current_user):
             func.sum(case((SmsLog.status == "sent", 1), else_=0)).label("sent"),
         ).filter(SmsLog.sent_at >= from_dt, SmsLog.sent_at <= to_dt)
 
-        if role != 'SuperAdmin':
+        if not allowed_b['is_unlimited']:
+            daily_q = daily_q.filter(SmsLog.branch_id.in_(allowed_b['ids']))
             if s_id:
                 daily_q = daily_q.filter((SmsLog.school_id == s_id) | (SmsLog.school_id.is_(None)))
             if b_id:

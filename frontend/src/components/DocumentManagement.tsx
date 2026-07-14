@@ -48,7 +48,7 @@ const StudentDocumentView: React.FC = () => {
     const [docMap, setDocMap] = useState<Record<number, StudentDocument[]>>({});
     const [loadingDocs, setLoadingDocs] = useState<number | null>(null);
 
-    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+    const API_URL = import.meta.env.VITE_API_URL || '/api';
 
     useEffect(() => {
         api.get('/classes').then(res => setClassOptions(res.data.classes || []));

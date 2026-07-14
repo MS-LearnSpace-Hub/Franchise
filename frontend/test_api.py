@@ -3,7 +3,7 @@ import json
 import urllib.request
 import urllib.error
 
-url = 'http://localhost:5000/api/classes/create_with_sections'
+url = 'http://localhost:5001/api/classes/create_with_sections'
 data = {
     "class_name": "6",
     "branch_id": 1,

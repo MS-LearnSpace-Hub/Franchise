@@ -3,7 +3,7 @@
 
 const getApiBaseUrl = () => {
     // Always use proxy /api to avoid Mixed Content / Private Network Access issues
-    // The Vite proxy will handle the redirection to 5000
+    // The Vite proxy will handle the redirection to 5001
     return '/api';
 };
 

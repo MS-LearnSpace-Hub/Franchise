@@ -343,7 +343,8 @@ def update_student(current_user, student_id):
         # Aadhar number duplication check
         aadhar = data.get("Adharcardno")
         if aadhar:
-            aadhar = str(aadhar).strip()
+            # Remove spaces and hyphens from aadhar
+            aadhar = str(aadhar).strip().replace('-', '').replace(' ', '')
             if aadhar:
                 #Validate Aadhar number format
                 if not aadhar.isdigit() or len(aadhar) !=12:
@@ -351,6 +352,8 @@ def update_student(current_user, student_id):
                 existing_student = Student.query.filter_by(Adharcardno=aadhar).first()
                 if existing_student and existing_student.student_id != student_id:
                     return jsonify({"error": f"A student with Aadhar number {aadhar} already exists."}), 400
+            # update the data dict so the stripped version gets saved
+            data["Adharcardno"] = aadhar
 
         new_branch = data.get('branch')
         b_obj = None
@@ -1255,9 +1258,6 @@ def demote_students_bulk(current_user):
     if source_year == restore_year:
         return jsonify({"error": "source_year and restore_year cannot be the same"}), 400
         
-    if current_user.role != 'Admin':
-        return jsonify({"error": "Demotion not allowed"}), 403
-
     success_count = 0
     errors = []
     processed_ids = set()

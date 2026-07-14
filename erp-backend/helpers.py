@@ -168,12 +168,13 @@ def token_required(f):
         
         if not token:
             return jsonify({'error': 'Token is missing!'}), 401
-        
         try:
             data = jwt.decode(token, current_app.config['SECRET_KEY'], algorithms=["HS256"])
             current_user = User.query.filter_by(user_id=data['user_id']).first()
             if not current_user:
                  return jsonify({'error': 'User invalid!'}), 401
+            if getattr(current_user, 'is_active', True) is False:  
+                 return jsonify({'error': 'Account is deactivated'}), 401
                  
             # Store user_id and tenant context in global context
             g.user_id = current_user.user_id
@@ -1024,9 +1025,6 @@ def generate_installments(fs):
     """Helper to generate installment list for frontend display"""
     installments = []
     if fs.monthly_amount and fs.installments_count > 0:
-        # Logic to reconstruct installments for display
-        # This is a simplified version; ideally we'd store installments in a separate table
-        # but for now we reconstruct based on the total/monthly logic
         base_monthly = float(fs.monthly_amount)
         total = float(fs.totalamount)
             
@@ -1036,9 +1034,60 @@ def generate_installments(fs):
         else:
             remainder = total - base_monthly * (fs.installments_count - 1)
             first_month_amount = remainder
+            
+        from models import FeeInstallment
+        from sqlalchemy import or_, and_
         
-        for i, month in enumerate(MONTHS):
-            if i >= fs.installments_count: break
+        # Try to get the actual configured titles for this branch/location
+        query = FeeInstallment.query.filter_by(
+            fee_type_id=fs.feetypeid,
+            academic_year=fs.academicyear
+        )
+        
+        branch = getattr(fs, 'branch', 'All')
+        location = getattr(fs, 'location', 'All')
+        
+        # Filter by branch
+        query = query.filter(
+            or_(
+                FeeInstallment.branch == branch,
+                FeeInstallment.branch == 'All'
+            )
+        )
+        
+        # Filter by location
+        if location and location not in ["All", "All Locations"]:
+            query = query.filter(
+                or_(
+                    FeeInstallment.location == location,
+                    FeeInstallment.location == 'All',
+                    FeeInstallment.location == 'All Locations',
+                    FeeInstallment.location.is_(None)
+                )
+            )
+            
+        # Get the configured installments
+        configured = query.order_by(FeeInstallment.installment_no).all()
+        
+        # Sort so that exact branch matches come first, then 'All'
+        configured.sort(key=lambda x: (0 if x.branch == branch else 1, 0 if x.location == location else 1))
+        
+        # Deduplicate by installment_no
+        unique_insts = {}
+        for c in configured:
+            if c.installment_no not in unique_insts:
+                unique_insts[c.installment_no] = c
+                
+        sorted_titles = [unique_insts[k].title for k in sorted(unique_insts.keys())]
+        
+        for i in range(fs.installments_count):
+            if i < len(sorted_titles):
+                month = sorted_titles[i]
+            elif i < len(MONTHS):
+                month = MONTHS[i]
+            else:
+                month = f"Installment {i+1}"
+                
             amount = first_month_amount if i == 0 else base_monthly
             installments.append({
                 "month": month,
@@ -1068,3 +1117,81 @@ def shift_installments(start_no, branch, year, location):
         inst.installment_no += 1
     if existing:
         db.session.flush() # Apply updates before inserting new one
+
+def get_target_school_id(current_user):
+    from flask import request, g
+    from models import Branch
+    branch_id = request.args.get('branch_id', type=int)
+    if branch_id:
+        branch = Branch.query.get(branch_id)
+        if branch:
+            return branch.school_id
+    if request.headers.get('X-School-ID', '').lower() == 'all':
+        return None
+    if hasattr(g, 'school_id') and g.school_id is not None:
+        return g.school_id
+    return current_user.school_id
+
+def update_assigned_student_fees(fs, fee_item):
+    """
+    Updates the fee amounts for students already assigned to this class fee structure.
+    Only strictly UNPAID (paid_amount == 0) installments/fees are updated.
+    """
+    from models import Student, StudentFee, db
+    
+    # 1. Find all students in this class/branch/year
+    students_query = Student.query.filter_by(clazz=fs.clazz)
+    if fs.branch and fs.branch != "All":
+        students_query = students_query.filter_by(branch=fs.branch)
+    if fs.academic_year:
+        students_query = students_query.filter_by(academic_year=fs.academic_year)
+    
+    students = students_query.all()
+    if not students:
+        return
+        
+    student_ids = [s.student_id for s in students]
+    
+    installments = fee_item.get("installments", [])
+    if installments:
+        # Sort incoming installments to ensure correct order
+        sorted_insts = sorted(installments, key=lambda x: int(x.get("month_order", 0)) if x.get("month_order") else 0)
+        
+        # Get all active fees for these students to establish the true order of installments
+        all_active_fees = StudentFee.query.filter(
+            StudentFee.student_id.in_(student_ids),
+            StudentFee.fee_type_id == fs.feetypeid,
+            StudentFee.academic_year == fs.academic_year,
+            StudentFee.is_active == True
+        ).all()
+        
+        from collections import defaultdict
+        student_fees_map = defaultdict(list)
+        for sf in all_active_fees:
+            student_fees_map[sf.student_id].append(sf)
+            
+        inst_by_month = {inst.get("month"): inst for inst in sorted_insts}
+        for sid, s_fees in student_fees_map.items():
+            for sf in s_fees:
+                inst = inst_by_month.get(sf.month)
+                if inst and sf.paid_amount == 0:
+                    new_amount = float(inst.get("amount", 0))
+                    sf.total_fee = new_amount
+                    sf.monthly_amount = new_amount
+                    sf.due_amount = new_amount - (float(sf.concession) if sf.concession else 0)    
+    else:
+        # One-time fee
+        new_amount = float(fee_item.get("total_amount", 0))
+        student_fees = StudentFee.query.filter(
+            StudentFee.student_id.in_(student_ids),
+            StudentFee.fee_type_id == fs.feetypeid,
+            StudentFee.academic_year == fs.academic_year,
+            StudentFee.month == "One-Time",
+            StudentFee.is_active == True,
+            StudentFee.paid_amount == 0
+        ).all()
+        
+        for sf in student_fees:
+            sf.total_fee = new_amount
+            sf.monthly_amount = new_amount
+            sf.due_amount = new_amount - (float(sf.concession) if sf.concession else 0)

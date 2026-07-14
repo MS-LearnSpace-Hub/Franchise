@@ -26,7 +26,7 @@ interface AdministrationModule {
     iconColor: string;
     page?: Page;
     comingSoon?: boolean;
-    permission?: string;
+    permission?: string | string[];
 }
 
 const Administration: React.FC<AdministrationProps> = ({ navigateTo }) => {
@@ -126,14 +126,6 @@ const Administration: React.FC<AdministrationProps> = ({ navigateTo }) => {
             comingSoon: true
         },
         {
-            id: 'staffs',
-            name: 'Staffs',
-            icon: <UserIcon className="w-8 h-8" />,
-            iconBg: 'bg-emerald-50',
-            iconColor: 'text-emerald-600',
-            comingSoon: true
-        },
-        {
             id: 'team',
             name: 'Team',
             icon: <UserIcon className="w-8 h-8" />,
@@ -198,9 +190,18 @@ const Administration: React.FC<AdministrationProps> = ({ navigateTo }) => {
         }
     };
 
-    const visibleModules = administrationModules.filter(module =>
-        !module.permission || hasPermission(module.permission, 'read')
-    );
+    const visibleModules = administrationModules
+        .filter(module => {
+            if (!module.permission) return true;
+            if (Array.isArray(module.permission)) {
+                return module.permission.some(p => hasPermission(p, 'read'));
+            }
+            return hasPermission(module.permission, 'read');
+        })
+        .sort((a, b) => {
+            if (a.comingSoon === b.comingSoon) return 0;
+            return a.comingSoon ? 1 : -1;
+        });
 
     return (
         <div className="min-h-screen bg-slate-50">

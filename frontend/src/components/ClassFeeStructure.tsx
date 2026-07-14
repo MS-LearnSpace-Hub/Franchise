@@ -51,7 +51,6 @@ const ClassFeeStructure: React.FC = () => {
     const [newFeeGroup, setNewFeeGroup] = useState('');
     // const [selectedBranch, setSelectedBranch] = useState('All'); // Removed state
     const [selectedLocation, setSelectedLocation] = useState('Hyderabad');
-    const [isAdmin, setIsAdmin] = useState(false);
     // const [isBranchLocked, setIsBranchLocked] = useState(false); // Removed state
 
     const [newAdmissionFees, setNewAdmissionFees] = useState<FeeStructureItem[]>([]);
@@ -63,6 +62,9 @@ const ClassFeeStructure: React.FC = () => {
     // START FIX: Add state to track effective branch
     const [effectiveBranch, setEffectiveBranch] = useState('All');
     const [isAllBranchesMode, setIsAllBranchesMode] = useState(false);
+    
+    // Add state for updating assigned students
+    const [updateAssignedStudents, setUpdateAssignedStudents] = useState(false);
 
     // Copy Feature State
     const [allBranches, setAllBranches] = useState<BranchOption[]>([]);
@@ -87,7 +89,6 @@ const ClassFeeStructure: React.FC = () => {
 
     useEffect(() => {
         const user = JSON.parse(localStorage.getItem('user') || '{}');
-        setIsAdmin(user.role === 'Admin');
 
         if (user.location) {
             setSelectedLocation(user.location);
@@ -368,6 +369,17 @@ const ClassFeeStructure: React.FC = () => {
         }
     };
 
+    const updateTotalAmount = (feeIndex: number, amount: number, isNewAdmission: boolean) => {
+        const fees = isNewAdmission ? [...newAdmissionFees] : [...existingStudentFees];
+        fees[feeIndex].total_amount = amount;
+        
+        if (isNewAdmission) {
+            setNewAdmissionFees(fees);
+        } else {
+            setExistingStudentFees(fees);
+        }
+    };
+
     const saveFeeStructure = async () => {
         if (isAllBranchesMode) {
             alert(
@@ -391,6 +403,7 @@ const ClassFeeStructure: React.FC = () => {
             fee_group: selectedFeeGroup,
             branch: branchParam,
             location: selectedLocation, // Explicit location
+            update_assigned_students: updateAssignedStudents,
             fees: allFees.map(fee => {
                 // Extract monthly amount from first installment if available
                 let monthlyAmount = 0;
@@ -558,6 +571,7 @@ const ClassFeeStructure: React.FC = () => {
                     <FeeStructureTable
                         fees={newAdmissionFees}
                         onRemove={(index) => removeFee(index, true)}
+                        onUpdateTotalAmount={(index, amount) => updateTotalAmount(index, amount, true)}
                         onUpdateInstallment={(feeIndex, monthIndex, amount) =>
                             updateInstallmentAmount(feeIndex, monthIndex, amount, true)
                         }
@@ -590,6 +604,7 @@ const ClassFeeStructure: React.FC = () => {
                     <FeeStructureTable
                         fees={existingStudentFees}
                         onRemove={(index) => removeFee(index, false)}
+                        onUpdateTotalAmount={(index, amount) => updateTotalAmount(index, amount, false)}
                         onUpdateInstallment={(feeIndex, monthIndex, amount) =>
                             updateInstallmentAmount(feeIndex, monthIndex, amount, false)
                         }
@@ -658,7 +673,16 @@ const ClassFeeStructure: React.FC = () => {
                         )}
                     </div>
 
-                    <div className="flex gap-4">
+                    <div className="flex gap-4 items-center">
+                        <label className="flex items-center gap-2 mr-4 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={updateAssignedStudents}
+                                onChange={(e) => setUpdateAssignedStudents(e.target.checked)}
+                                className="w-4 h-4 accent-violet-600 rounded border-gray-300 cursor-pointer"
+                            />
+                            <span className="text-sm text-gray-700 font-medium">Update assigned students (unpaid fees)</span>
+                        </label>
                         <button
                             onClick={resetForm}
                             className="px-6 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400"
@@ -735,13 +759,15 @@ const AddFeeForm: React.FC<{
     );
 };
 
-// Fee Structure Table Component
 const FeeStructureTable: React.FC<{
     fees: FeeStructureItem[];
     onRemove: (index: number) => void;
+    onUpdateTotalAmount: (index: number, amount: number) => void;
     onUpdateInstallment: (feeIndex: number, monthIndex: number, amount: number) => void;
     onRecalculate: (index: number) => void;
-}> = ({ fees, onRemove, onUpdateInstallment, onRecalculate }) => {
+}> = ({ fees, onRemove, onUpdateTotalAmount, onUpdateInstallment, onRecalculate }) => {
+    const [editingTotalIndex, setEditingTotalIndex] = useState<number | null>(null);
+
     if (fees.length === 0) {
         return (
             <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-md border border-gray-200">
@@ -757,7 +783,39 @@ const FeeStructureTable: React.FC<{
                     <div className="bg-blue-50 px-4 py-3 flex justify-between items-center">
                         <div>
                             <h4 className="font-semibold text-gray-800">{fee.fee_type_name}</h4>
-                            <p className="text-sm text-gray-600">Total: ₹{fee.total_amount.toLocaleString()}</p>
+                            <div className="flex items-center gap-2 mt-1">
+                                <span className="text-sm text-gray-600 font-medium">Total: ₹</span>
+                                {editingTotalIndex === feeIndex ? (
+                                    <>
+                                        <input
+                                            type="number"
+                                            value={fee.total_amount}
+                                            onChange={(e) => onUpdateTotalAmount(feeIndex, parseFloat(e.target.value) || 0)}
+                                            className="px-2 py-1 border border-gray-300 rounded text-sm w-32"
+                                            autoFocus
+                                        />
+                                        <button
+                                            onClick={() => setEditingTotalIndex(null)}
+                                            className="px-2 py-1 bg-green-100 text-green-700 hover:bg-green-200 rounded text-xs font-medium"
+                                        >
+                                            Done
+                                        </button>
+                                    </>
+                                ) : (
+                                    <>
+                                        <span className="text-sm font-semibold">{fee.total_amount.toLocaleString()}</span>
+                                        <button
+                                            onClick={() => setEditingTotalIndex(feeIndex)}
+                                            className="p-1 text-gray-400 hover:text-blue-500 transition-colors"
+                                            title="Edit Total Amount"
+                                        >
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path>
+                                            </svg>
+                                        </button>
+                                    </>
+                                )}
+                            </div>
                         </div>
                         <div className="flex gap-2">
                             {fee.installments.length > 0 && (

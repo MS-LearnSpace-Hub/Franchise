@@ -43,64 +43,42 @@ class SequenceService:
         If not, creates it with default prefixes.
         THIS IS NOT LOCKED. Use inside transaction or careful context.
         """
-        seq = BranchYearSequence.query.filter_by(
-            branch_id=branch_id, 
-            academic_year_id=academic_year_id
-        ).first()
-        
-        if not seq:
-            # Need to fetch branch and year to generate prefixes
-            branch = Branch.query.get(branch_id)
-            # Default prefix logic: H + BranchCode (e.g., HATC)
-            # Receipt prefix: BranchCode (e.g. TC) - User requested Ex: TC01
-            # User Ex: HATC0152 -> Prefix HATC. Receipt TC01 -> Prefix TC.
-            # It seems Admission Prefix = 'H' + BranchCode
-            # Receipt Prefix = BranchCode (but example TC vs HATC implies TC is code? let's check branch codes)
+        from helpers import skip_scoping
+        from sqlalchemy.exc import IntegrityError
+
+        with skip_scoping():
+            seq = BranchYearSequence.query.filter_by(
+                branch_id=branch_id, 
+                academic_year_id=academic_year_id
+            ).first()
             
-            # If Branch Code is ATC. HATC = H + ATC. TC01 = ?? Maybe slightly different.
-            # User Example: "if it is HATC generate TC01 ... VN01"
-            # It seems HATC is the branch code? Or Branch is named HATC?
-            # Let's assume Admission Prefix = BranchCode (e.g. HATC)
-            # And Receipt Prefix = Suffix of BranchCode? Or user defined?
-            # "Ex : In auto_enrollment_table Last Admission no is 0151 for HATC ... one student joining his admission_no should be HATC0152"
-            # This implies Admission Prefix is "HATC" (the branch code itself).
-            
-            # "same with fee receipt if it is HATC generate TC01, TC02"
-            # This implies Receipt Prefix for HATC is "TC". 
-            # This logic is tricky to auto-deduce. 
-            # I will use BranchCode as default for BOTH for now, but allow Override.
-            # Or better, for HATC -> Admission: HATC, Receipt: TC?
-            # I will use Admission Prefix = BranchCode. Receipt Prefix = BranchCode (abbreviated if needed, but standardizing on BranchCode is safer unless mapped).
-            # Wait, if Branch is "HAVN", receipt is "VN".
-            # It seems like it takes the last 2 chars? 
-            # Let's stick to using BranchCode for Admission Prefix.
-            # For Receipt Prefix, I will use BranchCode as well to be safe, unless user provides mapping.
-            # Actually, I can use the Branch Code directly.
-            
-            adm_prefix = branch.branch_code if branch else "GEN"
-            rec_prefix = branch.branch_code if branch else "REC"
-            
-            # Correction based on user prompt "if it is HATC... generate TC01". 
-            # Maybe HATC is the branch code. TC is a sub-part.
-            # Given I cannot guess the custom logic "TC" from "HATC" (maybe it's Hafiz Academy TC?), 
-            # I will use BranchCode for both. The user can update the table manually if they want custom prefixes
-            # OR I can try to carry over "TC" if it exists in some other context. 
-            # For now: AdmissionPrefix = branch_code, ReceiptPrefix = branch_code.
-            
-            seq = BranchYearSequence(
-                branch_id=branch_id,
-                academic_year_id=academic_year_id,
-                admission_prefix=adm_prefix,
-                receipt_prefix=rec_prefix,  
-                last_admission_no=0,
-                last_receipt_no=0,
-                created_by=user_id,
-                updated_by=user_id
-            )
-            db.session.add(seq)
-            db.session.flush()
-            
-        return seq
+            if not seq:
+                try:
+                    with db.session.begin_nested():
+                        branch = Branch.query.get(branch_id)
+                        adm_prefix = branch.branch_code if branch else "GEN"
+                        rec_prefix = branch.branch_code if branch else "REC"
+                        
+                        seq = BranchYearSequence(
+                            branch_id=branch_id,
+                            academic_year_id=academic_year_id,
+                            admission_prefix=adm_prefix,
+                            receipt_prefix=rec_prefix,  
+                            last_admission_no=0,
+                            last_receipt_no=0,
+                            created_by=user_id,
+                            updated_by=user_id
+                        )
+                        db.session.add(seq)
+                        db.session.flush()
+                except IntegrityError:
+                    # Catch race conditions where another thread created the sequence simultaneously
+                    seq = db.session.query(BranchYearSequence).with_for_update().filter_by(
+                        branch_id=branch_id, 
+                        academic_year_id=academic_year_id
+                    ).first()
+                
+            return seq
 
     @staticmethod
     def _get_locked_sequence(branch_id, academic_year_id):
@@ -108,10 +86,12 @@ class SequenceService:
         Fetches the sequence row with ROW-LEVEL LOCKING.
         Must be called inside an active transaction.
         """
-        return db.session.query(BranchYearSequence).with_for_update().filter_by(
-            branch_id=branch_id, 
-            academic_year_id=academic_year_id
-        ).first()
+        from helpers import skip_scoping
+        with skip_scoping():
+            return db.session.query(BranchYearSequence).with_for_update().filter_by(
+                branch_id=branch_id, 
+                academic_year_id=academic_year_id
+            ).first()
 
     @staticmethod
     def generate_admission_number(branch_id, academic_year_id):

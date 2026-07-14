@@ -38,7 +38,9 @@ def get_media_base():
 def can_access_student(current_user, student):
     if not student:
         return False
-    if current_user.role == 'Admin' or current_user.branch == 'All':
+    from helpers import get_user_allowed_branches
+    allowed_branches = get_user_allowed_branches(current_user)
+    if allowed_branches.get('is_unlimited'):
         return True
     if student.branch == current_user.branch:
         return True
@@ -182,12 +184,6 @@ def upload_student_document(current_user):
         if issue_date_str:
             issue_date = datetime.strptime(issue_date_str, '%Y-%m-%d').date()
 
-        # ── Storage path ─────────────────────────────────────────
-        # HifzErpSoftwareApplication/Media/student_document/<student_id>/
-        student_dir = os.path.join(get_media_base(), str(student.student_id))
-        if not os.path.exists(student_dir):
-            os.makedirs(student_dir)
-
         # Unique filename: DOCTYPECODE_YYYYMMDDHHMMSS_xxxxxx.ext
         original_ext   = file.filename.rsplit('.', 1)[1].lower()
         timestamp      = get_now().strftime('%Y%m%d%H%M%S')
@@ -195,13 +191,21 @@ def upload_student_document(current_user):
         secure_code    = secure_filename(doc_type.code)
         new_filename   = f"{secure_code}_{timestamp}_{unique_id}.{original_ext}"
 
-        file_path = os.path.join(student_dir, new_filename)
-
-        # Relative to project root (for portability across machines)
-        # e.g.  "Media\student_document\42\AADHAAR_20260225_a1b2c3.pdf"
-        relative_path = os.path.relpath(file_path, get_project_root())
-
-        file.save(file_path)
+        try:
+            from services.storage_service import upload_file_to_storage
+            folder = f"franchise/private/students/{student.student_id}/documents"
+            relative_path = upload_file_to_storage(file, new_filename, folder=folder)
+            
+            # Since stream is read by boto3, size is best derived from content_length
+            file_size = content_length or 0
+        except (ValueError, ImportError):
+            student_dir = os.path.join(get_media_base(), str(student.student_id))
+            if not os.path.exists(student_dir):
+                os.makedirs(student_dir)
+            file_path = os.path.join(student_dir, new_filename)
+            relative_path = os.path.relpath(file_path, get_project_root())
+            file.save(file_path)
+            file_size = os.path.getsize(file_path)
 
         # Find existing document or create a new one to avoid IntegrityError
         existing_doc = StudentDocument.query.filter_by(
@@ -216,7 +220,7 @@ def upload_student_document(current_user):
             existing_doc.notes = notes
             existing_doc.file_name = new_filename
             existing_doc.file_path = relative_path
-            existing_doc.file_size = os.path.getsize(file_path)
+            existing_doc.file_size = file_size
             existing_doc.mime_type = file.content_type
             existing_doc.updated_by = current_user.user_id
             new_doc = existing_doc
@@ -230,7 +234,7 @@ def upload_student_document(current_user):
                 notes=notes,
                 file_name=new_filename,
                 file_path=relative_path,
-                file_size=os.path.getsize(file_path),
+                file_size=file_size,
                 mime_type=file.content_type,
                 created_by=current_user.user_id
             )
@@ -302,6 +306,21 @@ def download_document(current_user, doc_id):
             return jsonify({'message': 'Document not found'}), 404
         if not can_access_student(current_user, doc.student):
             return jsonify({'message': 'Access denied'}), 403
+
+        try:
+            from services.storage_service import get_file_stream
+            stream = get_file_stream(doc.file_path)
+        except ImportError:
+            stream = None
+
+        if stream:
+            import io
+            return send_file(
+                io.BytesIO(stream.read()),
+                as_attachment=True,
+                download_name=doc.file_name,
+                mimetype=doc.mime_type
+            )
 
         project_root = get_project_root()
         abs_path = os.path.abspath(os.path.join(project_root, doc.file_path))

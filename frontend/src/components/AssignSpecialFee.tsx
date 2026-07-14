@@ -39,7 +39,6 @@ const AssignSpecialFee: React.FC<AssignSpecialFeeProps> = ({ navigateTo }) => {
     const [selectedClass, setSelectedClass] = useState('');
     const [selectedSection, setSelectedSection] = useState('');
     const [selectedBranch, setSelectedBranch] = useState('All');
-    const [isAdmin, setIsAdmin] = useState(false);
     const [academicYear, setAcademicYear] = useState(localStorage.getItem('academicYear') || '');
     const [isBranchLocked, setIsBranchLocked] = useState(false);
 
@@ -55,8 +54,6 @@ const AssignSpecialFee: React.FC<AssignSpecialFeeProps> = ({ navigateTo }) => {
     useEffect(() => {
         const user = JSON.parse(localStorage.getItem('user') || '{}');
         const globalBranch = localStorage.getItem('currentBranch');
-
-        setIsAdmin(user.role === 'Admin');
 
         if (globalBranch && globalBranch !== 'All Locations') {
             setSelectedBranch(globalBranch);

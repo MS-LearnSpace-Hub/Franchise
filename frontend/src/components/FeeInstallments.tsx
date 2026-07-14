@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import api from '../api';
+import { canWrite } from '../utils/permissions';
 
 interface FeeType {
     id: number;
@@ -172,7 +173,7 @@ const FeeInstallments: React.FC = () => {
 
     useEffect(() => {
         const user = JSON.parse(localStorage.getItem('user') || '{}');
-        const isAdminUser = user.role === 'Admin';
+        const isAdminUser = canWrite(user, 'setup.school-setup.setup-school');
 
         let globalBranch = localStorage.getItem('currentBranch') || 'All';
 

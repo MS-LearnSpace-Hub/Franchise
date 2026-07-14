@@ -55,9 +55,6 @@ const StudentConcession: React.FC = () => {
     const [selectedConcessionTitle, setSelectedConcessionTitle] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
 
-    // Admin State
-    const [isAdmin, setIsAdmin] = useState(false);
-
     // Data for Display
     const [installments, setInstallments] = useState<FeeInstallment[]>([]);
     const [selectedInstallmentIds, setSelectedInstallmentIds] = useState<number[]>([]);
@@ -73,8 +70,7 @@ const StudentConcession: React.FC = () => {
 
         const userStr = localStorage.getItem('user');
         if (userStr) {
-            const u = JSON.parse(userStr);
-            setIsAdmin(u.role === 'Admin');
+            // const u = JSON.parse(userStr);
         }
     }, []);
 
