@@ -196,14 +196,17 @@ def upload_school_logo(current_user, school_id):
     if not _allowed_logo(file.filename):
         return jsonify({"error": f"File type not allowed. Use: {', '.join(ALLOWED_LOGO_EXTENSIONS)}"}), 400
 
-    # Ensure upload directory exists
-    folder = get_logo_folder()
-    os.makedirs(folder, exist_ok=True)
-
     ext = file.filename.rsplit('.', 1)[1].lower()
     filename = f"school_{school_id}.{ext}"
-    filepath = os.path.join(folder, filename)
-    file.save(filepath)
+    
+    try:
+        from services.storage_service import upload_file_to_storage
+        upload_file_to_storage(file, filename, folder="franchise/public/logos")
+    except (ValueError, ImportError):
+        folder = get_logo_folder()
+        os.makedirs(folder, exist_ok=True)
+        filepath = os.path.join(folder, filename)
+        file.save(filepath)
 
     logo_url = f"/static/logos/{filename}"
     school.logo_url = logo_url
@@ -221,6 +224,18 @@ def upload_school_logo(current_user, school_id):
 
 @bp.route("/static/logos/<path:filename>", methods=["GET"])
 def serve_logo(filename):
+    try:
+        from services.storage_service import get_file_stream
+        stream = get_file_stream(f"franchise/public/logos/{filename}")
+    except ImportError:
+        stream = None
+
+    if stream:
+        from flask import send_file
+        import io
+        ext = filename.rsplit('.', 1)[-1].lower()
+        mimetype = f"image/{ext}" if ext != 'jpg' else "image/jpeg"
+        return send_file(io.BytesIO(stream.read()), mimetype=mimetype)
     return send_from_directory(get_logo_folder(), filename)
 
 
