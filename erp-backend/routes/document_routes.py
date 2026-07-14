@@ -184,6 +184,13 @@ def upload_student_document(current_user):
         if issue_date_str:
             issue_date = datetime.strptime(issue_date_str, '%Y-%m-%d').date()
 
+        # Unique filename: DOCTYPECODE_YYYYMMDDHHMMSS_xxxxxx.ext
+        original_ext   = file.filename.rsplit('.', 1)[1].lower()
+        timestamp      = get_now().strftime('%Y%m%d%H%M%S')
+        unique_id      = str(uuid.uuid4().hex)[:6]
+        secure_code    = secure_filename(doc_type.code)
+        new_filename   = f"{secure_code}_{timestamp}_{unique_id}.{original_ext}"
+
         try:
             from services.storage_service import upload_file_to_storage
             folder = f"franchise/private/students/{student.student_id}/documents"
