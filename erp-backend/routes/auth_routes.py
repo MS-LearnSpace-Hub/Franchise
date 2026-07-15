@@ -137,8 +137,14 @@ def login_user():
         db.session.commit()
 
     except Exception as e:
-        current_app.logger.exception("Login error")
-        return jsonify({"error": "Internal login error"}), 500
+    import traceback
+    traceback.print_exc()
+
+    return jsonify({
+        "error": "Internal login error",
+        "details": str(e),
+        "type": type(e).__name__
+    }), 500
     
     # Phase 4: Fetch Valid Branches
     valid_branches = []
