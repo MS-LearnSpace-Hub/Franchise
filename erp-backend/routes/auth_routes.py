@@ -137,10 +137,10 @@ def login_user():
         db.session.commit()
 
     except Exception as e:
-    import traceback
-    traceback.print_exc()
+        import traceback
+        traceback.print_exc()
 
-    return jsonify({
+        return jsonify({
         "error": "Internal login error",
         "details": str(e),
         "type": type(e).__name__
