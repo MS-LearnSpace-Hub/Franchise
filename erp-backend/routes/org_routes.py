@@ -200,8 +200,11 @@ def upload_school_logo(current_user, school_id):
     filename = f"school_{school_id}.{ext}"
     
     try:
-        from services.storage_service import upload_file_to_storage
-        upload_file_to_storage(file, filename, folder="franchise/public/logos")
+        from services.storage_service import upload_file_to_storage, StoragePath
+        folder = StoragePath.school_logo(school_id)
+        result = upload_file_to_storage(file, filename, folder=folder)
+        # object_key = result['object_key'] # If we were to store it
+
     except (ValueError, ImportError):
         folder = get_logo_folder()
         os.makedirs(folder, exist_ok=True)

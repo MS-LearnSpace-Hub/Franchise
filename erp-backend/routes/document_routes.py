@@ -192,9 +192,10 @@ def upload_student_document(current_user):
         new_filename   = f"{secure_code}_{timestamp}_{unique_id}.{original_ext}"
 
         try:
-            from services.storage_service import upload_file_to_storage
-            folder = f"franchise/private/students/{student.student_id}/documents"
-            relative_path = upload_file_to_storage(file, new_filename, folder=folder)
+            from services.storage_service import upload_file_to_storage, StoragePath
+            folder = StoragePath.student_document(student.student_id)
+            result = upload_file_to_storage(file, new_filename, folder=folder)
+            relative_path = result['object_key']
             
             # Since stream is read by boto3, size is best derived from content_length
             file_size = content_length or 0

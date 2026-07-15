@@ -4,12 +4,35 @@ from botocore.exceptions import ClientError
 from werkzeug.utils import secure_filename
 import uuid
 import mimetypes
+from flask import current_app
 
 # OCI Object Storage S3-Compatible configuration
 OCI_ENDPOINT_URL = os.environ.get('OCI_ENDPOINT_URL')
 OCI_ACCESS_KEY_ID = os.environ.get('OCI_ACCESS_KEY_ID')
 OCI_SECRET_ACCESS_KEY = os.environ.get('OCI_SECRET_ACCESS_KEY')
 OCI_BUCKET_NAME = os.environ.get('OCI_BUCKET_NAME')
+
+class StoragePath:
+    @staticmethod
+    def student_photo(student_id):
+        return f"students/{student_id}"
+
+    @staticmethod
+    def student_document(student_id):
+        return f"students/{student_id}"
+        
+    @staticmethod
+    def employee_photo(emp_id):
+        return f"employees/{emp_id}"
+        
+    @staticmethod
+    def branch_logo(branch_id):
+        return f"branches/{branch_id}"
+        
+    @staticmethod
+    def school_logo(school_id):
+        return f"schools/{school_id}"
+
 
 def get_s3_client():
     if not all([OCI_ENDPOINT_URL, OCI_ACCESS_KEY_ID, OCI_SECRET_ACCESS_KEY]):
@@ -28,7 +51,7 @@ def upload_file_to_storage(file_stream, filename, folder=""):
     :param file_stream: file object (e.g. from request.files)
     :param filename: Original or desired filename
     :param folder: Optional folder prefix (e.g. 'logos' or 'student_documents/1')
-    :return: Object Key in the bucket
+    :return: dict with metadata (object_key, content_type, filename)
     """
     s3_client = get_s3_client()
     if not s3_client:
@@ -37,11 +60,15 @@ def upload_file_to_storage(file_stream, filename, folder=""):
     if not OCI_BUCKET_NAME:
         raise ValueError("OCI_BUCKET_NAME is not set")
         
-    object_key = f"{folder}/{filename}" if folder else filename
+    safe_filename = secure_filename(filename)
+    ext = os.path.splitext(safe_filename)[1].lower()
+    unique_filename = f"{uuid.uuid4().hex}{ext}"
+        
+    object_key = f"{folder}/{unique_filename}" if folder else unique_filename
     # Remove leading slash if present
     object_key = object_key.lstrip('/')
     
-    content_type, _ = mimetypes.guess_type(filename)
+    content_type, _ = mimetypes.guess_type(safe_filename)
     if not content_type:
         content_type = 'application/octet-stream'
 
@@ -52,9 +79,13 @@ def upload_file_to_storage(file_stream, filename, folder=""):
             object_key,
             ExtraArgs={'ContentType': content_type}
         )
-        return object_key
+        return {
+            "object_key": object_key,
+            "content_type": content_type,
+            "filename": unique_filename
+        }
     except ClientError as e:
-        print(f"Failed to upload to object storage: {e}")
+        current_app.logger.exception("OCI upload failed")
         raise e
 
 def generate_presigned_url(object_key, expiration=3600):
@@ -72,7 +103,7 @@ def generate_presigned_url(object_key, expiration=3600):
                                                     ExpiresIn=expiration)
         return response
     except ClientError as e:
-        print(e)
+        current_app.logger.exception("Failed to generate presigned url")
         return None
 
 def get_file_stream(object_key):
@@ -87,5 +118,39 @@ def get_file_stream(object_key):
         response = s3_client.get_object(Bucket=OCI_BUCKET_NAME, Key=object_key)
         return response['Body']
     except ClientError as e:
-        print(e)
+        current_app.logger.exception("Failed to get file stream")
         return None
+
+def delete_file(object_key):
+    """
+    Deletes a file from OCI Object Storage.
+    """
+    s3_client = get_s3_client()
+    if not s3_client:
+        return False
+        
+    try:
+        s3_client.delete_object(Bucket=OCI_BUCKET_NAME, Key=object_key)
+        return True
+    except ClientError as e:
+        current_app.logger.exception("OCI delete failed")
+        return False
+
+def file_exists(object_key):
+    """
+    Checks if a file exists in OCI Object Storage.
+    """
+    s3_client = get_s3_client()
+    if not s3_client:
+        return False
+        
+    try:
+        s3_client.head_object(Bucket=OCI_BUCKET_NAME, Key=object_key)
+        return True
+    except ClientError as e:
+        # Check if the error was a 404
+        error_code = e.response.get('Error', {}).get('Code')
+        if error_code == '404':
+            return False
+        current_app.logger.exception("OCI head_object failed")
+        return False

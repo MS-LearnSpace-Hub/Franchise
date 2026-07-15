@@ -206,6 +206,27 @@ def create_app():
         return '', 204
 
     # -----------------------------
+    # HEALTH CHECK
+    # -----------------------------
+    @app.route("/health")
+    def health():
+        try:
+            from sqlalchemy import text
+
+            db.session.execute(text("SELECT 1"))
+
+            return {
+                "status": "healthy",
+                "database": "connected"
+            }, 200
+
+        except Exception as e:
+            return {
+                "status": "unhealthy",
+                "error": str(e)
+            }, 503
+
+    # -----------------------------
     # SERVE FRONTEND (PRODUCTION)
     # -----------------------------
     @app.route("/", defaults={"path": ""})
