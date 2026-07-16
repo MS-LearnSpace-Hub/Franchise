@@ -11,6 +11,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
       ###########################################################
       # Checkout
       ###########################################################
@@ -38,6 +39,20 @@ jobs:
         run: npm run build
 
       ###########################################################
+      # Debug Secrets (Temporary)
+      ###########################################################
+
+      - name: Debug Secrets
+        env:
+          HOST: ${{ secrets.LEARNSPACEVM_HOST }}
+          USER: ${{ secrets.LEARNSPACEVM_USER }}
+          KEY: ${{ secrets.LEARNSPACEVM_KEY }}
+        run: |
+          echo "HOST length: ${#HOST}"
+          echo "USER length: ${#USER}"
+          echo "KEY length: ${#KEY}"
+
+      ###########################################################
       # Configure SSH
       ###########################################################
 
@@ -45,32 +60,34 @@ jobs:
         run: |
           mkdir -p ~/.ssh
 
-          echo "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/id_rsa
+          echo "${{ secrets.LEARNSPACEVM_KEY }}" | tr -d '\r' > ~/.ssh/id_rsa
 
           chmod 600 ~/.ssh/id_rsa
 
-          ssh-keyscan ${{ secrets.VM_HOST }} >> ~/.ssh/known_hosts
-
+          ssh-keyscan -H "${{ secrets.LEARNSPACEVM_HOST }}" >> ~/.ssh/known_hosts
 
       ###########################################################
-      # Upload Frontend Build
+      # Upload Frontend
       ###########################################################
 
       - name: Upload Frontend Build
         run: |
-          ssh ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} \
+          ssh -o StrictHostKeyChecking=no \
+          ${{ secrets.LEARNSPACEVM_USER }}@${{ secrets.LEARNSPACEVM_HOST }} \
           "mkdir -p /tmp/frontend-build"
 
-          scp -r frontend/dist/* \
-          ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}:/tmp/frontend-build/
+          scp -o StrictHostKeyChecking=no \
+          -r frontend/dist/* \
+          ${{ secrets.LEARNSPACEVM_USER }}@${{ secrets.LEARNSPACEVM_HOST }}:/tmp/frontend-build/
 
       ###########################################################
-      # Deploy
+      # Deploy Backend + Frontend
       ###########################################################
 
       - name: Deploy Application
         run: |
-          ssh ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} << 'EOF'
+          ssh -o StrictHostKeyChecking=no \
+          ${{ secrets.LEARNSPACEVM_USER }}@${{ secrets.LEARNSPACEVM_HOST }} << 'EOF'
 
           set -e
 
@@ -115,17 +132,23 @@ jobs:
           EOF
 
       ###########################################################
-      # Verify Services
+      # Verify Gunicorn
       ###########################################################
 
       - name: Verify Gunicorn
         run: |
-          ssh ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} \
+          ssh -o StrictHostKeyChecking=no \
+          ${{ secrets.LEARNSPACEVM_USER }}@${{ secrets.LEARNSPACEVM_HOST }} \
           "systemctl is-active --quiet gunicorn"
+
+      ###########################################################
+      # Verify Nginx
+      ###########################################################
 
       - name: Verify Nginx
         run: |
-          ssh ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} \
+          ssh -o StrictHostKeyChecking=no \
+          ${{ secrets.LEARNSPACEVM_USER }}@${{ secrets.LEARNSPACEVM_HOST }} \
           "systemctl is-active --quiet nginx"
 
       ###########################################################
@@ -134,5 +157,6 @@ jobs:
 
       - name: Verify Application Health
         run: |
-          ssh ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} \
+          ssh -o StrictHostKeyChecking=no \
+          ${{ secrets.LEARNSPACEVM_USER }}@${{ secrets.LEARNSPACEVM_HOST }} \
           "curl -fsS http://127.0.0.1:8001/health"
