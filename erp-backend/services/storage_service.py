@@ -10,6 +10,7 @@ def get_s3_client():
     oci_endpoint_url = os.environ.get('OCI_ENDPOINT_URL')
     oci_access_key = os.environ.get('OCI_ACCESS_KEY_ID')
     oci_secret_key = os.environ.get('OCI_SECRET_ACCESS_KEY')
+    oci_region = os.environ.get('OCI_REGION')
     
     if not oci_endpoint_url or not oci_access_key or not oci_secret_key:
         return None

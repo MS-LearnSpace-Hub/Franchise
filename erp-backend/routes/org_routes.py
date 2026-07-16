@@ -199,24 +199,27 @@ def upload_school_logo(current_user, school_id):
     ext = file.filename.rsplit('.', 1)[1].lower()
     filename = f"school_{school_id}.{ext}"
     
-    env = os.environ.get('FLASK_ENV', 'development')
-    if env == 'production':
+    env = os.environ.get("FLASK_ENV", "development").lower()
+
+    if env == "production":
         from services.storage_service import upload_file_to_storage
-        upload_file_to_storage(file, filename, folder="franchise/public/logos")
+
+        upload_file_to_storage(
+            file,
+            filename,
+            folder="franchise/public/logos"
+        )
+
+        school.logo_url = f"/static/logos/{filename}"
+
     else:
         folder = get_logo_folder()
         os.makedirs(folder, exist_ok=True)
+
         filepath = os.path.join(folder, filename)
         file.save(filepath)
 
-    logo_url = f"/static/logos/{filename}"
-    school.logo_url = logo_url
-    try:
-        db.session.commit()
-        return jsonify({"message": "Logo uploaded", "logo_url": logo_url}), 200
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"error": str(e)}), 500
+        school.logo_url = f"/static/logos/{filename}"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -225,24 +228,30 @@ def upload_school_logo(current_user, school_id):
 
 @bp.route("/static/logos/<path:filename>", methods=["GET"])
 def serve_logo(filename):
-    env = os.environ.get('FLASK_ENV', 'development')
-    if env == 'production':
-        try:
-            from services.storage_service import get_file_stream
-            stream = get_file_stream(f"franchise/public/logos/{filename}")
-        except ImportError:
-            stream = None
+    env = os.environ.get("FLASK_ENV", "development").lower()
 
-        if stream:
-            from flask import send_file
-            import io
-            ext = filename.rsplit('.', 1)[-1].lower()
-            mimetype = f"image/{ext}" if ext != 'jpg' else "image/jpeg"
-            return send_file(io.BytesIO(stream.read()), mimetype=mimetype)
-        else:
-            return jsonify({'message': 'Logo not found in object storage.'}), 404
-    else:
-        return send_from_directory(get_logo_folder(), filename)
+    if env == "production":
+        from services.storage_service import get_file_stream
+
+        object_key = f"franchise/public/logos/{filename}"
+        stream = get_file_stream(object_key)
+
+        if not stream:
+            return jsonify({"message": "Logo not found"}), 404
+
+        ext = filename.rsplit(".", 1)[-1].lower()
+
+        mimetype = {
+            "jpg": "image/jpeg",
+            "jpeg": "image/jpeg",
+            "png": "image/png",
+            "gif": "image/gif",
+            "webp": "image/webp"
+        }.get(ext, "application/octet-stream")
+
+        return send_file(stream, mimetype=mimetype)
+
+    return send_from_directory(get_logo_folder(), filename)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
