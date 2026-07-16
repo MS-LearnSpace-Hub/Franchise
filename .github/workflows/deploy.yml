@@ -1,4 +1,4 @@
-name: ERP Production Deploy
+name: ERP Production Deployment
 
 on:
   push:
@@ -7,55 +7,131 @@ on:
 
 jobs:
   deploy:
-    name: Deploy to EC2
+    name: Deploy to OCI Production
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Code
+      ###########################################################
+      # Checkout
+      ###########################################################
+
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Setup Node
+      ###########################################################
+      # Build Frontend
+      ###########################################################
+
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: Setup SSH
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+      - name: Install Frontend Dependencies
+        working-directory: frontend
+        run: npm ci
 
       - name: Build Frontend
-        working-directory: ./frontend
-        run: |
-          npm ci
-          npm run build
+        working-directory: frontend
         env:
           VITE_API_URL: /api
+        run: npm run build
 
-      - name: Copy Frontend to EC2
+      ###########################################################
+      # Configure SSH
+      ###########################################################
+
+      - name: Configure SSH
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "mkdir -p /home/ubuntu/frontend-dist"
-          scp -o StrictHostKeyChecking=no -r frontend/dist/* ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/home/ubuntu/frontend-dist/
+          mkdir -p ~/.ssh
 
-      - name: Deploy Application on EC2
+          echo "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/id_rsa
+
+          chmod 600 ~/.ssh/id_rsa
+
+          ssh-keyscan -H ${{ secrets.VM_HOST }} >> ~/.ssh/known_hosts
+
+      ###########################################################
+      # Upload Frontend Build
+      ###########################################################
+
+      - name: Upload Frontend Build
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "
-            cd /home/ubuntu/ERP-Software-Application &&
-            git pull origin main &&
+          ssh ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} \
+          "mkdir -p /tmp/frontend-build"
 
-            echo 'Updating Backend...' &&
-            cd erp-backend &&
-            source venv/bin/activate &&
-            pip install -r requirements.txt &&
-            sudo systemctl restart gunicorn &&
+          scp -r frontend/dist/* \
+          ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}:/tmp/frontend-build/
 
-            echo 'Updating Frontend...' &&
-            sudo rm -rf /var/www/frontend/* &&
-            sudo cp -r /home/ubuntu/frontend-dist/* /var/www/frontend/ &&
-            sudo rm -rf /home/ubuntu/frontend-dist &&
-            sudo systemctl reload nginx &&
+      ###########################################################
+      # Deploy
+      ###########################################################
 
-            echo 'Deployment Complete'
-          "
+      - name: Deploy Application
+        run: |
+          ssh ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} << 'EOF'
+
+          set -e
+
+          echo "========== Updating Repository =========="
+
+          cd ~/learnspace-application
+
+          git fetch origin
+
+          git reset --hard origin/main
+
+          echo "========== Backend =========="
+
+          cd ~/learnspace-application/erp-backend
+
+          source venv/bin/activate
+
+          pip install --upgrade pip
+
+          pip install -r requirements.txt
+
+          echo "Checking Python syntax..."
+
+          python -m compileall .
+
+          echo "Restarting Gunicorn..."
+
+          sudo systemctl restart gunicorn
+
+          echo "========== Frontend =========="
+
+          sudo rm -rf /var/www/frontend/*
+
+          sudo cp -r /tmp/frontend-build/* /var/www/frontend/
+
+          sudo rm -rf /tmp/frontend-build
+
+          sudo systemctl reload nginx
+
+          echo "========== Deployment Finished =========="
+
+          EOF
+
+      ###########################################################
+      # Verify Services
+      ###########################################################
+
+      - name: Verify Gunicorn
+        run: |
+          ssh ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} \
+          "systemctl is-active --quiet gunicorn"
+
+      - name: Verify Nginx
+        run: |
+          ssh ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} \
+          "systemctl is-active --quiet nginx"
+
+      ###########################################################
+      # Health Check
+      ###########################################################
+
+      - name: Verify Application Health
+        run: |
+          ssh ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} \
+          "curl -fsS http://127.0.0.1:8001/health"
