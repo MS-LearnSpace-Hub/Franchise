@@ -199,10 +199,11 @@ def upload_school_logo(current_user, school_id):
     ext = file.filename.rsplit('.', 1)[1].lower()
     filename = f"school_{school_id}.{ext}"
     
-    try:
+    env = os.environ.get('FLASK_ENV', 'development')
+    if env == 'production':
         from services.storage_service import upload_file_to_storage
         upload_file_to_storage(file, filename, folder="franchise/public/logos")
-    except (ValueError, ImportError):
+    else:
         folder = get_logo_folder()
         os.makedirs(folder, exist_ok=True)
         filepath = os.path.join(folder, filename)
@@ -224,19 +225,24 @@ def upload_school_logo(current_user, school_id):
 
 @bp.route("/static/logos/<path:filename>", methods=["GET"])
 def serve_logo(filename):
-    try:
-        from services.storage_service import get_file_stream
-        stream = get_file_stream(f"franchise/public/logos/{filename}")
-    except ImportError:
-        stream = None
+    env = os.environ.get('FLASK_ENV', 'development')
+    if env == 'production':
+        try:
+            from services.storage_service import get_file_stream
+            stream = get_file_stream(f"franchise/public/logos/{filename}")
+        except ImportError:
+            stream = None
 
-    if stream:
-        from flask import send_file
-        import io
-        ext = filename.rsplit('.', 1)[-1].lower()
-        mimetype = f"image/{ext}" if ext != 'jpg' else "image/jpeg"
-        return send_file(io.BytesIO(stream.read()), mimetype=mimetype)
-    return send_from_directory(get_logo_folder(), filename)
+        if stream:
+            from flask import send_file
+            import io
+            ext = filename.rsplit('.', 1)[-1].lower()
+            mimetype = f"image/{ext}" if ext != 'jpg' else "image/jpeg"
+            return send_file(io.BytesIO(stream.read()), mimetype=mimetype)
+        else:
+            return jsonify({'message': 'Logo not found in object storage.'}), 404
+    else:
+        return send_from_directory(get_logo_folder(), filename)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
