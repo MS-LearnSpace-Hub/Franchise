@@ -191,14 +191,15 @@ def upload_student_document(current_user):
         secure_code    = secure_filename(doc_type.code)
         new_filename   = f"{secure_code}_{timestamp}_{unique_id}.{original_ext}"
 
-        try:
+        env = os.environ.get('FLASK_ENV', 'development')
+        if env == 'production':
             from services.storage_service import upload_file_to_storage
             folder = f"franchise/private/students/{student.student_id}/documents"
             relative_path = upload_file_to_storage(file, new_filename, folder=folder)
             
             # Since stream is read by boto3, size is best derived from content_length
             file_size = content_length or 0
-        except (ValueError, ImportError):
+        else:
             student_dir = os.path.join(get_media_base(), str(student.student_id))
             if not os.path.exists(student_dir):
                 os.makedirs(student_dir)
@@ -307,38 +308,42 @@ def download_document(current_user, doc_id):
         if not can_access_student(current_user, doc.student):
             return jsonify({'message': 'Access denied'}), 403
 
-        try:
-            from services.storage_service import get_file_stream
-            stream = get_file_stream(doc.file_path)
-        except ImportError:
-            stream = None
+        env = os.environ.get('FLASK_ENV', 'development')
+        if env == 'production':
+            try:
+                from services.storage_service import get_file_stream
+                stream = get_file_stream(doc.file_path)
+            except ImportError:
+                stream = None
 
-        if stream:
-            import io
+            if stream:
+                import io
+                return send_file(
+                    io.BytesIO(stream.read()),
+                    as_attachment=True,
+                    download_name=doc.file_name,
+                    mimetype=doc.mime_type
+                )
+            else:
+                return jsonify({'message': 'File not found in object storage.'}), 404
+        else:
+            project_root = get_project_root()
+            abs_path = os.path.abspath(os.path.join(project_root, doc.file_path))
+
+            if not os.path.exists(abs_path):
+                return jsonify({'message': 'Physical file not found on server.'}), 404
+
+            # Security: prevent path traversal — file must be inside Media/student_document/
+            media_base = os.path.abspath(get_media_base())
+            if not abs_path.startswith(media_base + os.sep) and abs_path != media_base:
+                return jsonify({'message': 'Access denied.'}), 403
+
             return send_file(
-                io.BytesIO(stream.read()),
+                abs_path,
                 as_attachment=True,
                 download_name=doc.file_name,
                 mimetype=doc.mime_type
             )
-
-        project_root = get_project_root()
-        abs_path = os.path.abspath(os.path.join(project_root, doc.file_path))
-
-        if not os.path.exists(abs_path):
-            return jsonify({'message': 'Physical file not found on server.'}), 404
-
-        # Security: prevent path traversal — file must be inside Media/student_document/
-        media_base = os.path.abspath(get_media_base())
-        if not abs_path.startswith(media_base + os.sep) and abs_path != media_base:
-            return jsonify({'message': 'Access denied.'}), 403
-
-        return send_file(
-            abs_path,
-            as_attachment=True,
-            download_name=doc.file_name,
-            mimetype=doc.mime_type
-        )
     except Exception as e:
         return jsonify({'message': str(e)}), 500
 

@@ -246,17 +246,6 @@ def create_app():
 if __name__ == "__main__":
     app = create_app()
 
-    # Auto-migrate on startup (dev convenience).
-    # Wrapped in try/except so a stale migration state never prevents the server starting.
-    from flask_migrate import upgrade
-    with app.app_context():
-        try:
-            upgrade()
-            print("[OK] Database is up to date.")
-        except Exception as migrate_err:
-            print(f"[WARN] Migration check failed: {migrate_err}")
-            print("[WARN] Server will still start — run 'flask db upgrade' manually if needed.")
-
     port = int(os.getenv("PORT", 5001))
     debug = os.getenv("FLASK_DEBUG", "false").lower() == "true"
     app.run(host="0.0.0.0", port=port, debug=debug)

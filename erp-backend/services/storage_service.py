@@ -19,7 +19,7 @@ def get_s3_client():
         endpoint_url=oci_endpoint_url,
         aws_access_key_id=oci_access_key,
         aws_secret_access_key=oci_secret_key,
-        config=Config(signature_version='s3')
+        config=Config(signature_version='s3v4')
     )
 
 def upload_file_to_storage(file_stream, filename, folder=""):
