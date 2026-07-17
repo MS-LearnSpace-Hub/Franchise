@@ -1,98 +1,94 @@
 import os
-import boto3
-from botocore.config import Config
-from botocore.exceptions import ClientError
-from werkzeug.utils import secure_filename
-import uuid
+import io
 import mimetypes
 
-def get_s3_client():
-    oci_endpoint_url = os.environ.get('OCI_ENDPOINT_URL')
-    oci_access_key = os.environ.get('OCI_ACCESS_KEY_ID')
-    oci_secret_key = os.environ.get('OCI_SECRET_ACCESS_KEY')
-    oci_region = os.environ.get('OCI_REGION')
-    
-    if not oci_endpoint_url or not oci_access_key or not oci_secret_key or not oci_region:
-        return None
-        
-    return boto3.client(
-        's3',
-        endpoint_url=oci_endpoint_url,
-        aws_access_key_id=oci_access_key,
-        aws_secret_access_key=oci_secret_key,
-        region_name=oci_region,
-        config=Config(signature_version='s3v4')
+import oci
+from oci.auth.signers import InstancePrincipalsSecurityTokenSigner
+
+
+def get_object_storage_client():
+    """
+    Creates an OCI Object Storage client using Instance Principals.
+    """
+    signer = InstancePrincipalsSecurityTokenSigner()
+
+    client = oci.object_storage.ObjectStorageClient(
+        config={},
+        signer=signer
     )
+
+    return client
+
 
 def upload_file_to_storage(file_stream, filename, folder=""):
     """
-    Uploads a file to OCI Object Storage.
-    :param file_stream: file object (e.g. from request.files)
-    :param filename: Original or desired filename
-    :param folder: Optional folder prefix (e.g. 'logos' or 'student_documents/1')
-    :return: Object Key in the bucket
+    Upload file to OCI Object Storage.
+
+    Returns:
+        object_key
     """
-    s3_client = get_s3_client()
-    if not s3_client:
-        raise ValueError("Storage service not configured (missing OCI credentials)")
-    
-    bucket_name = os.environ.get('OCI_BUCKET_NAME')
-    if not bucket_name:
-        raise ValueError("OCI_BUCKET_NAME is not set")
-        
+
+    namespace = os.getenv("OCI_NAMESPACE")
+    bucket = os.getenv("OCI_BUCKET_NAME")
+
+    if not namespace:
+        raise ValueError("OCI_NAMESPACE not configured")
+
+    if not bucket:
+        raise ValueError("OCI_BUCKET_NAME not configured")
+
     object_key = f"{folder}/{filename}" if folder else filename
-    # Remove leading slash if present
-    object_key = object_key.lstrip('/')
-    
+    object_key = object_key.lstrip("/")
+
     content_type, _ = mimetypes.guess_type(filename)
+
     if not content_type:
-        content_type = 'application/octet-stream'
+        content_type = "application/octet-stream"
 
-    try:
-        # Read the file into memory to avoid chunked transfer encoding (which OCI rejects for PutObject)
-        file_content = file_stream.read()
-        s3_client.put_object(
-            Bucket=bucket_name,
-            Key=object_key,
-            Body=file_content,
-            ContentType=content_type
-        )
-        return object_key
-    except ClientError as e:
-        print(f"Failed to upload to object storage: {e}")
-        raise e
+    client = get_object_storage_client()
 
-def generate_presigned_url(object_key, expiration=3600):
-    """
-    Generate a presigned URL for secure access.
-    """
-    s3_client = get_s3_client()
-    bucket_name = os.environ.get('OCI_BUCKET_NAME')
-    if not s3_client or not bucket_name:
-        return None
-    
-    try:
-        response = s3_client.generate_presigned_url('get_object',
-                                                    Params={'Bucket': bucket_name,
-                                                            'Key': object_key},
-                                                    ExpiresIn=expiration)
-        return response
-    except ClientError as e:
-        print(e)
-        return None
+    file_stream.seek(0)
+    file_content = file_stream.read()
+
+    client.put_object(
+        namespace_name=namespace,
+        bucket_name=bucket,
+        object_name=object_key,
+        put_object_body=file_content,
+        content_type=content_type
+    )
+
+    return object_key
+
 
 def get_file_stream(object_key):
     """
-    Retrieves the file stream directly from OCI for passing to send_file
+    Download object from OCI Object Storage.
+
+    Returns:
+        BytesIO stream
     """
-    s3_client = get_s3_client()
-    bucket_name = os.environ.get('OCI_BUCKET_NAME')
-    if not s3_client or not bucket_name:
-        return None
-        
-    try:
-        response = s3_client.get_object(Bucket=bucket_name, Key=object_key)
-        return response['Body']
-    except ClientError as e:
-        print(e)
-        return None
+
+    namespace = os.getenv("OCI_NAMESPACE")
+    bucket = os.getenv("OCI_BUCKET_NAME")
+
+    client = get_object_storage_client()
+
+    response = client.get_object(
+        namespace_name=namespace,
+        bucket_name=bucket,
+        object_name=object_key
+    )
+
+    return io.BytesIO(response.data.content)
+
+
+def generate_presigned_url(object_key, expiration=3600):
+    """
+    Instance Principals cannot generate S3-style pre-signed URLs.
+
+    We serve files through the Flask endpoint instead.
+
+    This function is kept only for compatibility.
+    """
+    return None
