@@ -12,7 +12,7 @@ def get_s3_client():
     oci_secret_key = os.environ.get('OCI_SECRET_ACCESS_KEY')
     oci_region = os.environ.get('OCI_REGION')
     
-    if not oci_endpoint_url or not oci_access_key or not oci_secret_key:
+    if not oci_endpoint_url or not oci_access_key or not oci_secret_key or not oci_region:
         return None
         
     return boto3.client(
@@ -20,6 +20,7 @@ def get_s3_client():
         endpoint_url=oci_endpoint_url,
         aws_access_key_id=oci_access_key,
         aws_secret_access_key=oci_secret_key,
+        region_name=oci_region,
         config=Config(signature_version='s3v4')
     )
 
