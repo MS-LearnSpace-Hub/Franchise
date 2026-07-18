@@ -1,6 +1,6 @@
 import os
 # pyrefly: ignore [missing-import]
-from flask import Blueprint, jsonify, request, current_app, send_from_directory
+from flask import Blueprint, jsonify, request, current_app, send_from_directory, send_file
 from extensions import db
 from models import Branch, School, OrgMaster, User, UserBranchAccess, ClassMaster, ClassSection
 from services.sequence_service import SequenceService
@@ -199,18 +199,22 @@ def upload_school_logo(current_user, school_id):
     ext = file.filename.rsplit('.', 1)[1].lower()
     filename = f"school_{school_id}.{ext}"
     
-    env = os.environ.get("FLASK_ENV", "development").lower()
-
     if env == "production":
         from services.storage_service import upload_file_to_storage
+        import traceback
 
-        upload_file_to_storage(
-            file,
-            filename,
-            folder="franchise/public/logos"
-        )
+        try:
+            object_key = upload_file_to_storage(
+                file,
+                filename,
+                folder="franchise/public/logos"
+            )
 
-        school.logo_url = f"/static/logos/{filename}"
+            school.logo_url = object_key
+
+        except Exception:
+            traceback.print_exc()
+            raise
 
     else:
         folder = get_logo_folder()
@@ -220,6 +224,13 @@ def upload_school_logo(current_user, school_id):
         file.save(filepath)
 
         school.logo_url = f"/static/logos/{filename}"
+
+    db.session.commit()
+
+    return jsonify({
+        "message": "Logo uploaded successfully",
+        "logo_url": school.logo_url
+    }), 200
 
 
 # ─────────────────────────────────────────────────────────────────────────────
