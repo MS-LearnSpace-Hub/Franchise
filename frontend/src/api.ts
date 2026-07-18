@@ -73,10 +73,19 @@ api.interceptors.request.use(
     const currentSchoolId: string | null = localStorage.getItem('currentSchoolId');
     const token: string | null = getStoredToken();
 
+    // Helper function to safely set headers
+    const setHeader = (key: string, value: string) => {
+      config.headers = config.headers || {};
+      if (typeof config.headers.set === 'function') {
+        config.headers.set(key, value);
+      } else {
+        (config.headers as Record<string, any>)[key] = value;
+      }
+    };
+
     // Add Authorization header if token exists
     if (token) {
-      config.headers = config.headers || {};
-      config.headers['Authorization'] = `Bearer ${token}`;
+      setHeader('Authorization', `Bearer ${token}`);
     }
 
     // Parse user data and add custom headers
@@ -86,31 +95,25 @@ api.interceptors.request.use(
 
         // Add branch header
         if (currentBranch) {
-          config.headers = config.headers || {};
-          config.headers['X-Branch'] = currentBranch;
+          setHeader('X-Branch', currentBranch);
         } else if (!currentBranch && user.branch) {
-          config.headers = config.headers || {};
-          config.headers['X-Branch'] = user.branch;
+          setHeader('X-Branch', user.branch);
         }
 
         // Add branch ID header
         if (currentBranchId) {
-          config.headers = config.headers || {};
-          config.headers['X-Branch-ID'] = currentBranchId;
+          setHeader('X-Branch-ID', currentBranchId);
         } else if (currentBranch === 'All') {
-          config.headers = config.headers || {};
-          config.headers['X-Branch-ID'] = 'All';
+          setHeader('X-Branch-ID', 'All');
         }
 
         // Add location header
         if (user.location) {
-          config.headers = config.headers || {};
-          config.headers['X-Location'] = user.location;
+          setHeader('X-Location', user.location);
         }
         // Add school header for SuperAdmin cross-school filtering
         if (currentSchoolId) {
-          config.headers = config.headers || {};
-          config.headers['X-School-ID'] = currentSchoolId;
+          setHeader('X-School-ID', currentSchoolId);
         }
       } catch (error) {
         console.error('Error parsing user data from localStorage:', error);
@@ -118,11 +121,10 @@ api.interceptors.request.use(
     }
 
     // Add academic year header (with fallback)
-    if (!config.headers?.['X-Academic-Year']) {
+    if (!config.headers?.['X-Academic-Year'] && !(typeof config.headers?.has === 'function' && config.headers.has('X-Academic-Year'))) {
       const effectiveYear = academicYear || localStorage.getItem('academicYear');
       if (effectiveYear) {
-        config.headers = config.headers || {};
-        config.headers['X-Academic-Year'] = effectiveYear;
+        setHeader('X-Academic-Year', effectiveYear);
       }
     }
 
