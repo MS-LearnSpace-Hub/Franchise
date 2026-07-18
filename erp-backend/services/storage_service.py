@@ -47,8 +47,12 @@ def upload_file_to_storage(file_stream, filename, folder=""):
 
     client = get_object_storage_client()
 
-    file_stream.seek(0)
-    file_content = file_stream.read()
+    if hasattr(file_stream, "stream"):
+        file_stream.stream.seek(0)
+        file_content = file_stream.stream.read()
+    else:
+        file_stream.seek(0)
+        file_content = file_stream.read()
 
     client.put_object(
         namespace_name=namespace,
