@@ -199,13 +199,15 @@ def upload_school_logo(current_user, school_id):
     ext = file.filename.rsplit('.', 1)[1].lower()
     filename = f"school_{school_id}.{ext}"
     
+    env = os.environ.get("FLASK_ENV", "development").lower()
+
     if env == "production":
         from services.storage_service import upload_file_to_storage
         import traceback
 
         try:
             object_key = upload_file_to_storage(
-                file,
+                file.stream,
                 filename,
                 folder="franchise/public/logos"
             )
@@ -225,12 +227,19 @@ def upload_school_logo(current_user, school_id):
 
         school.logo_url = f"/static/logos/{filename}"
 
-    db.session.commit()
+    try:
+        db.session.commit()
 
-    return jsonify({
-        "message": "Logo uploaded successfully",
-        "logo_url": school.logo_url
-    }), 200
+        return jsonify({
+            "message": "Logo uploaded successfully",
+            "logo_url": school.logo_url
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 
 # ─────────────────────────────────────────────────────────────────────────────
