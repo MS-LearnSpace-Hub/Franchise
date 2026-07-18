@@ -401,7 +401,7 @@ const FranchiseManagement: React.FC = () => {
                     <div className="flex items-center gap-4">
                       <div className="w-14 h-14 rounded-xl border-2 border-purple-100 overflow-hidden bg-white flex items-center justify-center shadow-sm flex-shrink-0">
                         {school.logo_url
-                          ? <img src={`${API_BASE}${school.logo_url}`} alt={school.school_name}
+                          ? <img src={`${API_BASE}/schools/${school.id}/logo`} alt={school.school_name}
                             className="w-full h-full object-contain"
                             onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                           : <span className="text-2xl font-bold text-purple-300">{school.school_name[0]}</span>
