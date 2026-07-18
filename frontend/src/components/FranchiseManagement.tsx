@@ -120,7 +120,11 @@ const FranchiseManagement: React.FC = () => {
       if (logoFile && schoolId) {
         const fd = new FormData();
         fd.append('logo', logoFile);
-        await api.post(`/schools/${schoolId}/logo`, fd);
+        await api.post(`/schools/${schoolId}/logo`, fd, {
+          headers: {
+            'Content-Type': 'multipart/form-data'
+          }
+        });
       }
       setMsg({ type: 'success', text: editingSchoolId ? 'School updated!' : 'School created!' });
       setShowSchoolForm(false); fetchSchools();
