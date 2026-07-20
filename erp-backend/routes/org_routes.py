@@ -196,27 +196,27 @@ def upload_school_logo(current_user, school_id):
     if not _allowed_logo(file.filename):
         return jsonify({"error": f"File type not allowed. Use: {', '.join(ALLOWED_LOGO_EXTENSIONS)}"}), 400
 
-    from services.storage_service import upload_file_to_storage, generate_school_logo_key
     import traceback
-
-    object_key = generate_school_logo_key(school_id, file.filename)
     
     try:
-        # Extract folder and filename from object_key
-        folder = '/'.join(object_key.split('/')[:-1])
-        upload_name = object_key.split('/')[-1]
+        filename = secure_filename(file.filename)
+        # Add timestamp to filename to prevent caching issues
+        import time
+        name, ext = os.path.splitext(filename)
+        filename = f"{name}_{int(time.time())}{ext}"
         
-        upload_file_to_storage(
-            file.stream,
-            upload_name,
-            folder=folder
-        )
-
-        school.logo_url = object_key
+        logos_folder = os.path.abspath(os.path.join(current_app.root_path, 'static', 'logos'))
+        os.makedirs(logos_folder, exist_ok=True)
+        
+        file_path = os.path.join(logos_folder, filename)
+        file.save(file_path)
+        
+        school.logo_url = f"/static/logos/{filename}"
+        school.updated_by = current_user.user_id
 
     except Exception as e:
         traceback.print_exc()
-        return jsonify({"error": f"Failed to upload to storage: {str(e)}"}), 500
+        return jsonify({"error": f"Failed to save logo locally: {str(e)}"}), 500
 
     try:
         db.session.commit()
@@ -231,38 +231,6 @@ def upload_school_logo(current_user, school_id):
         import traceback
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# SERVE SCHOOL LOGOS
-# ─────────────────────────────────────────────────────────────────────────────
-
-@bp.route("/static/logos/<path:filename>", methods=["GET"])
-def serve_logo(filename):
-    env = os.environ.get("FLASK_ENV", "development").lower()
-
-    if env == "production":
-        from services.storage_service import get_file_stream
-
-        object_key = f"franchise/public/logos/{filename}"
-        stream = get_file_stream(object_key)
-
-        if not stream:
-            return jsonify({"message": "Logo not found"}), 404
-
-        ext = filename.rsplit(".", 1)[-1].lower()
-
-        mimetype = {
-            "jpg": "image/jpeg",
-            "jpeg": "image/jpeg",
-            "png": "image/png",
-            "gif": "image/gif",
-            "webp": "image/webp"
-        }.get(ext, "application/octet-stream")
-
-        return send_file(stream, mimetype=mimetype)
-
-    return send_from_directory(get_logo_folder(), filename)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

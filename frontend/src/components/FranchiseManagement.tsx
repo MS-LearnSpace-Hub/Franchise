@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import api from '../api';
 import { canWrite } from '../utils/permissions';
 import { useAuth } from '../contexts/AuthContext';
-import { getSchoolLogoUrl } from '../utils/media';
 
 interface School {
   id: number; school_name: string; school_code: string | null;
@@ -90,7 +89,7 @@ const FranchiseManagement: React.FC = () => {
       address: s.address || '', phone: s.phone || '', email: s.email || '',
       theme_color: s.theme_color || '#009746', subscription_plan: s.subscription_plan || '',
     });
-    setLogoPreview(s.logo_url ? getSchoolLogoUrl(s.id) : null);
+    setLogoPreview(s.logo_url ? (s.logo_url.startsWith('/') ? `${API_BASE}${s.logo_url}` : s.logo_url) : null);
     setLogoFile(null); setEditingSchoolId(s.id);
     setShowSchoolForm(true); setMsg(null);
   };
@@ -402,7 +401,7 @@ const FranchiseManagement: React.FC = () => {
                     <div className="flex items-center gap-4">
                       <div className="w-14 h-14 rounded-xl border-2 border-purple-100 overflow-hidden bg-white flex items-center justify-center shadow-sm flex-shrink-0">
                         {school.logo_url
-                          ? <img src={getSchoolLogoUrl(school.id)} alt={school.school_name}
+                          ? <img src={school.logo_url.startsWith('/') ? `${API_BASE}${school.logo_url}` : school.logo_url} alt={school.school_name}
                             className="w-full h-full object-contain"
                             onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                           : <span className="text-2xl font-bold text-purple-300">{school.school_name[0]}</span>
