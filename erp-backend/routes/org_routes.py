@@ -196,36 +196,27 @@ def upload_school_logo(current_user, school_id):
     if not _allowed_logo(file.filename):
         return jsonify({"error": f"File type not allowed. Use: {', '.join(ALLOWED_LOGO_EXTENSIONS)}"}), 400
 
-    ext = file.filename.rsplit('.', 1)[1].lower()
-    filename = f"school_{school_id}.{ext}"
+    from services.storage_service import upload_file_to_storage, generate_school_logo_key
+    import traceback
+
+    object_key = generate_school_logo_key(school_id, file.filename)
     
-    env = os.environ.get("FLASK_ENV", "development").lower()
+    try:
+        # Extract folder and filename from object_key
+        folder = '/'.join(object_key.split('/')[:-1])
+        upload_name = object_key.split('/')[-1]
+        
+        upload_file_to_storage(
+            file.stream,
+            upload_name,
+            folder=folder
+        )
 
-    if env == "production":
-        from services.storage_service import upload_file_to_storage
-        import traceback
+        school.logo_url = object_key
 
-        try:
-            object_key = upload_file_to_storage(
-                file.stream,
-                filename,
-                folder="franchise/public/logos"
-            )
-
-            school.logo_url = object_key
-
-        except Exception:
-            traceback.print_exc()
-            raise
-
-    else:
-        folder = get_logo_folder()
-        os.makedirs(folder, exist_ok=True)
-
-        filepath = os.path.join(folder, filename)
-        file.save(filepath)
-
-        school.logo_url = f"/static/logos/{filename}"
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": f"Failed to upload to storage: {str(e)}"}), 500
 
     try:
         db.session.commit()
