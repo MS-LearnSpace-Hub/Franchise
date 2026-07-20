@@ -166,6 +166,9 @@ def token_required(f):
             if auth_header and auth_header.startswith("Bearer "):
                 token = auth_header.split(" ")[1]
         
+        if not token and request.args.get('token'):
+            token = request.args.get('token')
+        
         if not token:
             return jsonify({'error': 'Token is missing!'}), 401
         try:
@@ -700,7 +703,22 @@ def student_to_dict(s):
     name_parts = [s.first_name, s.StudentMiddleName, s.last_name]
     name = " ".join([p for p in name_parts if p])
     
-    photo_url = f"{request.url_root}{s.photopath.replace(os.sep, '/')}" if s.photopath else None
+    photo_url = None
+    if s.photopath:
+        import jwt
+        from datetime import datetime, timedelta
+        # Generate short-lived token for media access
+        try:
+            # g.user_id is set by token_required
+            user_id = g.user_id
+        except AttributeError:
+            user_id = None
+        
+        if user_id:
+            token = jwt.encode({'user_id': user_id, 'exp': datetime.utcnow() + timedelta(minutes=15)}, current_app.config['SECRET_KEY'], algorithm="HS256")
+            photo_url = f"/api/media/students/{s.student_id}/photo?token={token}"
+        else:
+            photo_url = f"/api/media/students/{s.student_id}/photo"
 
     return {
         "student_id": s.student_id,

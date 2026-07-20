@@ -105,36 +105,28 @@ def save_student_photo(student, photo_data):
 
         data_bytes = base64.b64decode(encoded)
 
-        # ── New path: HifzErpSoftwareApplication/Media/student_document/<admission_no>/ ──
-        # __file__ = .../erp-backend/routes/student_routes.py
-        # project root = two levels up from routes/
-        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-        import re
-        safe_admission_no = re.sub(r'[^a-zA-Z0-9_\-]', '', str(student.admission_no))
-        if not safe_admission_no:
-            raise ValueError("Invalid admission number for directory creation")
-            
-        student_dir = os.path.abspath(os.path.join(project_root, 'Media', 'student_document', safe_admission_no))
-        
-        # Ensure it's still inside Media/student_document
-        base_dir = os.path.abspath(os.path.join(project_root, 'Media', 'student_document'))
-        if not student_dir.startswith(base_dir):
-            raise ValueError("Invalid path traversal attempt")
+        from services.storage_service import upload_file_to_storage, generate_student_photo_key
+        import io
 
-        if not os.path.exists(student_dir):
-            os.makedirs(student_dir)
-
-        # Always name the file profile.<ext> — easy to find, one photo per student
         filename = f"profile.{ext}"
-        file_path = os.path.join(student_dir, filename)
+        object_key = generate_student_photo_key(student.student_id, filename)
 
-        with open(file_path, "wb") as f:
-            f.write(data_bytes)
+        # Extract folder and upload_name
+        folder = '/'.join(object_key.split('/')[:-1])
+        upload_name = object_key.split('/')[-1]
 
-        # Store relative path from project root, forward slashes for URL compatibility
-        student.photopath = f"Media/student_document/{safe_admission_no}/{filename}"
+        upload_file_to_storage(
+            io.BytesIO(data_bytes),
+            upload_name,
+            folder=folder
+        )
+
+        # Store object key
+        student.photopath = object_key
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         print(f"Error saving photo: {e}")
 
 

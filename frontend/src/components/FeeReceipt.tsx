@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import ReceiptLogo from '../images/Receiptlogo.png';
+import { getSchoolLogoUrl } from '../utils/media';
 import api from '../api';
 
 interface FeeReceiptProps {
@@ -269,12 +270,9 @@ const FeeReceipt: React.FC<FeeReceiptProps> = ({ onClose, receiptData }) => {
   }, []);
 
   const matchingBranch = branches.find(b => b.branch_name === receiptData.branch);
-  const schoolLogo = matchingBranch?.school_logo || ReceiptLogo;
+  const schoolLogo = (matchingBranch?.school_id && matchingBranch?.school_logo) ? getSchoolLogoUrl(matchingBranch.school_id) : ReceiptLogo;
   const schoolName = matchingBranch?.school_name || "MS LearnSpace";
-  const resolvedLogo = schoolLogo.startsWith('/') 
-    ? `${window.location.origin}${schoolLogo}` 
-    : schoolLogo;
-
+  const resolvedLogo = schoolLogo.startsWith('/') ? `${window.location.origin}${schoolLogo}` : schoolLogo;
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">

@@ -45,6 +45,7 @@ from routes.sms_routes import bp as sms_bp
 from routes.hr_routes import bp as hr_bp
 from routes.biometric_routes import bp as biometric_bp
 from routes.attendance_sync import attendance_sync_bp
+from routes.media_routes import bp as media_bp
 # -----------------------------
 # LOAD ENV
 # -----------------------------
@@ -158,6 +159,7 @@ def create_app():
     app.register_blueprint(petty_cash_bp, url_prefix="/api/petty-cash")
     app.register_blueprint(petty_cash_report_bp, url_prefix="/api/petty-cash-report")
     app.register_blueprint(sms_bp)
+    app.register_blueprint(media_bp)
     
     # HR & Attendance Blueprints
     app.register_blueprint(hr_bp, url_prefix="/api/hr")
@@ -189,14 +191,10 @@ def create_app():
 
     # -----------------------------
     # SERVE SCHOOL LOGOS
-    # /static/logos/<filename>
+    # Handled by org_routes.py Blueprint
     # -----------------------------
     logos_folder = os.path.abspath(os.path.join(app.root_path, 'static', 'logos'))
     os.makedirs(logos_folder, exist_ok=True)
-
-    @app.route('/static/logos/<path:filename>')
-    def serve_school_logo(filename):
-        return send_from_directory(logos_folder, filename)
 
     # -----------------------------
     # FAVICON FIX

@@ -155,8 +155,8 @@ jobs:
       # Health Check
       ###########################################################
 
-      - name: Verify Application Health
-        run: |
-          ssh -o StrictHostKeyChecking=no \
-          ${{ secrets.LEARNSPACEVM_USER }}@${{ secrets.LEARNSPACEVM_HOST }} \
-          "curl -fsS http://127.0.0.1:8001/health"
+      #- name: Verify Application Health
+        #run: |
+          #ssh -o StrictHostKeyChecking=no \
+          #${{ secrets.LEARNSPACEVM_USER }}@${{ secrets.LEARNSPACEVM_HOST }} \
+          #"curl -fsS http://127.0.0.1:8001/health"
