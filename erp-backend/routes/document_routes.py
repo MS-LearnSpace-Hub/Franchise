@@ -191,23 +191,25 @@ def upload_student_document(current_user):
         secure_code    = secure_filename(doc_type.code)
         new_filename   = f"{secure_code}_{timestamp}_{unique_id}.{original_ext}"
 
-        env = os.environ.get('FLASK_ENV', 'development')
-        if env == 'production':
-            from services.storage_service import upload_file_to_storage
-            folder = f"franchise/private/students/{student.student_id}/documents"
-            relative_path = upload_file_to_storage(file, new_filename, folder=folder)
-            
-            # Since stream is read by boto3, size is best derived from content_length
-            file_size = content_length or 0
-        else:
-            student_dir = os.path.join(get_media_base(), str(student.student_id))
-            if not os.path.exists(student_dir):
-                os.makedirs(student_dir)
-            file_path = os.path.join(student_dir, new_filename)
-            relative_path = os.path.relpath(file_path, get_project_root())
-            file.save(file_path)
-            file_size = os.path.getsize(file_path)
+        from services.storage_service import upload_file_to_storage, generate_student_document_key
+        
+        object_key = generate_student_document_key(student.student_id, secure_code, new_filename)
+        
+        # Extract folder and upload_name
+        folder = '/'.join(object_key.split('/')[:-1])
+        upload_name = object_key.split('/')[-1]
 
+        file_bytes = file.stream.read()
+        file.stream.seek(0)
+
+        upload_file_to_storage(
+            file.stream,
+            upload_name,
+            folder=folder
+        )
+        
+        relative_path = object_key
+        file_size = len(file_bytes)
         # Find existing document or create a new one to avoid IntegrityError
         existing_doc = StudentDocument.query.filter_by(
             student_id=student.student_id,
@@ -308,25 +310,8 @@ def download_document(current_user, doc_id):
         if not can_access_student(current_user, doc.student):
             return jsonify({'message': 'Access denied'}), 403
 
-        env = os.environ.get('FLASK_ENV', 'development')
-        if env == 'production':
-            try:
-                from services.storage_service import get_file_stream
-                stream = get_file_stream(doc.file_path)
-            except ImportError:
-                stream = None
-
-            if stream:
-                import io
-                return send_file(
-                    io.BytesIO(stream.read()),
-                    as_attachment=True,
-                    download_name=doc.file_name,
-                    mimetype=doc.mime_type
-                )
-            else:
-                return jsonify({'message': 'File not found in object storage.'}), 404
-        else:
+        # Legacy check
+        if doc.file_path.startswith('Media/student_document/'):
             project_root = get_project_root()
             abs_path = os.path.abspath(os.path.join(project_root, doc.file_path))
 
@@ -344,6 +329,27 @@ def download_document(current_user, doc_id):
                 download_name=doc.file_name,
                 mimetype=doc.mime_type
             )
+
+        # OCI Storage
+        try:
+            from services.storage_service import get_file_stream
+            from oci.exceptions import ServiceError
+            
+            stream = get_file_stream(doc.file_path)
+            if stream:
+                import io
+                return send_file(
+                    io.BytesIO(stream.read()),
+                    as_attachment=True,
+                    download_name=doc.file_name,
+                    mimetype=doc.mime_type
+                )
+            else:
+                return jsonify({'message': 'File not found in object storage.'}), 404
+        except ImportError:
+            return jsonify({'message': 'Object storage client unavailable.'}), 500
+        except (FileNotFoundError, ServiceError):
+            return jsonify({'message': 'File not found in object storage.'}), 404
     except Exception as e:
         return jsonify({'message': str(e)}), 500
 

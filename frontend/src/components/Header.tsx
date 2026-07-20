@@ -5,6 +5,7 @@ import { Page } from '../App';
 import api from '../api';
 import Learnspacelogo1 from '../images/Learnspacelogo1.png';
 import { useAuth } from '../contexts/AuthContext';
+import { getSchoolLogoUrl } from '../utils/media';
 
 interface HeaderProps {
   toggleSidebar: () => void;
@@ -40,8 +41,7 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, navigateTo, onLogout, go
   // Resolve dynamic logo and school info from AuthContext
   const isAllSchools = selectedSchoolId === 'All' || selectedSchool === 'All Schools' || !user.school_id;
   const rawLogo = user.school_logo || null;
-  // Use relative path — Vite proxy forwards /static/* to the Flask backend
-  const schoolLogo = (isAllSchools || !rawLogo) ? Learnspacelogo1 : rawLogo;
+  const schoolLogo = (isAllSchools || !rawLogo) ? Learnspacelogo1 : getSchoolLogoUrl(user.school_id || selectedSchoolId);
   const schoolName = isAllSchools ? 'LearnSpace' : (user.school_name || 'LearnSpace');
   const branchLabel = isAllSchools ? 'All Branches' : (user.branch_name || user.branch || '');
   const themeColor = isAllSchools ? '#2b8144' : (user.school_theme || '#009746');
