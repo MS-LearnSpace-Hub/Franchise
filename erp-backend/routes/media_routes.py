@@ -8,29 +8,6 @@ import io
 
 bp = Blueprint("media", __name__)
 
-@bp.route("/api/media/schools/<int:school_id>/logo", methods=["GET"])
-def get_school_logo(school_id):
-    school = School.query.get_or_404(school_id)
-    if not school.logo_url:
-        return jsonify({"error": "Logo not found"}), 404
-        
-    try:
-        # Check if it's an old local file (starts with /static/)
-        if school.logo_url.startswith('/static/'):
-            filename = school.logo_url.split('/')[-1]
-            logos_folder = os.path.abspath(os.path.join(current_app.root_path, 'static', 'logos'))
-            return send_file(os.path.join(logos_folder, filename))
-
-        file_stream = storage_service.get_file_stream(school.logo_url)
-        # Determine mimetype from extension
-        ext = school.logo_url.rsplit('.', 1)[-1].lower() if '.' in school.logo_url else 'png'
-        mimetypes_map = {'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'webp': 'image/webp'}
-        mimetype = mimetypes_map.get(ext, 'image/png')
-        return send_file(file_stream, mimetype=mimetype)
-    except ServiceError as e:
-        return jsonify({"error": "Logo not found in storage"}), 404
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 
 @bp.route("/api/media/students/<int:student_id>/photo", methods=["GET"])
 @token_required

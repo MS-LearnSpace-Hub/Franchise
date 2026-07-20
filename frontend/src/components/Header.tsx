@@ -5,7 +5,6 @@ import { Page } from '../App';
 import api from '../api';
 import Learnspacelogo1 from '../images/Learnspacelogo1.png';
 import { useAuth } from '../contexts/AuthContext';
-import { getSchoolLogoUrl } from '../utils/media';
 
 interface HeaderProps {
   toggleSidebar: () => void;
@@ -39,9 +38,10 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, navigateTo, onLogout, go
   const [locationData, setLocationData] = useState<any[]>([]);
 
   // Resolve dynamic logo and school info from AuthContext
+  const API_BASE = import.meta.env.VITE_API_URL || '';
   const isAllSchools = selectedSchoolId === 'All' || selectedSchool === 'All Schools' || !user.school_id;
   const rawLogo = user.school_logo || null;
-  const schoolLogo = (isAllSchools || !rawLogo) ? Learnspacelogo1 : getSchoolLogoUrl(user.school_id || selectedSchoolId);
+  const schoolLogo = (isAllSchools || !rawLogo) ? Learnspacelogo1 : (rawLogo.startsWith('/') ? `${API_BASE}${rawLogo}` : rawLogo);
   const schoolName = isAllSchools ? 'LearnSpace' : (user.school_name || 'LearnSpace');
   const branchLabel = isAllSchools ? 'All Branches' : (user.branch_name || user.branch || '');
   const themeColor = isAllSchools ? '#2b8144' : (user.school_theme || '#009746');
