@@ -191,11 +191,14 @@ def create_app():
 
     # -----------------------------
     # SERVE SCHOOL LOGOS
-    # Handled by org_routes.py Blueprint
+    # /static/logos/<filename>
     # -----------------------------
     logos_folder = os.path.abspath(os.path.join(app.root_path, 'static', 'logos'))
     os.makedirs(logos_folder, exist_ok=True)
 
+    @app.route('/static/logos/<path:filename>')
+    def serve_school_logo(filename):
+        return send_from_directory(logos_folder, filename)
     # -----------------------------
     # FAVICON FIX
     # -----------------------------

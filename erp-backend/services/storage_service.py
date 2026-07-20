@@ -15,6 +15,7 @@ def get_object_storage_client():
         return None
 
     signer = InstancePrincipalsSecurityTokenSigner()
+
     client = oci.object_storage.ObjectStorageClient(
         config={},
         signer=signer
