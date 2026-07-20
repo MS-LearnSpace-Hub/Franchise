@@ -270,43 +270,6 @@ def get_school_logo(school_id):
     return send_from_directory(get_logo_folder(), filename)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# SERVE SCHOOL LOGOS
-# ─────────────────────────────────────────────────────────────────────────────
-
-@bp.route("/schools/<int:school_id>/logo", methods=["GET"])
-def get_school_logo(school_id):
-    school = School.query.get(school_id)
-    if not school or not school.logo_url:
-        return jsonify({"message": "Logo not found"}), 404
-
-    env = os.environ.get("FLASK_ENV", "development").lower()
-
-    if env == "production":
-        from services.storage_service import get_file_stream
-
-        # In production, logo_url stores the object key
-        object_key = school.logo_url
-        stream = get_file_stream(object_key)
-
-        if not stream:
-            return jsonify({"message": "Logo not found"}), 404
-
-        ext = object_key.rsplit(".", 1)[-1].lower()
-
-        mimetype = {
-            "jpg": "image/jpeg",
-            "jpeg": "image/jpeg",
-            "png": "image/png",
-            "gif": "image/gif",
-            "webp": "image/webp"
-        }.get(ext, "application/octet-stream")
-
-        return send_file(stream, mimetype=mimetype)
-
-    # In development, it's stored locally
-    filename = school.logo_url.split("/")[-1]
-    return send_from_directory(get_logo_folder(), filename)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
