@@ -13,8 +13,8 @@ def get_object_storage_client():
     env = os.environ.get('ENV', 'development')
     if env != 'production':
         return None
+        signer = InstancePrincipalsSecurityTokenSigner()
 
-    signer = InstancePrincipalsSecurityTokenSigner()
     client = oci.object_storage.ObjectStorageClient(
         config={},
         signer=signer
