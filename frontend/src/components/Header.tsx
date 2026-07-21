@@ -37,13 +37,32 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, navigateTo, onLogout, go
   // Dynamic Locations State
   const [locationData, setLocationData] = useState<any[]>([]);
 
+  const [selectedYear, setSelectedYear] = useState(localStorage.getItem('academicYear') || '');
+  const [currentBranch, setCurrentBranch] = useState(() => {
+    return localStorage.getItem('currentBranch') || user.branch || 'All';
+  });
+
   // Resolve dynamic logo and school info from AuthContext
   const API_BASE = import.meta.env.VITE_API_URL || '';
-  const isAllSchools = selectedSchoolId === 'All' || selectedSchool === 'All Schools' || !user.school_id;
-  const rawLogo = user.school_logo || null;
-  const schoolLogo = (isAllSchools || !rawLogo) ? Learnspacelogo1 : (rawLogo.startsWith('/') ? `${API_BASE}${rawLogo}` : rawLogo);
-  const schoolName = isAllSchools ? 'LearnSpace' : (user.school_name || 'LearnSpace');
-  const branchLabel = isAllSchools ? 'All Branches' : (user.branch_name || user.branch || '');
+  const isAllSchools = selectedSchoolId === 'All' || selectedSchool === 'All Schools';
+  const allowedSchools = user.allowed_schools || [];
+  
+  let rawLogo = user.school_logo || null;
+
+  if (!isAllSchools) {
+    const branchWithSchool = allBranchesData?.find(b => String(b.school_id) === selectedSchoolId);
+    if (branchWithSchool && branchWithSchool.school_logo) {
+      rawLogo = branchWithSchool.school_logo;
+    } else if (allowedSchools && allowedSchools.length > 0) {
+      const allowedSchool = allowedSchools.find((s: any) => String(s.school_id) === selectedSchoolId);
+      if (allowedSchool && (allowedSchool.logo_url || allowedSchool.school_logo)) {
+        rawLogo = allowedSchool.logo_url || allowedSchool.school_logo;
+      }
+    }
+  }
+
+  const schoolLogo = (isAllSchools || !rawLogo) ? Learnspacelogo1 : (rawLogo.startsWith('/static') ? rawLogo : (rawLogo.startsWith('/') ? `${API_BASE}${rawLogo}` : rawLogo));
+  const schoolName = isAllSchools ? 'LearnSpace' : (selectedSchool !== 'All' ? selectedSchool : (user.school_name || 'LearnSpace'));
   const themeColor = isAllSchools ? '#2b8144' : (user.school_theme || '#009746');
 
   // Initialize selected location on mount
@@ -63,7 +82,6 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, navigateTo, onLogout, go
 
   const isSuperAdmin = canManageGlobal;
   const isAdminLevel = canManageSchool;
-  const allowedSchools = user.allowed_schools || [];
 
   // ── School options: derived from allBranchesData for Admin/SuperAdmin, or user's allowed_schools ──
   const schoolOptions: { id: string; name: string }[] = [];
@@ -131,10 +149,7 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, navigateTo, onLogout, go
 
   const showDropdown = user && (isAdminLevel || branchOptions.length > 1);
 
-  const [selectedYear, setSelectedYear] = useState(localStorage.getItem('academicYear') || '');
-  const [currentBranch, setCurrentBranch] = useState(() => {
-    return localStorage.getItem('currentBranch') || user.branch || 'All';
-  });
+  const branchLabel = isAllSchools ? 'All Branches' : (currentBranch !== 'All' ? currentBranch : (user.branch_name || user.branch || ''));
 
   const handleYearChange = (year: string) => {
     localStorage.setItem('academicYear', year);

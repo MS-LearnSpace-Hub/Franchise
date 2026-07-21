@@ -271,7 +271,7 @@ const FeeReceipt: React.FC<FeeReceiptProps> = ({ onClose, receiptData }) => {
   const matchingBranch = branches.find(b => b.branch_name === receiptData.branch);
   const API_BASE = import.meta.env.VITE_API_URL || '';
   const rawLogo = matchingBranch?.school_logo || null;
-  const schoolLogo = rawLogo ? (rawLogo.startsWith('/') ? `${API_BASE}${rawLogo}` : rawLogo) : ReceiptLogo;
+  const schoolLogo = rawLogo ? (rawLogo.startsWith('/static') ? rawLogo : (rawLogo.startsWith('/') ? `${API_BASE}${rawLogo}` : rawLogo)) : ReceiptLogo;
   const schoolName = matchingBranch?.school_name || "MS LearnSpace";
   const resolvedLogo = schoolLogo;
   return (
