@@ -403,7 +403,7 @@ const FranchiseManagement: React.FC = () => {
                         {school.logo_url
                           ? <img src={school.logo_url.startsWith('/') ? `${API_BASE}${school.logo_url}` : school.logo_url} alt={school.school_name}
                             className="w-full h-full object-contain"
-                            onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                            onError={(e) => { console.error("Logo failed:", e.currentTarget.src); }} />
                           : <span className="text-2xl font-bold text-purple-300">{school.school_name[0]}</span>
                         }
                       </div>
