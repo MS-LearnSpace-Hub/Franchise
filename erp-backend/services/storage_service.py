@@ -56,19 +56,24 @@ def get_object_storage_client():
     """
     Creates an OCI Object Storage client using Instance Principals.
     """
-    env = os.environ.get('ENV', 'development')
-    if env != 'production':
+
+    env = os.getenv("FLASK_ENV", "development").lower()
+
+    print(f"[Storage] FLASK_ENV={env}")
+
+    if env != "production":
         return None
 
-    signer = InstancePrincipalsSecurityTokenSigner()
+    try:
+        signer = InstancePrincipalsSecurityTokenSigner()
 
-    client = oci.object_storage.ObjectStorageClient(
-        config={},
-        signer=signer
-    )
-
-    return client
-
+        return oci.object_storage.ObjectStorageClient(
+            config={},
+            signer=signer
+        )
+    except Exception as e:
+        print(f"[Storage] Failed to create OCI client: {e}")
+        raise
 def _get_local_storage_path(object_key):
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
     return os.path.join(project_root, 'Media', object_key.replace('/', os.sep))
