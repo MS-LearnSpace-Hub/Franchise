@@ -59,8 +59,6 @@ def get_object_storage_client():
 
     env = os.getenv("FLASK_ENV", "development").lower()
 
-    print(f"[Storage] FLASK_ENV={env}")
-
     if env != "production":
         return None
 

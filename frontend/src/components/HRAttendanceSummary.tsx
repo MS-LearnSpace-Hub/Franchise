@@ -65,8 +65,11 @@ interface StaffMonthlyData {
 }
 
 const HRAttendanceSummary: React.FC = () => {
-  const { user } = useAuth();
-  const isManager = ['SuperAdmin', 'Admin', 'HR', 'Principal', 'Management'].includes(user?.role || '');
+  {/*const { user } = useAuth();
+  const isManager = ['SuperAdmin', 'Admin', 'HR', 'Principal', 'Management'].includes(user?.role || '');*/}
+  const { user, hasPermission } = useAuth();
+  const isManager = hasPermission('hr.attendance.summary', 'write');
+
 
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState(true);
