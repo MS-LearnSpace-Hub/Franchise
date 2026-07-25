@@ -17,11 +17,7 @@ depends_on = None
 
 
 def upgrade():
-    op.add_column('staff_master', sa.Column('staff_category_id', sa.Integer(), nullable=True))
-    op.add_column('staff_master', sa.Column('staff_status_id', sa.Integer(), nullable=True))
-    op.add_column('staff_master', sa.Column('employee_sequence', sa.Integer(), nullable=True))
-    op.add_column('staff_master', sa.Column('biometric_id', sa.String(length=20), nullable=True))
-
+    
     op.create_index('ix_staff_master_biometric_id', 'staff_master', ['biometric_id'], unique=False)
 
     op.create_foreign_key(
@@ -38,7 +34,3 @@ def downgrade():
     op.drop_constraint('fk_staff_master_staff_status_id', 'staff_master', type_='foreignkey')
     op.drop_constraint('fk_staff_master_staff_category_id', 'staff_master', type_='foreignkey')
     op.drop_index('ix_staff_master_biometric_id', table_name='staff_master')
-    op.drop_column('staff_master', 'biometric_id')
-    op.drop_column('staff_master', 'employee_sequence')
-    op.drop_column('staff_master', 'staff_status_id')
-    op.drop_column('staff_master', 'staff_category_id')
