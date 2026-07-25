@@ -92,6 +92,7 @@ const Academics: React.FC = () => {
     const { hasPermission } = useAuth();
 
     const canSubjectMaster = hasPermission('academics.academic.subject-master', 'read');
+    // const canTimetable = hasPermission('academics.timetable.timetable-management', 'read');
     const canClassSubjects = hasPermission('academics.academic.class-subject-assignment', 'read');
     const canStudentSubjects = hasPermission('academics.academic.assign-student-subjects', 'read');
     const canSubjectTests = hasPermission('academics.academic.assign-subject-tests', 'read');
@@ -121,6 +122,7 @@ const Academics: React.FC = () => {
 
     const mastersItems = [
         ...(canSubjectMaster ? [{ label: "Subjects", onClick: () => setView("SUBJECTS") }] : []),
+        // ...(canTimetable ? [{ label: "Timetable", onClick: () => setView("TIMETABLE") }] : []),
         ...(canTestType ? [{ label: "Create Test", onClick: () => setView("CREATE_TEST") }] : []),
         ...(canClassTest ? [{ label: "Add Exam", onClick: () => setView("ADD_EXAM") }] : []),
         ...(canGrading ? [{ label: "Grading", onClick: () => setView("GRADING") }] : []),
@@ -191,6 +193,7 @@ const Academics: React.FC = () => {
                         {view === "MARKS_ENTRY_UPLOAD" && <MarksUpload />}
                         {view === "STUDENT_REPORT_CARD" && <StudentReportCard />}
                         {view === "SET_EXAM_ATTENDANCE" && <SetExamAttendance />}
+                        {/* {view === "TIMETABLE" && <Timetable />} */}
                         {view === "MARKS_ENTRY_ALL_SUBJECTS" && <MarksEntryAllSubjects />}
 
 

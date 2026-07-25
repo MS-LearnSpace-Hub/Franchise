@@ -109,6 +109,8 @@ PERMISSION_CATALOG = [
     permission("HR", "Attendance", "Attendance Summary", "hr.attendance.summary", "View staff attendance summary"),
     permission("HR", "Attendance", "Punch Log", "hr.attendance.punch-log", "View raw biometric punch logs"),
 ]
+from timetable_permission_catalog import TIMETABLE_PERMISSIONS
+PERMISSION_CATALOG += TIMETABLE_PERMISSIONS
 
 LEGACY_PERMISSION_ALIASES = {
     "system.school.management": "system.school.school-management",
