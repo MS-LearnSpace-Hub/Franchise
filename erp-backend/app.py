@@ -24,6 +24,7 @@ from routes.attendance_routes import bp as attendance_bp
 from routes.report_routes import bp as report_bp
 from routes.org_routes import bp as org_bp
 from routes.academic_routes import bp as academic_bp
+from routes.timetable_routes import timetable_bp
 from routes.class_routes import bp as class_bp
 from routes.test_type_routes import test_type_bp
 from routes.class_test_routes import class_test_bp
@@ -119,7 +120,7 @@ def create_app():
         }
     })
     db.init_app(app)
-    migrate.init_app(app, db)
+    migrate.init_app(app, db, render_as_batch=False)
     # Auto-sync permission catalog on every server start
     from routes.rbac_routes import _sync_permission_catalog
     with app.app_context():
@@ -143,6 +144,7 @@ def create_app():
     app.register_blueprint(report_bp)
     app.register_blueprint(org_bp)
     app.register_blueprint(academic_bp)
+    app.register_blueprint(timetable_bp, url_prefix="/api/timetable")
     app.register_blueprint(class_bp)
     app.register_blueprint(test_type_bp, url_prefix="/api/test-types")
     app.register_blueprint(class_test_bp, url_prefix="/api/class-tests")
