@@ -16,7 +16,7 @@ interface SidebarProps {
 
 const navCategories: { title: string; icon: React.ReactNode; page: Page; permission: string }[] = [
   { title: 'Dashboard', icon: <DashboardIcon className="w-5 h-5" />, page: 'dashboard', permission: 'home.dashboard.main' },
-  { title: 'Academic', icon: <AcademicIcon className="w-5 h-5" />, page: 'academic', permission: 'academics.academic.management' },
+  { title: 'Academic', icon: <AcademicIcon className="w-5 h-5" />, page: 'academic', permission: 'academics.academic.management'},
   { title: 'Financial', icon: <FinancialIcon className="w-5 h-5" />, page: 'fee', permission: 'fees.collections.receipt-entry' },
   { title: 'Administration', icon: <AdministrationIcon className="w-5 h-5" />, page: 'administration', permission: 'administration.students.management' },
   { title: 'HR & Staff', icon: <UserIcon className="w-5 h-5" />, page: 'hr-management', permission: 'hr.hr.hr-management,hr.hr.staff-profile' },

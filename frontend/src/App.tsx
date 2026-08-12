@@ -15,6 +15,7 @@ export type Page =
   | "administration"
   | "academic"
   | "academics"
+  | "timetable"
   | "setup"
   | "classes-management"
   | "student-attendance"

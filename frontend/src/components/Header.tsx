@@ -46,7 +46,7 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, navigateTo, onLogout, go
   const API_BASE = import.meta.env.VITE_API_URL || '';
   const isAllSchools = selectedSchoolId === 'All' || selectedSchool === 'All Schools';
   const allowedSchools = user.allowed_schools || [];
-  
+
   let rawLogo = user.school_logo || null;
 
   if (!isAllSchools) {
@@ -174,7 +174,7 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, navigateTo, onLogout, go
   const handleSchoolChange = async (schoolId: string, schoolName: string) => {
     try {
       const sId = schoolId === 'All' ? null : Number(schoolId);
-      
+
       let defaultBranchName = 'All';
       let defaultBranchId: string | null = null;
 
@@ -198,10 +198,10 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, navigateTo, onLogout, go
 
       const bId = defaultBranchId ? Number(defaultBranchId) : null;
       await switchContext(sId, bId);
-      
+
       localStorage.setItem('currentSchool', schoolName);
       localStorage.setItem('currentSchoolId', schoolId);
-      
+
       localStorage.setItem('currentBranch', defaultBranchName);
       if (defaultBranchId) {
         localStorage.setItem('currentBranchId', defaultBranchId);
@@ -287,8 +287,16 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, navigateTo, onLogout, go
         const storedYear = localStorage.getItem('academicYear');
         if (!storedYear && yearsList.length > 0) {
           const firstYear = yearsList[0].name;
-          localStorage.setItem('academicYear', firstYear);
-          setSelectedYear(firstYear);
+          // 1. Define the year you want as default
+          const targetYear = '2026-2027';
+
+          // 2. Check if the target year actually exists in the API response
+          const hasTargetYear = yearsList.some((y: any) => y.name === targetYear);
+
+          // 3. Use the target year if found, otherwise fallback to the first item in the array
+          const defaultYear = hasTargetYear ? targetYear : yearsList[0].name;
+          localStorage.setItem('academicYear', defaultYear);
+          setSelectedYear(defaultYear);
         }
       })
       .catch(err => console.error("Failed to load academic years in Header", err));
