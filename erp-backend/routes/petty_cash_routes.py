@@ -613,7 +613,7 @@ def approve_fund_allocation(current_user, allocation_id):
 @token_required
 def get_allocations(current_user):
     try:
-        from models import PettyCashFundAllocation, Branch
+        from models import PettyCashFundAllocation, Branch, User
         academic_year = request.headers.get("X-Academic-Year", "2024-2025")
         # Feature Permission
         from helpers import has_permission

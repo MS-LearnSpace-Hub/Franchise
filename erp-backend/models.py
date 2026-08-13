@@ -64,6 +64,25 @@ class ClassMaster(db.Model, AuditMixin):
     branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
 
 
+class ClassDisplayOrder(db.Model, AuditMixin):
+    __tablename__ = "class_display_orders"
+    __audit_module__ = "ACADEMICS"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    class_id = db.Column(db.Integer, db.ForeignKey('classes.id', ondelete='CASCADE'), nullable=False)
+    branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='CASCADE'), nullable=False)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=True)
+    display_order = db.Column(db.Integer, default=0, nullable=False)
+    
+    class_obj = db.relationship('ClassMaster', backref=db.backref('display_orders', lazy='dynamic', cascade="all, delete-orphan"))
+    branch_obj = db.relationship('Branch')
+    school_obj = db.relationship('School')
+
+    __table_args__ = (
+        db.UniqueConstraint('class_id', 'branch_id', name='uq_class_branch_order'),
+    )
+
+
+
 class ClassSection(db.Model, AuditMixin):
     __tablename__ = "class_sections"
     __audit_module__ = "ACADEMICS"
@@ -1136,7 +1155,7 @@ class PettyCashFundAllocation(db.Model, AuditMixin):
     branch_id = db.Column(db.Integer, db.ForeignKey('branches.id'), nullable=False)
     allocation_date = db.Column(db.Date, nullable=False)
     amount = db.Column(db.Numeric(12, 2), nullable=False)
-    remarks = db.Column(db.String(100), nullable=True)
+    remark = db.Column(db.String(100), nullable=True)
     approval_status = db.Column(db.Enum('Pending', 'Approved', 'Rejected'), server_default='Pending', default='Pending')
     approved_by = db.Column(db.Integer, db.ForeignKey('users.user_id'), nullable=True)
     approved_at = db.Column(db.DateTime, nullable=True)

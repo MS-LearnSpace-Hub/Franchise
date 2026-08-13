@@ -37,7 +37,11 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, navigateTo, onLogout, go
   // Dynamic Locations State
   const [locationData, setLocationData] = useState<any[]>([]);
 
-  const [selectedYear, setSelectedYear] = useState(localStorage.getItem('academicYear') || '');
+  // 1. Set your default academic year here.
+  // Next year, simply change this to '2027-2028' and it will automatically update for everyone.
+  const DEFAULT_ACADEMIC_YEAR = '2026-2027';
+
+  const [selectedYear, setSelectedYear] = useState(localStorage.getItem('academicYear') || DEFAULT_ACADEMIC_YEAR);
   const [currentBranch, setCurrentBranch] = useState(() => {
     return localStorage.getItem('currentBranch') || user.branch || 'All';
   });
@@ -283,18 +287,21 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, navigateTo, onLogout, go
         const yearsList = res.data.academic_years || [];
         setAcademicYearOptions(yearsList.map((y: any) => y.name));
 
-        // Auto-select first year if localStorage is empty
-        const storedYear = localStorage.getItem('academicYear');
+        // Use a versioning key so when you change DEFAULT_ACADEMIC_YEAR next year,
+        // it forcefully updates everyone's local storage default.
+        const currentVersion = localStorage.getItem('academicYearDefaultVersion');
+        let storedYear = localStorage.getItem('academicYear');
+
+        if (currentVersion !== DEFAULT_ACADEMIC_YEAR) {
+          storedYear = null; // Force reset
+          localStorage.setItem('academicYearDefaultVersion', DEFAULT_ACADEMIC_YEAR);
+        }
+
         if (!storedYear && yearsList.length > 0) {
-          const firstYear = yearsList[0].name;
-          // 1. Define the year you want as default
-          const targetYear = '2026-2027';
+          const hasTargetYear = yearsList.some((y: any) => y.name === DEFAULT_ACADEMIC_YEAR);
 
-          // 2. Check if the target year actually exists in the API response
-          const hasTargetYear = yearsList.some((y: any) => y.name === targetYear);
-
-          // 3. Use the target year if found, otherwise fallback to the first item in the array
-          const defaultYear = hasTargetYear ? targetYear : yearsList[0].name;
+          // Use the target year if found, otherwise fallback to the most recent/first item
+          const defaultYear = hasTargetYear ? DEFAULT_ACADEMIC_YEAR : yearsList[0].name;
           localStorage.setItem('academicYear', defaultYear);
           setSelectedYear(defaultYear);
         }

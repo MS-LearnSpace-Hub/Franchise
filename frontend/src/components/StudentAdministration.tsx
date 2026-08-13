@@ -26,7 +26,7 @@ interface StudentAdministrationProps {
 
 // Page view types
 type StudentAdminView =
-    'students' | 'search' | 'summary' | 'upgrade' | {/*'reports' | 'certificates'*/}
+    'students' | 'search' | 'summary' | 'upgrade' | {/*'reports' | 'certificates'*/ }
     | 'import' | 'addStudent' | 'viewStudent' | 'editStudent'
     | 'inactive' | 'inactiveReport' | 'demote' | 'updateDetails' | 'changeSection';
 
@@ -271,6 +271,16 @@ const StudentList: React.FC<{ onView: any; onEdit: any }> =
         const [classOptions, setClassOptions] = useState<ClassItem[]>([]);
         const [sectionOptions, setSectionOptions] = useState<string[]>([]);
 
+        const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
+
+        const handleSort = (key: string) => {
+            let direction: 'asc' | 'desc' = 'asc';
+            if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+                direction = 'desc';
+            }
+            setSortConfig({ key, direction });
+        };
+
         // Pagination State
         const [currentPage, setCurrentPage] = useState(1);
         const [itemsPerPage, setItemsPerPage] = useState(15);
@@ -340,18 +350,36 @@ const StudentList: React.FC<{ onView: any; onEdit: any }> =
 
         // Calculate pagination data
         const paginationData = useMemo(() => {
-            const totalItems = students.length;
+            let sortedStudents = [...students];
+            if (sortConfig) {
+                sortedStudents.sort((a, b) => {
+                    let aVal = '';
+                    let bVal = '';
+                    if (sortConfig.key === 'name') {
+                        aVal = (a.name || '').toLowerCase();
+                        bVal = (b.name || '').toLowerCase();
+                    } else if (sortConfig.key === 'class') {
+                        aVal = ((a.class || '') + ' ' + (a.section || '')).toLowerCase();
+                        bVal = ((b.class || '') + ' ' + (b.section || '')).toLowerCase();
+                    }
+                    if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+                    if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+                    return 0;
+                });
+            }
+
+            const totalItems = sortedStudents.length;
             const totalPages = Math.ceil(totalItems / itemsPerPage);
             const startIndex = (currentPage - 1) * itemsPerPage;
             const endIndex = startIndex + itemsPerPage;
-            const currentStudents = students.slice(startIndex, endIndex);
+            const currentStudents = sortedStudents.slice(startIndex, endIndex);
 
             return {
                 totalItems,
                 totalPages,
                 currentStudents
             };
-        }, [students, currentPage, itemsPerPage]);
+        }, [students, currentPage, itemsPerPage, sortConfig]);
 
         // Handle page change
         const handlePageChange = (page: number) => {
@@ -520,10 +548,14 @@ const StudentList: React.FC<{ onView: any; onEdit: any }> =
                         <table className="min-w-full text-sm divide-y divide-gray-200">
                             <thead className="bg-violet-600 text-white">
                                 <tr>
-                                    <th className="px-4 py-3 text-left">Student Name</th>
+                                    <th className="px-4 py-3 text-left cursor-pointer hover:bg-violet-700 select-none" onClick={() => handleSort('name')}>
+                                        Student Name <span className="ml-1 opacity-75">{sortConfig?.key === 'name' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
+                                    </th>
                                     <th className="px-4 py-3 text-left">Adm No.</th>
                                     <th className="px-4 py-3 text-left">Roll No.</th>
-                                    <th className="px-4 py-3 text-left">Class</th>
+                                    <th className="px-4 py-3 text-left cursor-pointer hover:bg-violet-700 select-none" onClick={() => handleSort('class')}>
+                                        Class <span className="ml-1 opacity-75">{sortConfig?.key === 'class' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
+                                    </th>
                                     <th className="px-4 py-3 text-left">Branch</th>
                                     <th className="px-4 py-3 text-left">Father/ Guardian Name</th>
                                     <th className="px-4 py-3 text-left">Father Mobile</th>

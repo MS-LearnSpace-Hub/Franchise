@@ -56,6 +56,72 @@ const ClassesManagement: React.FC<ClassesManagementProps> = ({ navigateTo }) => 
     const copyDropdownRef = useRef<HTMLDivElement>(null);
     const [copying, setCopying] = useState(false);
 
+    // Order Modal State
+    const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
+    const [orderBranchId, setOrderBranchId] = useState('');
+    const [orderClasses, setOrderClasses] = useState<any[]>([]);
+    const [savingOrder, setSavingOrder] = useState(false);
+
+    useEffect(() => {
+        if (isOrderModalOpen && orderBranchId && orderBranchId !== 'all') {
+            api.get(`/classes?branch=${orderBranchId}`).then(res => {
+                if (res.data && res.data.classes) {
+                    setOrderClasses(res.data.classes);
+                }
+            }).catch(console.error);
+        } else {
+            setOrderClasses([]);
+        }
+    }, [isOrderModalOpen, orderBranchId]);
+
+    const moveOrder = (index: number, direction: 'up' | 'down') => {
+        const newClasses = [...orderClasses];
+        if (direction === 'up' && index > 0) {
+            [newClasses[index - 1], newClasses[index]] = [newClasses[index], newClasses[index - 1]];
+        } else if (direction === 'down' && index < newClasses.length - 1) {
+            [newClasses[index + 1], newClasses[index]] = [newClasses[index], newClasses[index + 1]];
+        }
+        setOrderClasses(newClasses);
+    };
+
+    const setSpecificOrder = (currentIndex: number, newIndexStr: string) => {
+        if (!newIndexStr) return;
+        let newIndex = parseInt(newIndexStr, 10) - 1;
+        if (isNaN(newIndex)) return;
+        if (newIndex < 0) newIndex = 0;
+        if (newIndex >= orderClasses.length) newIndex = orderClasses.length - 1;
+
+        if (newIndex === currentIndex) return;
+
+        const newClasses = [...orderClasses];
+        const [movedItem] = newClasses.splice(currentIndex, 1);
+        newClasses.splice(newIndex, 0, movedItem);
+        setOrderClasses(newClasses);
+    };
+
+    const handleSaveOrder = async () => {
+        if (!orderBranchId || orderBranchId === 'all') {
+            alert("Please select a valid branch");
+            return;
+        }
+        setSavingOrder(true);
+        try {
+            await api.post('/classes/reorder', {
+                branch_id: parseInt(orderBranchId),
+                class_ids: orderClasses.map(c => c.id)
+            });
+            alert("Display order saved successfully!");
+            setIsOrderModalOpen(false);
+            fetchMasterClasses();
+            fetchClassSummary();
+        } catch (error: any) {
+            console.error("Save order failed", error);
+            alert(error.response?.data?.error || "Failed to save order");
+        } finally {
+            setSavingOrder(false);
+        }
+    };
+
     // Close dropdown on outside click
     useEffect(() => {
         function handleClickOutside(event: MouseEvent) {
@@ -298,7 +364,7 @@ const ClassesManagement: React.FC<ClassesManagementProps> = ({ navigateTo }) => 
 
 
     // Removed unused userRole
-       // List View - First screen
+    // List View - First screen
     if (viewMode === 'list') {
         return (
             <div className="min-h-screen bg-gray-50 p-6">
@@ -320,7 +386,13 @@ const ClassesManagement: React.FC<ClassesManagementProps> = ({ navigateTo }) => 
                             <button className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium shadow-md">
                                 Assign Class Teachers
                             </button>
-                            <button className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium shadow-md">
+                            <button
+                                onClick={() => {
+                                    setOrderBranchId(selectedBranch || (branches.length > 0 ? branches[0].id.toString() : ''));
+                                    setIsOrderModalOpen(true);
+                                }}
+                                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium shadow-md"
+                            >
                                 Assign Display Order
                             </button>
                             <button
@@ -431,6 +503,94 @@ const ClassesManagement: React.FC<ClassesManagementProps> = ({ navigateTo }) => 
                         )}
                     </div>
                 </div>
+
+                {/* Display Order Modal */}
+                {isOrderModalOpen && (
+                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                        <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
+                            <div className="flex justify-between items-center p-4 border-b">
+                                <h2 className="text-xl font-bold text-gray-800">Assign Display Order</h2>
+                                <button onClick={() => setIsOrderModalOpen(false)} className="text-gray-500 hover:text-gray-700">
+                                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                </button>
+                            </div>
+                            <div className="p-4 space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Select Branch</label>
+                                    <select
+                                        value={orderBranchId}
+                                        onChange={(e) => setOrderBranchId(e.target.value)}
+                                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500"
+                                    >
+                                        <option value="">- Select Branch -</option>
+                                        {branches.map(b => (
+                                            <option key={b.id} value={b.id}>{b.branch_name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                {orderBranchId && (
+                                    <div className="max-h-96 overflow-y-auto border rounded-lg">
+                                        {orderClasses.length === 0 ? (
+                                            <div className="p-4 text-center text-gray-500">No classes found</div>
+                                        ) : (
+                                            <ul className="divide-y">
+                                                {orderClasses.map((cls, idx) => (
+                                                    <li key={cls.id} className="flex items-center justify-between p-3 bg-white hover:bg-gray-50">
+                                                        <div className="flex items-center gap-3">
+                                                            <input
+                                                                type="number"
+                                                                min="1"
+                                                                max={orderClasses.length}
+                                                                value={idx + 1}
+                                                                onChange={() => { }} // React controlled warning fix, real change handled on blur or change with caution.
+                                                                onBlur={(e) => setSpecificOrder(idx, e.target.value)}
+                                                                onKeyDown={(e) => {
+                                                                    if (e.key === 'Enter') {
+                                                                        setSpecificOrder(idx, e.currentTarget.value);
+                                                                    }
+                                                                }}
+                                                                className="w-16 px-2 py-1 border rounded text-center text-sm"
+                                                                title="Type a number and press Enter or click outside to move"
+                                                            />
+                                                            <span className="font-medium text-gray-700">{cls.class_name}</span>
+                                                        </div>
+                                                        <div className="flex gap-1">
+                                                            <button
+                                                                onClick={() => moveOrder(idx, 'up')}
+                                                                disabled={idx === 0}
+                                                                className={`p-1 rounded ${idx === 0 ? 'text-gray-300' : 'text-blue-600 hover:bg-blue-50'}`}
+                                                            >
+                                                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>
+                                                            </button>
+                                                            <button
+                                                                onClick={() => moveOrder(idx, 'down')}
+                                                                disabled={idx === orderClasses.length - 1}
+                                                                className={`p-1 rounded ${idx === orderClasses.length - 1 ? 'text-gray-300' : 'text-blue-600 hover:bg-blue-50'}`}
+                                                            >
+                                                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                                                            </button>
+                                                        </div>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                            <div className="p-4 border-t flex justify-end gap-3 bg-gray-50 rounded-b-lg">
+                                <button onClick={() => setIsOrderModalOpen(false)} className="px-4 py-2 border text-gray-700 rounded-lg hover:bg-gray-100">Cancel</button>
+                                <button
+                                    onClick={handleSaveOrder}
+                                    disabled={savingOrder || orderClasses.length === 0}
+                                    className={`px-4 py-2 text-white rounded-lg ${savingOrder || orderClasses.length === 0 ? 'bg-purple-400' : 'bg-purple-600 hover:bg-purple-700'}`}
+                                >
+                                    {savingOrder ? 'Saving...' : 'Save Order'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
             </div>
         );
     }

@@ -1,7 +1,7 @@
 # pyrefly: ignore [missing-import]
 from flask import Blueprint, jsonify, request
 from extensions import db, to_local_time
-from models import ClassMaster, ClassSection, Branch, Student, OrgMaster, User
+from models import ClassMaster, ClassSection, Branch, Student, OrgMaster, User, ClassDisplayOrder
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func
 from helpers import token_required, get_user_allowed_branches, validate_cross_branch_access, skip_scoping
@@ -431,6 +431,8 @@ def get_class_summary(current_user):
             ClassSection.branch_id
         ).join(
             ClassSection, ClassMaster.id == ClassSection.class_id
+        ).outerjoin(
+            ClassDisplayOrder, (ClassDisplayOrder.class_id == ClassMaster.id) & (ClassDisplayOrder.branch_id == ClassSection.branch_id)
         ).filter(
             ClassSection.academic_year == academic_year
         )
@@ -453,7 +455,7 @@ def get_class_summary(current_user):
              if branch_id_param and branch_id_param != 'all':
                   query = query.filter(ClassSection.branch_id == int(branch_id_param))
 
-        results = query.order_by(ClassMaster.class_name, ClassSection.section_name).all()
+        results = query.order_by(ClassDisplayOrder.display_order.asc(), ClassMaster.class_name, ClassSection.section_name).all()
 
         # Grouping
         summary = {}
@@ -475,4 +477,48 @@ def get_class_summary(current_user):
 
     except Exception as e:
         print(f"Error fetching summary: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@bp.route("/api/classes/reorder", methods=["POST"])
+@token_required
+def reorder_classes(current_user):
+    data = request.json
+    try:
+        branch_id = data.get("branch_id")
+        class_ids = data.get("class_ids", [])
+        if not branch_id or not isinstance(class_ids, list):
+            return jsonify({"error": "Missing branch_id or invalid class_ids"}), 400
+        
+        branch = Branch.query.get(branch_id)
+        if not branch:
+            return jsonify({"error": "Invalid branch"}), 400
+            
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited'] and int(branch_id) not in allowed['ids']:
+            return jsonify({"error": "Unauthorized branch access"}), 403
+            
+        try:
+            # clear existing orders for this branch
+            ClassDisplayOrder.query.filter_by(branch_id=branch_id).delete()
+            
+            # insert new orders
+            orders = []
+            for i, cid in enumerate(class_ids):
+                orders.append(ClassDisplayOrder(
+                    class_id=cid,
+                    branch_id=branch_id,
+                    school_id=branch.school_id,
+                    display_order=i+1
+                ))
+            if orders:
+                db.session.add_all(orders)
+            
+            db.session.commit()
+            return jsonify({"message": "Display order updated"}), 200
+        except Exception as e:
+            db.session.rollback()
+            raise e
+    except Exception as e:
+        print(f"Error reordering: {e}")
         return jsonify({"error": str(e)}), 500
