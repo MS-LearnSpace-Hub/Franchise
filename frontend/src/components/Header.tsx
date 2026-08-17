@@ -290,19 +290,23 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, navigateTo, onLogout, go
         // Use a versioning key so when you change DEFAULT_ACADEMIC_YEAR next year,
         // it forcefully updates everyone's local storage default.
         const currentVersion = localStorage.getItem('academicYearDefaultVersion');
-        let storedYear = localStorage.getItem('academicYear');
+        const storedYear = localStorage.getItem('academicYear');
+        const availableYearNames = yearsList.map((y: any) => y.name);
+        const storedYearIsAvailable =
+          !!storedYear && availableYearNames.includes(storedYear);
 
         if (currentVersion !== DEFAULT_ACADEMIC_YEAR) {
-          storedYear = null; // Force reset
           localStorage.setItem('academicYearDefaultVersion', DEFAULT_ACADEMIC_YEAR);
         }
 
-        if (!storedYear && yearsList.length > 0) {
+        if (
+          yearsList.length > 0 &&
+          (currentVersion !== DEFAULT_ACADEMIC_YEAR || !storedYearIsAvailable)
+        ) {
           const hasTargetYear = yearsList.some((y: any) => y.name === DEFAULT_ACADEMIC_YEAR);
 
           // Use the target year if found, otherwise fallback to the most recent/first item
-          const defaultYear = hasTargetYear ? DEFAULT_ACADEMIC_YEAR : yearsList[0].name;
-          localStorage.setItem('academicYear', defaultYear);
+          const defaultYear = hasTargetYear ? DEFAULT_ACADEMIC_YEAR : yearsList[0].name; localStorage.setItem('academicYear', defaultYear);
           setSelectedYear(defaultYear);
         }
       })

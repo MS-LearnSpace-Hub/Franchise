@@ -63,17 +63,22 @@ const ClassesManagement: React.FC<ClassesManagementProps> = ({ navigateTo }) => 
     const [savingOrder, setSavingOrder] = useState(false);
 
     useEffect(() => {
+        let cancelled = false;
+
         if (isOrderModalOpen && orderBranchId && orderBranchId !== 'all') {
             api.get(`/classes?branch=${orderBranchId}`).then(res => {
-                if (res.data && res.data.classes) {
+                if (!cancelled && res.data && res.data.classes) {
                     setOrderClasses(res.data.classes);
                 }
             }).catch(console.error);
         } else {
             setOrderClasses([]);
         }
-    }, [isOrderModalOpen, orderBranchId]);
 
+        return () => {
+            cancelled = true;
+        };
+    }, [isOrderModalOpen, orderBranchId]);
     const moveOrder = (index: number, direction: 'up' | 'down') => {
         const newClasses = [...orderClasses];
         if (direction === 'up' && index > 0) {
