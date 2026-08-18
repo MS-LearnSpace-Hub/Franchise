@@ -125,16 +125,29 @@ const ReportCard: React.FC<ReportCardProps> = ({ data }) => {
     gs => gs?.grades && gs.grades.length > 0
   );
 
-  // Compute which grades are actually used across all grading rows
-  const usedGradesSet = new Set<string>();
+  // Compute which grades are actually used across all grading rows, and sort them by average percentage
+  const gradeStats = new Map<string, { sum: number, count: number }>();
   gradingRows.forEach(scale => {
+    const maxMarks = Number(scale.label) || 100;
     if (scale.grades) {
-      scale.grades.forEach((g: any) => usedGradesSet.add(g.grade));
+      scale.grades.forEach((g: any) => {
+        const pct = g.min / maxMarks;
+        if (!gradeStats.has(g.grade)) {
+          gradeStats.set(g.grade, { sum: 0, count: 0 });
+        }
+        const stat = gradeStats.get(g.grade)!;
+        stat.sum += pct;
+        stat.count += 1;
+      });
     }
   });
 
-  // Filter GRADE_LABELS to keep only the ones that exist in the current scales (preserves order)
-  const activeGradeLabels = GRADE_LABELS.filter(g => usedGradesSet.has(g));
+  // Sort dynamically based on their average starting percentage
+  const activeGradeLabels = Array.from(gradeStats.keys()).sort((a, b) => {
+    const statA = gradeStats.get(a)!;
+    const statB = gradeStats.get(b)!;
+    return (statA.sum / statA.count) - (statB.sum / statB.count);
+  });
 
   // ── Academic rows — sorted by subject_order from backend, Total/Grade always last ──
   const acadAll = (academicPerformance ?? []).filter(ap => ap.subject && ap.subject !== '');
@@ -709,7 +722,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ data }) => {
                     <th key={g} style={{
                       ...cell,
                       padding: '2px 4px',
-                      backgroundColor: GRADE_HEADER_COLORS[g] || '#15803d',
+                      backgroundColor: GRADE_HEADER_COLORS[g] || GRADE_BADGE_COLORS[g] || '#15803d',
                       color: COLOR.white, fontWeight: 700, textAlign: 'center'
                     }}>
                       {g}
