@@ -38,15 +38,7 @@ const gradeColor = (g?: string) => GRADE_BADGE_COLORS[g ?? ''] ?? '#6b7280';
 const calcPct = (num: number, den: number) =>
   den > 0 ? Math.round((num / den) * 100) : 0;
  
-const buildGradeCells = (values: number[]): string[] => {
-  const thresholds = values.slice(1);
-  return GRADE_LABELS.map((_, i) => {
-    const lo = i === 0 ? 0 : (thresholds[i - 1] ?? 0) + 1;
-    const hi = thresholds[i] ?? 0;
-    if (lo === hi) return String(hi);
-    return `${lo}–${hi}`;
-  });
-};
+
  
 const COLOR = {
   navy:    '#1e3a5f',
@@ -130,7 +122,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ data }) => {
  
   // Grading scale
   const gradingRows = (gradingScales ?? []).filter(
-    gs => gs?.values && gs.values.length >= 2
+    gs => gs?.grades && gs.grades.length > 0
   );
  
   // ── Academic rows — sorted by subject_order from backend, Total/Grade always last ──
@@ -691,43 +683,44 @@ const ReportCard: React.FC<ReportCardProps> = ({ data }) => {
               Grading scale not available
             </div>
           ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '10.5px' }}>
-              <thead>
-                <tr>
-                  <th style={{
-                    ...cell,
-                    backgroundColor: '#374151', color: COLOR.white,
-                    fontWeight: 700, textAlign: 'center', width: '70px',
-                  }}>
-                    Max Marks
-                  </th>
-                  {GRADE_LABELS.map(g => (
-                    <th key={g} style={{
-                      ...cell,
-                      backgroundColor: GRADE_HEADER_COLORS[g],
-                      color: COLOR.white, fontWeight: 700, textAlign: 'center',
-                    }}>
-                      {g}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {gradingRows.map((scale, si) => {
-                  const cells = buildGradeCells(scale.values);
-                  return (
-                    <tr key={si} style={{ backgroundColor: si % 2 === 0 ? COLOR.lightBg : COLOR.white }}>
-                      <td style={{ ...cell, textAlign: 'center', fontWeight: 700, color: COLOR.navy }}>
-                        {scale.label}
-                      </td>
-                      {cells.map((c, ci) => (
-                        <td key={ci} style={{ ...cell, textAlign: 'center', color: '#374151' }}>{c}</td>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {gradingRows.map((scale, si) => (
+                <table key={si} style={{ width: '100%', borderCollapse: 'collapse', fontSize: '10.5px' }}>
+                  <thead>
+                    <tr>
+                      <th style={{
+                        ...cell,
+                        backgroundColor: '#374151', color: COLOR.white,
+                        fontWeight: 700, textAlign: 'center', width: '85px',
+                      }}>
+                        Max Marks: {scale.label}
+                      </th>
+                      {scale.grades.map((g: any) => (
+                        <th key={g.grade} style={{
+                          ...cell,
+                          backgroundColor: GRADE_HEADER_COLORS[g.grade] || '#15803d',
+                          color: COLOR.white, fontWeight: 700, textAlign: 'center',
+                        }}>
+                          {g.grade}
+                        </th>
                       ))}
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td style={{ ...cell, textAlign: 'center', fontWeight: 700, color: COLOR.navy }}>
+                        Range
+                      </td>
+                      {scale.grades.map((g: any, ci: number) => (
+                        <td key={ci} style={{ ...cell, textAlign: 'center', color: '#374151' }}>
+                          {g.min === g.max ? String(g.max) : `${g.min}–${g.max}`}
+                        </td>
+                      ))}
+                    </tr>
+                  </tbody>
+                </table>
+              ))}
+            </div>
           )}
         </div>
       </div>

@@ -25,10 +25,15 @@ export interface StudentOption {
     admission_no?: string;
 }
 
+export interface GradingScaleValue {
+    grade: string;
+    min: number;
+    max: number;
+}
+
 export interface GradingScale {
     label: string;
-    values: number[];
-    colors: string[];
+    grades: GradingScaleValue[];
 }
 
 export interface DeeniyathDataItem {
