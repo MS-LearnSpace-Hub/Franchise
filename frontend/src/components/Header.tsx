@@ -37,7 +37,11 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, navigateTo, onLogout, go
   // Dynamic Locations State
   const [locationData, setLocationData] = useState<any[]>([]);
 
-  const [selectedYear, setSelectedYear] = useState(localStorage.getItem('academicYear') || '');
+  // 1. Set your default academic year here.
+  // Next year, simply change this to '2027-2028' and it will automatically update for everyone.
+  const DEFAULT_ACADEMIC_YEAR = '2026-2027';
+
+  const [selectedYear, setSelectedYear] = useState(localStorage.getItem('academicYear') || DEFAULT_ACADEMIC_YEAR);
   const [currentBranch, setCurrentBranch] = useState(() => {
     return localStorage.getItem('currentBranch') || user.branch || 'All';
   });
@@ -281,22 +285,38 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, navigateTo, onLogout, go
     api.get('/org/academic-years')
       .then(res => {
         const yearsList = res.data.academic_years || [];
-        setAcademicYearOptions(yearsList.map((y: any) => y.name));
+        const availableYearNames = yearsList.map((y: any) => y.name);
+        setAcademicYearOptions(availableYearNames);
 
-        // Auto-select first year if localStorage is empty
+        if (availableYearNames.length === 0) return;
+
+        const currentVersion = localStorage.getItem('academicYearDefaultVersion');
         const storedYear = localStorage.getItem('academicYear');
-        if (!storedYear && yearsList.length > 0) {
-          const firstYear = yearsList[0].name;
-          // 1. Define the year you want as default
-          const targetYear = '2026-2027';
 
-          // 2. Check if the target year actually exists in the API response
-          const hasTargetYear = yearsList.some((y: any) => y.name === targetYear);
+        let targetYear = storedYear;
 
-          // 3. Use the target year if found, otherwise fallback to the first item in the array
-          const defaultYear = hasTargetYear ? targetYear : yearsList[0].name;
-          localStorage.setItem('academicYear', defaultYear);
-          setSelectedYear(defaultYear);
+        // If version bump happened AND the target default year is actually available in the DB
+        if (currentVersion !== DEFAULT_ACADEMIC_YEAR) {
+          if (availableYearNames.includes(DEFAULT_ACADEMIC_YEAR)) {
+            // Safe to upgrade
+            targetYear = DEFAULT_ACADEMIC_YEAR;
+            localStorage.setItem('academicYearDefaultVersion', DEFAULT_ACADEMIC_YEAR);
+          }
+          // If not available in DB, we don't update the version key so it tries again later
+        }
+
+        // Ensure the target year is valid
+        if (!targetYear || !availableYearNames.includes(targetYear)) {
+          targetYear = availableYearNames.includes(DEFAULT_ACADEMIC_YEAR)
+            ? DEFAULT_ACADEMIC_YEAR
+            : availableYearNames[0];
+        }
+
+        if (targetYear !== storedYear) {
+          localStorage.setItem('academicYear', targetYear as string);
+          setSelectedYear(targetYear as string);
+        } else if (storedYear) {
+          setSelectedYear(storedYear);
         }
       })
       .catch(err => console.error("Failed to load academic years in Header", err));

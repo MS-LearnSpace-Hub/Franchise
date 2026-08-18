@@ -35,6 +35,9 @@ def create_subject(current_user):
         school_id = data.get("school_id") or scope['school_id']
         branch_id = data.get("branch_id") or scope['branch_id']
 
+        if not school_id or not branch_id:
+            return jsonify({"error": "School and Branch are required to create a subject."}), 400
+
         # Validate the resolved IDs are within user's allowed scope
         if not scope['is_unlimited']:
             if school_id and scope['allowed_school_ids'] and school_id not in scope['allowed_school_ids']:
@@ -108,24 +111,30 @@ def list_subjects(current_user):
             
         # Scope filtering — works for all roles via allowed branches
         scope = resolve_user_scope(current_user)
+        school_id = scope.get('school_id')
+        branch_id = scope.get('branch_id')
+
+        # Always filter by the selected school and branch (applies to SuperAdmin too)
+        if school_id:
+            query = query.filter(SubjectMaster.school_id == school_id)
+        if branch_id:
+            query = query.filter(SubjectMaster.branch_id == branch_id)
+
         if not scope['is_unlimited']:
-            allowed_branch_ids = scope['allowed_branch_ids'] or set()
-            effective_school_id = scope['school_id']
+            allowed_branch_ids = scope.get('allowed_branch_ids') or set()
+            allowed_school_ids = scope.get('allowed_school_ids') or set()
             
-            if effective_school_id:
-                if allowed_branch_ids:
-                    branch_cond = SubjectMaster.branch_id.in_(list(allowed_branch_ids))
-                    query = query.filter(
-                        (SubjectMaster.school_id.is_(None) & SubjectMaster.branch_id.is_(None)) |
-                        ((SubjectMaster.school_id == effective_school_id) & (SubjectMaster.branch_id.is_(None) | branch_cond))
-                    )
+            if not school_id:
+                if allowed_school_ids:
+                    query = query.filter(SubjectMaster.school_id.in_(list(allowed_school_ids)))
                 else:
-                    query = query.filter(
-                        (SubjectMaster.school_id.is_(None) & SubjectMaster.branch_id.is_(None)) |
-                        ((SubjectMaster.school_id == effective_school_id) & SubjectMaster.branch_id.is_(None))
-                    )
-            else:
-                query = query.filter(SubjectMaster.school_id.is_(None) & SubjectMaster.branch_id.is_(None))
+                    query = query.filter(SubjectMaster.school_id == -1)
+
+            if not branch_id:
+                if allowed_branch_ids:
+                    query = query.filter(SubjectMaster.branch_id.in_(list(allowed_branch_ids)))
+                else:
+                    query = query.filter(SubjectMaster.school_id == -1)
                 
         subjects = query.all()
         return jsonify([
@@ -1151,14 +1160,15 @@ def create_subject(current_user):
         if not academic_year:
              return jsonify({"error": "Academic Year is required"}), 400
 
-        # Resolve optional school_id and branch_id from payload only.
-        # If omitted, subject is created as global (all schools / all branches).
+        # Resolve school_id and branch_id. Default to user's scope if omitted.
         scope = resolve_user_scope(current_user)
-        school_id = data.get("school_id") if "school_id" in data else None
-        branch_id = data.get("branch_id") if "branch_id" in data else None
+        school_id = data.get("school_id") if data.get("school_id") is not None else scope.get('school_id')
+        branch_id = data.get("branch_id") if data.get("branch_id") is not None else scope.get('branch_id')
 
         # Validate explicit IDs against user's allowed scope
         if not scope['is_unlimited']:
+            if school_id is None or branch_id is None:
+                return jsonify({"error": "Cannot create global subjects without franchise management permission"}), 403
             if school_id and scope['allowed_school_ids'] and school_id not in scope['allowed_school_ids']:
                 return jsonify({"error": "Unauthorized school access"}), 403
             if branch_id and scope['allowed_branch_ids'] and branch_id not in scope['allowed_branch_ids']:
@@ -1232,23 +1242,41 @@ def list_subjects(current_user):
             
         # Scope filtering — works for all roles via allowed branches
         scope = resolve_user_scope(current_user)
-        if not scope['is_unlimited']:
-            allowed_branch_ids = scope['allowed_branch_ids'] or set()
-            effective_school_id = scope['school_id']
+        effective_school_id = scope.get('school_id')
+        effective_branch_id = scope.get('branch_id')
+        
+        # SuperAdmins and restricted users alike should only see subjects for their current selected context + global subjects
+        if effective_school_id:
+            if effective_branch_id:
+                 # Filter to global + school-wide + specific branch
+                 query = query.filter(
+                     (SubjectMaster.school_id.is_(None) & SubjectMaster.branch_id.is_(None)) |
+                     ((SubjectMaster.school_id == effective_school_id) & (SubjectMaster.branch_id.is_(None) | (SubjectMaster.branch_id == effective_branch_id)))
+                 )
+            else:
+                 # Filter to global + school-wide + all branches in this school
+                 query = query.filter(
+                     (SubjectMaster.school_id.is_(None) & SubjectMaster.branch_id.is_(None)) |
+                     (SubjectMaster.school_id == effective_school_id)
+                 )
+        elif not scope['is_unlimited']:
+            # If a restricted user somehow has no effective_school_id (e.g. invalid context), fallback to their allowed list
+            allowed_school_ids = scope.get('allowed_school_ids') or set()
+            allowed_branch_ids = scope.get('allowed_branch_ids') or set()
             
-            if effective_school_id:
+            if allowed_school_ids:
                 if allowed_branch_ids:
-                    branch_cond = SubjectMaster.branch_id.in_(list(allowed_branch_ids))
                     query = query.filter(
                         (SubjectMaster.school_id.is_(None) & SubjectMaster.branch_id.is_(None)) |
-                        ((SubjectMaster.school_id == effective_school_id) & (SubjectMaster.branch_id.is_(None) | branch_cond))
+                        ((SubjectMaster.school_id.in_(list(allowed_school_ids))) & (SubjectMaster.branch_id.is_(None) | SubjectMaster.branch_id.in_(list(allowed_branch_ids))))
                     )
                 else:
                     query = query.filter(
                         (SubjectMaster.school_id.is_(None) & SubjectMaster.branch_id.is_(None)) |
-                        ((SubjectMaster.school_id == effective_school_id) & SubjectMaster.branch_id.is_(None))
+                        (SubjectMaster.school_id.in_(list(allowed_school_ids)))
                     )
             else:
+                # No access to any school, only see global subjects
                 query = query.filter(SubjectMaster.school_id.is_(None) & SubjectMaster.branch_id.is_(None))
                 
         subjects = query.all()

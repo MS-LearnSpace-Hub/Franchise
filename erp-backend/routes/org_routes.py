@@ -2,7 +2,7 @@ import os
 # pyrefly: ignore [missing-import]
 from flask import Blueprint, jsonify, request, current_app, send_from_directory, send_file
 from extensions import db
-from models import Branch, School, OrgMaster, User, UserBranchAccess, ClassMaster, ClassSection
+from models import Branch, School, OrgMaster, User, UserBranchAccess, ClassMaster, ClassSection, ClassDisplayOrder
 from services.sequence_service import SequenceService
 from helpers import token_required, require_academic_year, get_branch_query_filter, get_user_allowed_branches, has_permission, validate_cross_branch_access
 from datetime import date, datetime
@@ -593,9 +593,24 @@ def get_classes(current_user):
             )
             query = query.filter(branch_cond)
 
-    query = query.distinct(ClassMaster.id)
-    classes = query.order_by(ClassMaster.id.asc()).all()
+    from sqlalchemy import and_
+    if branch_obj:
+        query = query.outerjoin(ClassDisplayOrder, and_(
+            ClassDisplayOrder.class_id == ClassMaster.id,
+            ClassDisplayOrder.branch_id == branch_obj.id
+        ))
+        
+        query = query.with_entities(ClassMaster, ClassDisplayOrder.display_order)
+        # We group by ClassMaster.id to ensure uniqueness and allow ordering in MySQL
+        query = query.group_by(ClassMaster.id, ClassDisplayOrder.display_order)
+        results = query.order_by(ClassDisplayOrder.display_order.asc(), ClassMaster.id.asc()).all()
+        
+        classes_list = [{"id": r[0].id, "class_name": r[0].class_name} for r in results]
+    else:
+        query = query.distinct()
+        classes_obj = query.order_by(ClassMaster.id.asc()).all()
+        classes_list = [{"id": c.id, "class_name": c.class_name} for c in classes_obj]
     
     return jsonify({
-        "classes": [{"id": c.id, "class_name": c.class_name} for c in classes]
+        "classes": classes_list
     }), 200

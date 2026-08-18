@@ -551,23 +551,34 @@ def get_student_report(current_user):
         grading_scales = []
         for total_marks in sorted(grading_by_total.keys()):
             grades = grading_by_total[total_marks]
-            # Sort by max_marks to get proper order
-            sorted_grades = sorted(grades, key=lambda x: x['max_marks'])
-            values = [0]
+            # Sort by min_marks to get proper order
+            sorted_grades = sorted(grades, key=lambda x: x['min_marks'])
+            grades_list = []
             for g in sorted_grades:
-                values.append(g['max_marks'])
+                grades_list.append({
+                    'grade': g['grade'],
+                    'min': g['min_marks'],
+                    'max': g['max_marks']
+                })
             grading_scales.append({
                 'label': str(total_marks),
-                'values': values,
-                'colors': []
+                'grades': grades_list
             })
         
         # Default grading scale if none found
         if not grading_scales:
             grading_scales = [{
                 'label': '20',
-                'values': [0, 7, 8, 10, 12, 14, 16, 18, 20],
-                'colors': []
+                'grades': [
+                    {'grade': 'E', 'min': 0, 'max': 7},
+                    {'grade': 'D', 'min': 8, 'max': 8},
+                    {'grade': 'C2', 'min': 9, 'max': 10},
+                    {'grade': 'C1', 'min': 11, 'max': 12},
+                    {'grade': 'B2', 'min': 13, 'max': 14},
+                    {'grade': 'B1', 'min': 15, 'max': 16},
+                    {'grade': 'A2', 'min': 17, 'max': 18},
+                    {'grade': 'A1', 'min': 19, 'max': 20}
+                ]
             }]
         
         # ========== Build Final Response ==========

@@ -268,36 +268,42 @@ const SubjectMaster: React.FC = () => {
             </div>
 
             {/* Add Subject */}
-            <div className="flex gap-3 mb-6 items-end">
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Subject Name</label>
-                    <input
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        className="border px-3 py-2 rounded w-64"
-                        placeholder="Enter subject name"
-                    />
+            {!isSpecificBranch ? (
+                <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-md">
+                    <p className="text-sm font-medium">Please select a specific branch from the top menu to add subjects.</p>
                 </div>
+            ) : (
+                <div className="flex gap-3 mb-6 items-end">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Subject Name</label>
+                        <input
+                            value={name}
+                            onChange={(e) => setName(e.target.value)}
+                            className="border px-3 py-2 rounded w-64"
+                            placeholder="Enter subject name"
+                        />
+                    </div>
 
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Group</label>
-                    <select
-                        value={group}
-                        onChange={(e) => setGroup(e.target.value as "Academic" | "Deeniyath")}
-                        className="border px-3 py-2 rounded w-40"
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Group</label>
+                        <select
+                            value={group}
+                            onChange={(e) => setGroup(e.target.value as "Academic" | "Deeniyath")}
+                            className="border px-3 py-2 rounded w-40"
+                        >
+                            <option value="Academic">Academic</option>
+                            <option value="Deeniyath">Deeniyath</option>
+                        </select>
+                    </div>
+
+                    <button
+                        onClick={addSubject}
+                        className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors"
                     >
-                        <option value="Academic">Academic</option>
-                        <option value="Deeniyath">Deeniyath</option>
-                    </select>
+                        Add Subject
+                    </button>
                 </div>
-
-                <button
-                    onClick={addSubject}
-                    className="px-4 py-2 bg-[#337ab7] text-white rounded hover:bg-[#286090] mb-[1px]"
-                >
-                    Add Subject
-                </button>
-            </div>
+            )}
 
             {/* Subject Table */}
             <table className="w-full text-sm border">

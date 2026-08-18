@@ -2,6 +2,7 @@
 from flask import Blueprint, request, jsonify, current_app
 from extensions import db
 from models import ClassTest, ClassMaster, ClassSection, TestType, OrgMaster, Branch, User, ClassTestSubject, SubjectMaster
+from timetable_models import SubjectTeacherAssignment
 import sqlalchemy
 from datetime import datetime
 from helpers import token_required, validate_cross_branch_access, get_user_allowed_branches, skip_scoping
@@ -217,7 +218,8 @@ def copy_assignments(current_user):
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 @class_test_bp.route('/list', methods=['GET'])
-def list_class_tests():
+@token_required
+def list_class_tests(current_user):
     try:
         academic_year = request.args.get('academic_year')
         branch = request.args.get('branch')
@@ -230,6 +232,19 @@ def list_class_tests():
 
         if not all([academic_year, branch, class_id]):
              return jsonify({'error': 'Missing filters', 'data': []}), 400
+
+        # Determine if user is a staff member who needs subject filtering
+        is_staff_user = (current_user.role == 'Staff') or (current_user.staff_id is not None)
+        assigned_subject_ids = None
+
+        if is_staff_user and current_user.staff_id:
+            # Get all subjects this teacher is assigned to for this class (any section)
+            assignments = SubjectTeacherAssignment.query.filter_by(
+                teacher_id=current_user.staff_id,
+                class_id=class_id,
+                academic_year=academic_year
+            ).all()
+            assigned_subject_ids = {a.subject_id for a in assignments}
 
         # Fetch Class Tests
         assignments = ClassTest.query.filter_by(
@@ -254,17 +269,23 @@ def list_class_tests():
                 
             subj_list = []
             for cts, sm in subjects_query:
+                # If staff user, only include subjects they are assigned to
+                if assigned_subject_ids is not None and sm.id not in assigned_subject_ids:
+                    continue
+                    
                 subj_list.append({
                     'id': sm.id,
                     'subject_name': sm.subject_name
                 })
-                
-            results.append({
-                'test_id': a.test_id,
-                'test_name': test_name,
-                'class_test_id': a.id,
-                'subjects': subj_list
-            })
+            
+            # Only include test if it has subjects (relevant for staff users)
+            if subj_list or (assigned_subject_ids is None):
+                results.append({
+                    'test_id': a.test_id,
+                    'test_name': test_name,
+                    'class_test_id': a.id,
+                    'subjects': subj_list
+                })
             
         return jsonify(results), 200
 
