@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, g
 from extensions import db, to_local_time
 from models import GradeScale, GradeScaleDetails
 from sqlalchemy.exc import IntegrityError
@@ -66,21 +66,15 @@ def create_grade_scale(current_user):
                 return jsonify({"error": f"Grade Scale '{scale_name}' exists but is inactive. Please contact admin."}), 409
             return jsonify({"error": f"Grade Scale '{scale_name}' already exists for this context."}), 409
 
-        # Create Master (Location Wide)
-        # Note: Frontend might send specific branch, but we generalize it to 'All' 
-        # or rely on model default if we don't pass it. 
-        # But explicit is better.
-        
+        # Create Master (Branch and School Wise)
         new_scale = GradeScale(
             scale_name=scale_name,
             scale_description=description,
             location=location,
-            branch="All", # Location-wide scope
+            branch=branch, # Branch-specific scope
             academic_year=academic_year,
             total_marks=total_marks,
             is_active=True
-
-
         )
         db.session.add(new_scale)
         db.session.flush() # Get ID
@@ -113,7 +107,9 @@ def create_grade_scale(current_user):
         return jsonify({"error": str(e)}), 500
 
 @grade_scale_bp.route("/api/grade-scales", methods=["GET"])
-def get_grade_scales():
+@token_required
+def get_grade_scales(current_user):
+    from helpers import scope_query
     try:
         academic_year = request.args.get("academic_year")
         branch = request.args.get("branch")
@@ -122,28 +118,28 @@ def get_grade_scales():
 
         if academic_year:
             query = query.filter_by(academic_year=academic_year)
-        if academic_year:
-            query = query.filter_by(academic_year=academic_year)
             
-        # Scope is Location-based. 
-        # If frontend sends a branch, we still fetch the 'All' branch scales (Location Wide)
-        # We might also filter by Location if frontend sends it (it usually does not in GET params explicitly if inferred from branch)
-        # But GradeScale table has location. We need to match location.
-        # Ideally frontend sends location. If not, we can't filter by location easily without a lookup.
-        # But since we store location, let's assume valid scales are those with 'All' branch 
-        # OR specific branch if we supported mixed mode (but we don't now).
-        
-        # Simple Logic: Fetch all 'All' branch scales.
-        # If we had location in params, we would filter by location.
-        # Currently the route reads 'branch'. 
-        
-        # Let's filter strict 'All' for branch column as per new design.
-        query = query.filter(GradeScale.branch == "All") 
-
-        # Filter by Location if provided (Fix for cross-location visibility bug)
+        # Filter by Location if provided
         location = request.args.get("location")
         if location:
             query = query.filter_by(location=location) 
+            
+        # Functional filtering based on user's currently selected context (UI selection)
+        # We do this because scope_query bypasses filtering for SuperAdmins, 
+        # but SuperAdmins still want to see data filtered by their selected branch dropdown.
+        s_id = getattr(g, 'school_id', None)
+        if s_id is not None:
+            query = query.filter((GradeScale.school_id == s_id) | (GradeScale.school_id.is_(None)))
+            
+        b_id = getattr(g, 'branch_id', None)
+        if b_id is not None:
+            query = query.filter((GradeScale.branch_id == b_id) | (GradeScale.branch_id.is_(None)))
+            
+        # Apply scope query to restrict by allowed permissions (Security)
+        query = scope_query(query, GradeScale)
+        
+        scales = query.all()
+        print(f"DEBUG get_grade_scales: args={request.args}, g.school_id={getattr(g, 'school_id', None)}, g.branch_id={getattr(g, 'branch_id', None)}, found={len(scales)}")
 
         # Future: If we receive location, filter by it.
         # query = query.filter_by(location=request.args.get('location'))
