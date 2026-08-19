@@ -28,7 +28,7 @@ const GradeScaleManager: React.FC = () => {
     const [academicYears, setAcademicYears] = useState<any[]>([]);
     const [branches, setBranches] = useState<any[]>([]);
     const [availableClasses, setAvailableClasses] = useState<any[]>([]);
-    
+
     // Data State
     const [scales, setScales] = useState<GradeScale[]>([]);
     const [loading, setLoading] = useState(false);
@@ -93,10 +93,6 @@ const GradeScaleManager: React.FC = () => {
                     setBranch(branchList[0].branch_name);
                 }
 
-                // Load Classes
-                const resClasses = await api.get('/classes');
-                setAvailableClasses(resClasses.data.classes || []);
-
             } catch (err) {
                 console.error("Failed to load context", err);
             }
@@ -113,12 +109,18 @@ const GradeScaleManager: React.FC = () => {
     const fetchScales = async () => {
         setLoading(true);
         try {
-            const res = await api.get('/grade-scales', {
-                params: { academic_year: academicYear, branch: branch, location: location }
-            });
-            setScales(res.data);
+            const [resScales, resClasses] = await Promise.all([
+                api.get('/grade-scales', {
+                    params: { academic_year: academicYear, branch: branch, location: location }
+                }),
+                api.get('/classes', {
+                    params: { academic_year: academicYear, branch: branch }
+                })
+            ]);
+            setScales(resScales.data);
+            setAvailableClasses(resClasses.data.classes || []);
         } catch (err) {
-            console.error("Failed to fetch scales", err);
+            console.error("Failed to fetch scales or classes", err);
         } finally {
             setLoading(false);
         }
@@ -150,7 +152,6 @@ const GradeScaleManager: React.FC = () => {
     };
 
     // --- Handlers ---
-
     const handleReset = () => {
         setSelectedScaleId(null);
         setSelectedScaleId(null);
@@ -314,6 +315,7 @@ const GradeScaleManager: React.FC = () => {
                 // Update
                 await api.put(`/grade-scales/${selectedScaleId}`, payload);
                 setSuccess("Grade Scale updated successfully");
+                setSelectedScaleId(null);
             } else {
                 // Create
                 await api.post('/grade-scales', payload);
@@ -478,14 +480,14 @@ const GradeScaleManager: React.FC = () => {
                                 </thead>
                                 <tbody>
                                     {scales.length === 0 ? (
-                                        <tr><td colSpan={2} className="p-4 text-center text-gray-500">No scales found.</td></tr>
+                                        <tr><td colSpan={3} className="p-4 text-center text-gray-500">No scales found.</td></tr>
                                     ) : (
                                         scales.map((s: any) => (
                                             <tr key={s.id} className={`border-b hover:bg-gray-50 ${selectedScaleId === s.id ? 'bg-blue-50' : ''}`}>
                                                 <td className="p-2 font-medium">{s.scale_name}</td>
                                                 <td className="p-2 text-xs text-gray-600 truncate max-w-[150px]" title={s.classes?.map((c: any) => c.class_name).join(', ')}>
-                                                    {s.classes && s.classes.length > 0 
-                                                        ? s.classes.map((c: any) => c.class_name).join(', ') 
+                                                    {s.classes && s.classes.length > 0
+                                                        ? s.classes.map((c: any) => c.class_name).join(', ')
                                                         : 'None'}
                                                 </td>
                                                 <td className="p-2 flex justify-end gap-2">
