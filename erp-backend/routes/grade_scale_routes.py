@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, g
 from extensions import db, to_local_time
 from models import GradeScale, GradeScaleDetails
 from sqlalchemy.exc import IntegrityError
@@ -14,7 +14,6 @@ def create_grade_scale(current_user):
         if not data:
             return jsonify({"error": "No data provided"}), 400
  
-        # Extract Master Data
         scale_name = data.get("scale_name")
         location = data.get("location")
         branch = data.get("branch")
@@ -22,9 +21,13 @@ def create_grade_scale(current_user):
         total_marks = data.get("total_marks") # New Field
         description = data.get("scale_description")
         details = data.get("details", [])
+        class_ids = data.get("class_ids", [])
 
         if not all([scale_name, location, academic_year, total_marks]):
              return jsonify({"error": "Missing required fields (scale_name, location, academic_year, total_marks)"}), 400
+             
+        if not class_ids:
+             class_ids = [None]
 
         # Validate Details (Min/Max and Overlap)
         sorted_details = sorted(details, key=lambda x: int(x['min_marks']))
@@ -50,60 +53,61 @@ def create_grade_scale(current_user):
                 if max_m >= next_min: # Inclusive Overlap
                      return jsonify({"error": f"Grade range overlap detected: {d['grade']} ({min_m}-{max_m}) overlaps with {next_d['grade']} ({next_min}-{next_d.get('max_marks')})"}), 400
 
-        # Check for duplicates (Location + Year + Branch + TotalMarks scope)
-        # Note: Branch usually "All" for location wide.
-        existing = GradeScale.query.filter_by(
-            scale_name=scale_name,
-            location=location,
-            academic_year=academic_year,
-            total_marks=total_marks
-        ).first()
+        from models import ClassMaster
+        # Check for duplicates across selected classes
+        for cid in class_ids:
+            existing = GradeScale.query.filter_by(
+                academic_year=academic_year,
+                branch=branch,
+                class_id=cid,
+                total_marks=total_marks
+            ).first()
 
-        if existing:
-            # If it exists but is inactive, maybe reactivate? 
-            # For now, strict duplicate error.
-            if not existing.is_active:
-                return jsonify({"error": f"Grade Scale '{scale_name}' exists but is inactive. Please contact admin."}), 409
-            return jsonify({"error": f"Grade Scale '{scale_name}' already exists for this context."}), 409
+            if existing:
+                if not existing.is_active:
+                    db.session.delete(existing)
+                    db.session.flush()
+                else:
+                    c = ClassMaster.query.get(cid) if cid else None
+                    c_name = c.class_name if c else "Global (All Classes)"
+                    return jsonify({"error": f"'{c_name}' is already assigned to another Grade Scale for {total_marks} total marks. Unassign it there first."}), 409
 
-        # Create Master (Location Wide)
-        # Note: Frontend might send specific branch, but we generalize it to 'All' 
-        # or rely on model default if we don't pass it. 
-        # But explicit is better.
-        
-        new_scale = GradeScale(
-            scale_name=scale_name,
-            scale_description=description,
-            location=location,
-            branch="All", # Location-wide scope
-            academic_year=academic_year,
-            total_marks=total_marks,
-            is_active=True
-
-
-        )
-        db.session.add(new_scale)
-        db.session.flush() # Get ID
-
-        # Create Details
-        for d in details:
-            # Basic validation
-            # Check keys
-            if "grade" not in d or "min_marks" not in d or "max_marks" not in d:
-                continue
-                
-            new_detail = GradeScaleDetails(
-                grade_scale_id=new_scale.id,
-                grade=d["grade"],
-                min_marks=d["min_marks"],
-                max_marks=d["max_marks"],
-                description=d.get("description", ""),
+        # Create Master and Details for each class
+        first_id = None
+        for cid in class_ids:
+            new_scale = GradeScale(
+                scale_name=scale_name,
+                scale_description=description,
+                location=location,
+                branch=branch,
+                academic_year=academic_year,
+                total_marks=total_marks,
+                class_id=cid,
                 is_active=True
             )
-            db.session.add(new_detail)
+            db.session.add(new_scale)
+            db.session.flush() # Get ID
+            
+            if not first_id:
+                first_id = new_scale.id
+
+            # Create Details
+            for d in details:
+                if "grade" not in d or "min_marks" not in d or "max_marks" not in d:
+                    continue
+                    
+                new_detail = GradeScaleDetails(
+                    grade_scale_id=new_scale.id,
+                    grade=d["grade"],
+                    min_marks=d["min_marks"],
+                    max_marks=d["max_marks"],
+                    description=d.get("description", ""),
+                    is_active=True
+                )
+                db.session.add(new_detail)
 
         db.session.commit()
-        return jsonify({"message": "Grade Scale created successfully", "id": new_scale.id}), 201
+        return jsonify({"message": "Grade Scale created successfully", "id": first_id}), 201
 
     except IntegrityError as e:
         db.session.rollback()
@@ -113,7 +117,9 @@ def create_grade_scale(current_user):
         return jsonify({"error": str(e)}), 500
 
 @grade_scale_bp.route("/api/grade-scales", methods=["GET"])
-def get_grade_scales():
+@token_required
+def get_grade_scales(current_user):
+    from helpers import scope_query
     try:
         academic_year = request.args.get("academic_year")
         branch = request.args.get("branch")
@@ -122,50 +128,64 @@ def get_grade_scales():
 
         if academic_year:
             query = query.filter_by(academic_year=academic_year)
-        if academic_year:
-            query = query.filter_by(academic_year=academic_year)
             
-        # Scope is Location-based. 
-        # If frontend sends a branch, we still fetch the 'All' branch scales (Location Wide)
-        # We might also filter by Location if frontend sends it (it usually does not in GET params explicitly if inferred from branch)
-        # But GradeScale table has location. We need to match location.
-        # Ideally frontend sends location. If not, we can't filter by location easily without a lookup.
-        # But since we store location, let's assume valid scales are those with 'All' branch 
-        # OR specific branch if we supported mixed mode (but we don't now).
-        
-        # Simple Logic: Fetch all 'All' branch scales.
-        # If we had location in params, we would filter by location.
-        # Currently the route reads 'branch'. 
-        
-        # Let's filter strict 'All' for branch column as per new design.
-        query = query.filter(GradeScale.branch == "All") 
-
-        # Filter by Location if provided (Fix for cross-location visibility bug)
+        # Filter by Location if provided
         location = request.args.get("location")
         if location:
             query = query.filter_by(location=location) 
-
-        # Future: If we receive location, filter by it.
-        # query = query.filter_by(location=request.args.get('location'))
             
+        # Functional filtering based on user's currently selected context (UI selection)
+        # We do this because scope_query bypasses filtering for SuperAdmins, 
+        # but SuperAdmins still want to see data filtered by their selected branch dropdown.
+        s_id = getattr(g, 'school_id', None)
+        if s_id is not None:
+            query = query.filter((GradeScale.school_id == s_id) | (GradeScale.school_id.is_(None)))
+            
+        b_id = getattr(g, 'branch_id', None)
+        if b_id is not None:
+            query = query.filter((GradeScale.branch_id == b_id) | (GradeScale.branch_id.is_(None)))
+            
+        # Apply scope query to restrict by allowed permissions (Security)
+        query = scope_query(query, GradeScale)
+        
         scales = query.all()
         
-        result = []
+        # Group scales by common attributes to show in frontend as a single entity
+        grouped_scales = {}
+        from models import ClassMaster
+        class_ids_needed = {s.class_id for s in scales if s.class_id}
+        class_map = {}
+        if class_ids_needed:
+            class_map = {
+                c.id: c
+                for c in ClassMaster.query.filter(ClassMaster.id.in_(class_ids_needed)).all()
+            }
+
         for s in scales:
-            result.append({
-                "id": s.id,
-                "scale_name": s.scale_name,
-                "scale_description": s.scale_description,
-                "academic_year": s.academic_year,
-                "branch": s.branch,
-                "location": s.location,
-                "total_marks": s.total_marks,
-                "created_at": to_local_time(s.created_at).isoformat() if s.created_at else None,
-                "updated_at": to_local_time(s.updated_at).isoformat() if s.updated_at else None,
-                "created_by": s.created_by,
-                "updated_by": s.updated_by
-            })
-            
+            key = (s.scale_name, s.academic_year, s.branch, s.location, s.total_marks)
+            if key not in grouped_scales:
+                grouped_scales[key] = {
+                    "id": s.id, # Send the first ID for references, though edit might be tricky
+                    "scale_name": s.scale_name,
+                    "scale_description": s.scale_description,
+                    "academic_year": s.academic_year,
+                    "branch": s.branch,
+                    "location": s.location,
+                    "total_marks": s.total_marks,
+                    "class_ids": [],
+                    "classes": [],
+                    "created_at": to_local_time(s.created_at).isoformat() if s.created_at else None,
+                    "updated_at": to_local_time(s.updated_at).isoformat() if s.updated_at else None,
+                    "created_by": s.created_by,
+                    "updated_by": s.updated_by
+                }
+            if s.class_id:
+                grouped_scales[key]["class_ids"].append(s.class_id)
+                c = class_map.get(s.class_id)
+                if c:
+                    grouped_scales[key]["classes"].append({"id": c.id, "class_name": c.class_name})
+
+        result = list(grouped_scales.values())        
         return jsonify(result), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -173,11 +193,24 @@ def get_grade_scales():
 @grade_scale_bp.route("/api/grade-scales/<int:id>", methods=["GET"])
 def get_grade_scale_details_route(id):
     try:
+        from models import ClassMaster
+        # ID here is just one of the GradeScale entries for the group
         scale = GradeScale.query.get(id)
         if not scale or not scale.is_active:
             return jsonify({"error": "Grade scale not found"}), 404
             
-        details = GradeScaleDetails.query.filter_by(grade_scale_id=id).order_by(GradeScaleDetails.min_marks.asc()).all()
+        # Get all related scales for this group
+        related_scales = GradeScale.query.filter_by(
+            scale_name=scale.scale_name,
+            academic_year=scale.academic_year,
+            branch=scale.branch,
+            total_marks=scale.total_marks,
+            is_active=True
+        ).all()
+        
+        class_ids = [s.class_id for s in related_scales if s.class_id]
+        
+        details = GradeScaleDetails.query.filter_by(grade_scale_id=scale.id).order_by(GradeScaleDetails.min_marks.asc()).all()
         
         details_list = [{
             "id": d.id,
@@ -195,6 +228,7 @@ def get_grade_scale_details_route(id):
             "branch": scale.branch,
             "location": scale.location,
             "total_marks": scale.total_marks,
+            "class_ids": class_ids,
             "details": details_list
         }), 200
     except Exception as e:
@@ -212,15 +246,38 @@ def update_grade_scale(current_user, id):
         if not data:
              return jsonify({"error": "No data"}), 400
 
-        # Update Master
-        if "scale_name" in data: scale.scale_name = data["scale_name"]
-        if "scale_description" in data: scale.scale_description = data["scale_description"]
-        if "total_marks" in data: scale.total_marks = data["total_marks"]
-
-        # Validate Details with Payload
-        current_total_marks = data.get("total_marks", scale.total_marks)
-        new_details = data.get("details", [])
+        # For update, we might have multiple classes. The simplest way is to delete all existing scales for this group and recreate, or update existing and add/remove.
+        # Since we use ID to edit, it refers to one scale. But we need to update the group.
+        # Let's delete all existing in the group and recreate.
         
+        related_scales = GradeScale.query.filter_by(
+            scale_name=scale.scale_name,
+            academic_year=scale.academic_year,
+            branch=scale.branch,
+            total_marks=scale.total_marks
+        ).all()
+        
+        for rs in related_scales:
+            db.session.delete(rs)
+        db.session.flush()
+            
+        # Recreate based on payload
+        scale_name = data.get("scale_name", scale.scale_name)
+        description = data.get("scale_description", scale.scale_description)
+        total_marks = data.get("total_marks", scale.total_marks)
+        try:
+            total_marks = int(total_marks)
+        except (TyepError, ValueError):
+            return jsonify({"error":"total_marks must be an integer"}), 400
+        class_ids = data.get("class_ids", [])
+        
+        if not class_ids:
+            class_ids = [None]
+            
+        # Validate Details
+        new_details = data.get("details", [])
+        if not new_details:
+            return jsonify({"error": "At least one grade range is required"}), 400
         if new_details:
             sorted_details = sorted(new_details, key=lambda x: int(x['min_marks']))
             for i in range(len(sorted_details)):
@@ -235,33 +292,62 @@ def update_grade_scale(current_user, id):
                      return jsonify({"error": f"Marks cannot be negative"}), 400
                 if min_m > max_m:
                      return jsonify({"error": f"Min > Max for {d['grade']}"}), 400
-                if max_m > int(current_total_marks):
-                     return jsonify({"error": f"Max marks for {d['grade']} > Total Marks ({current_total_marks})"}), 400
+                if max_m > int(total_marks):
+                     return jsonify({"error": f"Max marks for {d['grade']} > Total Marks ({total_marks})"}), 400
 
-                # Overlap
                 if i < len(sorted_details) - 1:
                     next_d = sorted_details[i+1]
                     next_min = int(next_d['min_marks'])
                     if max_m >= next_min:
                          return jsonify({"error": f"Overlap: {d['grade']} and {next_d['grade']}"}), 400
-        if "details" in data:
-            # 1. Delete all existing details for this scale
-            GradeScaleDetails.query.filter_by(grade_scale_id=id).delete()
-            
-            # 2. Add new details
-            for d in data["details"]:
-                 if "grade" not in d or "min_marks" not in d or "max_marks" not in d:
-                    continue
+        from models import ClassMaster
+        # Check for conflicts with OTHER scales
+        for cid in class_ids:
+            existing = GradeScale.query.filter_by(
+                academic_year=scale.academic_year,
+                branch=scale.branch,
+                class_id=cid,
+                total_marks=total_marks
+            ).first()
 
-                 new_detail = GradeScaleDetails(
-                    grade_scale_id=id,
+            if existing:
+                if not existing.is_active:
+                    db.session.delete(existing)
+                    db.session.flush()
+                else:
+                    c = ClassMaster.query.get(cid) if cid else None
+                    c_name = c.class_name if c else "Global (All Classes)"
+                    return jsonify({"error": f"'{c_name}' is already assigned to another Grade Scale for {total_marks} total marks. Unassign it there first."}), 409
+                    
+        # Recreate Master and Details for each class
+        for cid in class_ids:
+            new_scale = GradeScale(
+                scale_name=scale_name,
+                scale_description=description,
+                location=scale.location,
+                branch=scale.branch,
+                academic_year=scale.academic_year,
+                total_marks=total_marks,
+                class_id=cid,
+                is_active=True
+            )
+            db.session.add(new_scale)
+            db.session.flush() # Get ID
+
+            # Create Details
+            for d in new_details:
+                if "grade" not in d or "min_marks" not in d or "max_marks" not in d:
+                    continue
+                    
+                new_detail = GradeScaleDetails(
+                    grade_scale_id=new_scale.id,
                     grade=d["grade"],
                     min_marks=d["min_marks"],
                     max_marks=d["max_marks"],
                     description=d.get("description", ""),
                     is_active=True
                 )
-                 db.session.add(new_detail)
+                db.session.add(new_detail)
 
         db.session.commit()
         return jsonify({"message": "Updated successfully"}), 200
@@ -281,14 +367,23 @@ def delete_grade_scale(current_user, id):
         if not scale:
             return jsonify({"error": "Grade scale not found"}), 404
 
-        # 🛑 FUTURE: Check References (Subject, Test, Marks)
-        # For now, Soft Delete as requested.
+        # Soft delete the entire group
+        related_scales = GradeScale.query.filter_by(
+            scale_name=scale.scale_name,
+            academic_year=scale.academic_year,
+            branch=scale.branch,
+            location=scale.location,
+            total_marks=scale.total_marks,
+            is_active=True
+        ).all()
         
-        scale.is_active = False
-        # Soft delete details too?
-        # GradeScaleDetails.query.filter_by(grade_scale_id=id).update({"is_active": False}) 
-        # Not strictly necessary if query logic checks Parent, but safest.
+        has_classes = any(rs.class_id is not None for rs in related_scales)
+        if has_classes:
+            return jsonify({"error": "Cannot delete a Grade Scale that is currently assigned to classes. Please edit the scale and unassign all classes first."}), 400
         
+        for rs in related_scales:
+            rs.is_active = False
+            
         db.session.commit()
         return jsonify({"message": "Grade Scale deleted (soft)"}), 200
 

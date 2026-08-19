@@ -212,15 +212,16 @@ def get_student_report(current_user):
         
         # ========== 3. Get All Grading Scales ==========
         grading_query = """
-            SELECT gs.id, gs.total_marks, gsd.grade, gsd.min_marks, gsd.max_marks
+            SELECT gs.id, gs.total_marks, gsd.grade, gsd.min_marks, gsd.max_marks, gs.class_id
             FROM grade_scales gs
             JOIN grade_scale_details gsd ON gs.id = gsd.grade_scale_id
             WHERE gs.academic_year = %s 
               AND gs.is_active = 1 
               AND gsd.is_active = 1
+              AND gs.class_id = %s
             ORDER BY gs.total_marks, gsd.min_marks
         """
-        cursor.execute(grading_query, (academic_year,))
+        cursor.execute(grading_query, (academic_year, class_id))
         grading_rows = cursor.fetchall()
         
         # Group grading by total_marks
@@ -296,10 +297,8 @@ def get_student_report(current_user):
                     # Proportionally adjust marks
                     marks = (marks / max_marks) * closest_total
                 elif grading_by_total:
-                    # Use highest available scale
-                    highest_total = max(grading_by_total.keys())
-                    scale = grading_by_total[highest_total]
-                    marks = (marks / max_marks) * highest_total
+                    # We do not fallback anymore. User requested no grades if no scale.
+                    return '-'
                 else:
                     return '-'
             
@@ -565,22 +564,6 @@ def get_student_report(current_user):
                 'grades': grades_list
             })
         
-        # Default grading scale if none found
-        if not grading_scales:
-            grading_scales = [{
-                'label': '20',
-                'grades': [
-                    {'grade': 'E', 'min': 0, 'max': 7},
-                    {'grade': 'D', 'min': 8, 'max': 8},
-                    {'grade': 'C2', 'min': 9, 'max': 10},
-                    {'grade': 'C1', 'min': 11, 'max': 12},
-                    {'grade': 'B2', 'min': 13, 'max': 14},
-                    {'grade': 'B1', 'min': 15, 'max': 16},
-                    {'grade': 'A2', 'min': 17, 'max': 18},
-                    {'grade': 'A1', 'min': 19, 'max': 20}
-                ]
-            }]
-        
         # ========== Build Final Response ==========
         response = {
             'reportTitle': f"Performance Dashboard OF {current_test_name.upper()}",
@@ -831,11 +814,13 @@ def get_student_report_by_year(current_user):
                 s.admission_no,
                 COALESCE(b.branch_name, s.branch) as branch_name,
                 sar.class as class_name,
+                cm.id as class_id,
                 sar.section,
                 sar.roll_number,
                 sar.is_promoted
             FROM students s
             JOIN student_academic_records sar ON s.student_id = sar.student_id
+            LEFT JOIN class_master cm ON cm.class_name = sar.class
             LEFT JOIN branches b ON s.branch = b.branch_code
             WHERE s.student_id = %s AND sar.academic_year = %s
         """
@@ -849,13 +834,14 @@ def get_student_report_by_year(current_user):
         
         # Get grading scales
         grading_query = """
-            SELECT gs.total_marks, gsd.grade, gsd.min_marks, gsd.max_marks
+            SELECT gs.total_marks, gsd.grade, gsd.min_marks, gsd.max_marks, gs.class_id
             FROM grade_scales gs
             JOIN grade_scale_details gsd ON gs.id = gsd.grade_scale_id
-            WHERE gs.academic_year = %s AND gs.is_active = 1
+            WHERE gs.academic_year = %s AND gs.is_active = 1 AND gs.class_id = %s
+              AND gsd.is_active = 1
             ORDER BY gs.total_marks, gsd.min_marks
         """
-        cursor.execute(grading_query, (academic_year,))
+        cursor.execute(grading_query, (academic_year, student.get('class_id'), student.get('branch_name')))
         grading_rows = cursor.fetchall()
         
         grading_by_total = {}
@@ -867,19 +853,15 @@ def get_student_report_by_year(current_user):
         
         def get_grade(marks, max_marks):
             if marks is None or max_marks is None or max_marks == 0:
-                return 'E'
+                return '-'
             marks = float(marks)
             scale = grading_by_total.get(max_marks, [])
             if not scale:
-                for total in sorted(grading_by_total.keys()):
-                    if total >= max_marks:
-                        scale = grading_by_total[total]
-                        marks = (marks / max_marks) * total
-                        break
+                return '-'
             for g in scale:
                 if g['min_marks'] <= marks <= g['max_marks']:
                     return g['grade']
-            return 'E'
+            return '-'
         
         # Get tests taken in this year
         tests_query = """

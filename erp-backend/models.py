@@ -991,13 +991,14 @@ class GradeScale(db.Model, AuditMixin):
     branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
     academic_year = db.Column(db.String(50), nullable=False)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
+    class_id = db.Column(db.Integer, db.ForeignKey('classes.id', ondelete='SET NULL'), nullable=True)
     
     total_marks = db.Column(db.Integer, nullable=False, default=100) # Added default for migration safety, though should be explicit
 
     is_active = db.Column(db.Boolean, default=True)
 
     __table_args__ = (
-        db.UniqueConstraint('scale_name', 'academic_year', 'branch', 'total_marks', name='uq_grade_scale_context'),
+        db.UniqueConstraint('academic_year', 'branch', 'class_id', 'total_marks', name='uq_grade_scale_context'),
     )
 
 class GradeScaleDetails(db.Model, AuditMixin):
