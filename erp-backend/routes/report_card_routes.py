@@ -212,15 +212,16 @@ def get_student_report(current_user):
         
         # ========== 3. Get All Grading Scales ==========
         grading_query = """
-            SELECT gs.id, gs.total_marks, gsd.grade, gsd.min_marks, gsd.max_marks
+            SELECT gs.id, gs.total_marks, gsd.grade, gsd.min_marks, gsd.max_marks, gs.class_id
             FROM grade_scales gs
             JOIN grade_scale_details gsd ON gs.id = gsd.grade_scale_id
             WHERE gs.academic_year = %s 
               AND gs.is_active = 1 
               AND gsd.is_active = 1
+              AND gs.class_id = %s
             ORDER BY gs.total_marks, gsd.min_marks
         """
-        cursor.execute(grading_query, (academic_year,))
+        cursor.execute(grading_query, (academic_year, class_id))
         grading_rows = cursor.fetchall()
         
         # Group grading by total_marks
@@ -296,10 +297,8 @@ def get_student_report(current_user):
                     # Proportionally adjust marks
                     marks = (marks / max_marks) * closest_total
                 elif grading_by_total:
-                    # Use highest available scale
-                    highest_total = max(grading_by_total.keys())
-                    scale = grading_by_total[highest_total]
-                    marks = (marks / max_marks) * highest_total
+                    # We do not fallback anymore. User requested no grades if no scale.
+                    return '-'
                 else:
                     return '-'
             
@@ -831,11 +830,13 @@ def get_student_report_by_year(current_user):
                 s.admission_no,
                 COALESCE(b.branch_name, s.branch) as branch_name,
                 sar.class as class_name,
+                cm.id as class_id,
                 sar.section,
                 sar.roll_number,
                 sar.is_promoted
             FROM students s
             JOIN student_academic_records sar ON s.student_id = sar.student_id
+            LEFT JOIN class_master cm ON cm.class_name = sar.class
             LEFT JOIN branches b ON s.branch = b.branch_code
             WHERE s.student_id = %s AND sar.academic_year = %s
         """
@@ -849,13 +850,13 @@ def get_student_report_by_year(current_user):
         
         # Get grading scales
         grading_query = """
-            SELECT gs.total_marks, gsd.grade, gsd.min_marks, gsd.max_marks
+            SELECT gs.total_marks, gsd.grade, gsd.min_marks, gsd.max_marks, gs.class_id
             FROM grade_scales gs
             JOIN grade_scale_details gsd ON gs.id = gsd.grade_scale_id
-            WHERE gs.academic_year = %s AND gs.is_active = 1
+            WHERE gs.academic_year = %s AND gs.is_active = 1 AND gs.class_id = %s
             ORDER BY gs.total_marks, gsd.min_marks
         """
-        cursor.execute(grading_query, (academic_year,))
+        cursor.execute(grading_query, (academic_year, student.get('class_id')))
         grading_rows = cursor.fetchall()
         
         grading_by_total = {}

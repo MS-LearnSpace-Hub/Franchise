@@ -27,7 +27,8 @@ const GradeScaleManager: React.FC = () => {
     const [location, setLocation] = useState<string>('Hyderabad'); // Default
     const [academicYears, setAcademicYears] = useState<any[]>([]);
     const [branches, setBranches] = useState<any[]>([]);
-
+    const [availableClasses, setAvailableClasses] = useState<any[]>([]);
+    
     // Data State
     const [scales, setScales] = useState<GradeScale[]>([]);
     const [loading, setLoading] = useState(false);
@@ -35,6 +36,7 @@ const GradeScaleManager: React.FC = () => {
     // Form State (Master)
     const [selectedScaleId, setSelectedScaleId] = useState<number | null>(null);
     const [scaleName, setScaleName] = useState('');
+    const [selectedClasses, setSelectedClasses] = useState<number[]>([]);
     const [totalMarks, setTotalMarks] = useState<number>(100);
     const [scaleDescription, setScaleDescription] = useState('');
 
@@ -91,6 +93,10 @@ const GradeScaleManager: React.FC = () => {
                     setBranch(branchList[0].branch_name);
                 }
 
+                // Load Classes
+                const resClasses = await api.get('/classes');
+                setAvailableClasses(resClasses.data.classes || []);
+
             } catch (err) {
                 console.error("Failed to load context", err);
             }
@@ -130,6 +136,7 @@ const GradeScaleManager: React.FC = () => {
 
             setSelectedScaleId(data.id);
             setScaleName(data.scale_name);
+            setSelectedClasses(data.class_ids || []);
             setTotalMarks(data.total_marks || 100);
             setScaleDescription(data.scale_description || '');
             setDetails(data.details || []);
@@ -148,6 +155,7 @@ const GradeScaleManager: React.FC = () => {
         setSelectedScaleId(null);
         setSelectedScaleId(null);
         setScaleName('');
+        setSelectedClasses([]);
         setTotalMarks(100);
         setScaleDescription('');
         setDetails([]);
@@ -251,6 +259,11 @@ const GradeScaleManager: React.FC = () => {
             return;
         }
 
+        if (selectedClasses.length === 0) {
+            setError("Please select at least one class");
+            return;
+        }
+
         // Validate Details
         for (const d of details) {
             if (!d.grade.trim()) {
@@ -292,6 +305,7 @@ const GradeScaleManager: React.FC = () => {
             branch: branch,
             academic_year: academicYear,
             total_marks: totalMarks,
+            class_ids: selectedClasses,
             details: details
         };
 
@@ -376,6 +390,30 @@ const GradeScaleManager: React.FC = () => {
                             </div>
 
                             <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Classes <span className="text-red-500">*</span></label>
+                                <div className="border rounded p-2 max-h-32 overflow-y-auto bg-gray-50 flex flex-wrap gap-2">
+                                    {availableClasses.map(c => (
+                                        <label key={c.id} className="flex items-center space-x-2 bg-white px-2 py-1 rounded border shadow-sm cursor-pointer hover:bg-gray-100">
+                                            <input
+                                                type="checkbox"
+                                                className="rounded text-blue-600 focus:ring-blue-500"
+                                                checked={selectedClasses.includes(c.id)}
+                                                onChange={(e) => {
+                                                    if (e.target.checked) {
+                                                        setSelectedClasses([...selectedClasses, c.id]);
+                                                    } else {
+                                                        setSelectedClasses(selectedClasses.filter(id => id !== c.id));
+                                                    }
+                                                }}
+                                            />
+                                            <span className="text-sm">{c.class_name}</span>
+                                        </label>
+                                    ))}
+                                    {availableClasses.length === 0 && <span className="text-sm text-gray-500">No classes found.</span>}
+                                </div>
+                            </div>
+
+                            <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Total Marks <span className="text-red-500">*</span></label>
                                 <input
                                     type="number"
@@ -434,6 +472,7 @@ const GradeScaleManager: React.FC = () => {
                                 <thead className="bg-gray-50 text-gray-600">
                                     <tr>
                                         <th className="p-2 text-left">Scale Name</th>
+                                        <th className="p-2 text-left">Classes</th>
                                         <th className="p-2 text-right">Action</th>
                                     </tr>
                                 </thead>
@@ -441,9 +480,14 @@ const GradeScaleManager: React.FC = () => {
                                     {scales.length === 0 ? (
                                         <tr><td colSpan={2} className="p-4 text-center text-gray-500">No scales found.</td></tr>
                                     ) : (
-                                        scales.map(s => (
+                                        scales.map((s: any) => (
                                             <tr key={s.id} className={`border-b hover:bg-gray-50 ${selectedScaleId === s.id ? 'bg-blue-50' : ''}`}>
                                                 <td className="p-2 font-medium">{s.scale_name}</td>
+                                                <td className="p-2 text-xs text-gray-600 truncate max-w-[150px]" title={s.classes?.map((c: any) => c.class_name).join(', ')}>
+                                                    {s.classes && s.classes.length > 0 
+                                                        ? s.classes.map((c: any) => c.class_name).join(', ') 
+                                                        : 'None'}
+                                                </td>
                                                 <td className="p-2 flex justify-end gap-2">
                                                     <button
                                                         onClick={() => loadScale(s.id)}
