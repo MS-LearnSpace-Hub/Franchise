@@ -209,31 +209,36 @@ const ReportCard: React.FC<ReportCardProps> = ({ data }) => {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: '8px 16px',
+        padding: '6px 14px',
         borderBottom: `3px solid ${COLOR.navy}`,
         background: 'linear-gradient(135deg, #f0f4ff 0%, #91a5c4 50%, #fefffe 100%)',
+        gap: '8px',
       }}>
         {/* ── LEFT: branch-specific logo (from BRANCH_LOGO_MAP, key = student.branchName) ── */}
-        <img
-          src={leftLogoUrl}
-          alt="Branch Logo"
-          style={{ height: '62px', width: 'auto', objectFit: 'contain' }}
-          onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
-        />
+        <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0, minWidth: '160px', maxWidth: '220px' }}>
+          <img
+            src={leftLogoUrl}
+            alt="Branch Logo"
+            style={{ maxHeight: '50px', maxWidth: '100%', width: 'auto', objectFit: 'contain' }}
+            onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+          />
+        </div>
 
         {/* ── CENTRE: report title ── */}
-        <div style={{ textAlign: 'center', flex: 1, padding: '0 12px' }}>
+        <div style={{ textAlign: 'center', flex: 1, padding: '0 8px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minWidth: 0 }}>
           <div style={{
-            fontSize: '20px', fontWeight: 800, color: COLOR.navy,
-            letterSpacing: '1px', lineHeight: 1.2, textTransform: 'uppercase',
+            fontSize: '18px', fontWeight: 800, color: COLOR.navy,
+            letterSpacing: '0.8px', lineHeight: 1.2, textTransform: 'uppercase',
+            whiteSpace: 'nowrap',
           }}>
             {mainTitle}
           </div>
           {subTitle && (
             <div style={{
-              fontSize: '18px', fontWeight: 700, fontFamily: 'bold', color: 'black',
-              letterSpacing: '1.5px', textDecoration: 'underline',
-              marginTop: '3px', textTransform: 'uppercase',
+              fontSize: '16px', fontWeight: 700, color: 'black',
+              letterSpacing: '1.2px', textDecoration: 'underline',
+              marginTop: '2px', textTransform: 'uppercase',
+              whiteSpace: 'nowrap',
             }}>
               {subTitle}
             </div>
@@ -241,12 +246,14 @@ const ReportCard: React.FC<ReportCardProps> = ({ data }) => {
         </div>
 
         {/* ── RIGHT: static logo — same on every report card (STATIC_RIGHT_LOGO) ── */}
-        <img
-          src={STATIC_RIGHT_LOGO}
-          alt="MS LearnSpace"
-          style={{ height: '42px', width: 'auto', objectFit: 'cover' }}
-          onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
-        />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', flexShrink: 0, minWidth: '160px', maxWidth: '220px' }}>
+          <img
+            src={STATIC_RIGHT_LOGO}
+            alt="MS LearnSpace"
+            style={{ maxHeight: '40px', maxWidth: '100%', width: 'auto', objectFit: 'contain' }}
+            onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+          />
+        </div>
       </div>
 
       {/* ══════════════════════════════════════════════════════════════
