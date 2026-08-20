@@ -508,10 +508,15 @@ def delete_fee_payment(current_user, payment_id):
 
         logger.info("User %s is attempting to cancel payment %s. Reason: %s", current_user.username, payment_id, reason)
 
-        # Permission Check
-        if not has_permission(current_user, "fees.fee.take-fee", "delete"):
+        # Permission Check: allow fees.fee.delete-fee-receipt (delete/write) or legacy fees.fee.take-fee (delete)
+        has_delete_perm = (
+            has_permission(current_user, "fees.fee.delete-fee-receipt", "delete") or
+            has_permission(current_user, "fees.fee.delete-fee-receipt", "write") or
+            has_permission(current_user, "fees.fee.take-fee", "delete")
+        )
+        if not has_delete_perm:
             logger.warning("User %s attempted to cancel payment %s without delete permission.", current_user.username, payment_id)
-            return jsonify({"error": "Forbidden: missing permission"}), 403
+            return jsonify({"error": "Forbidden: missing permission to delete fee receipts"}), 403
 
         payment = FeePayment.query.get(payment_id)
         if not payment:
@@ -565,7 +570,6 @@ def delete_fee_payment(current_user, payment_id):
         # Soft Delete (Cancel)
         payment.status = 'I'
         payment.cancel_reason = reason
-        # We do NOT decrement sequence here. Sequence continues.
         
         db.session.commit()
         
@@ -573,6 +577,268 @@ def delete_fee_payment(current_user, payment_id):
 
     except Exception as e:
         db.session.rollback()
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+@bp.route("/api/fees/receipt/<string:receipt_no>/cancel", methods=["POST", "DELETE"])
+@token_required
+def cancel_fee_receipt(current_user, receipt_no):
+    """Cancel all payments associated with a receipt (soft delete) and revert fee balances."""
+    try:
+        # Check permissions
+        has_delete_perm = (
+            has_permission(current_user, "fees.fee.delete-fee-receipt", "delete") or
+            has_permission(current_user, "fees.fee.delete-fee-receipt", "write") or
+            has_permission(current_user, "fees.fee.take-fee", "delete")
+        )
+        if not has_delete_perm:
+            logger.warning("User %s attempted to cancel receipt %s without delete permission.", current_user.username, receipt_no)
+            return jsonify({"error": "Forbidden: you do not have permission to delete/cancel fee receipts"}), 403
+
+        data = request.get_json(silent=True) or {}
+        reason = data.get("reason", "").strip()
+        if not reason:
+            return jsonify({"error": "Cancellation reason is required"}), 400
+
+        # Find all payments for this receipt
+        payments = FeePayment.query.filter_by(receipt_no=receipt_no).all()
+        if not payments:
+            return jsonify({"error": "Receipt not found"}), 404
+
+        active_payments = [p for p in payments if p.status == 'A']
+        if not active_payments:
+            return jsonify({"error": "Receipt is already cancelled"}), 400
+
+        # Check branch permissions
+        allowed = get_user_allowed_branches(current_user)
+        for payment in active_payments:
+            if not allowed['is_unlimited'] and payment.branch not in allowed['names']:
+                return jsonify({"error": f"Unauthorized branch access for branch {payment.branch}"}), 403
+
+        # Revert StudentFees and mark payments as cancelled
+        for payment in active_payments:
+            sf_query = StudentFee.query.join(FeeType).filter(
+                StudentFee.student_id == payment.student_id,
+                StudentFee.academic_year == payment.academic_year,
+                FeeType.feetype == payment.fee_type,
+                StudentFee.is_active == True
+            )
+
+            if payment.installment_name == "One-Time":
+                sf_query = sf_query.filter(or_(StudentFee.month == "One-Time", StudentFee.month.is_(None)))
+            else:
+                sf_query = sf_query.filter(StudentFee.month == payment.installment_name)
+
+            if sf := sf_query.first():
+                sf.paid_amount = max(Decimal(0), (sf.paid_amount or Decimal(0)) - (payment.amount_paid or Decimal(0)))
+                sf.concession = max(Decimal(0), (sf.concession or Decimal(0)) - (payment.concession_amount or Decimal(0)))
+                
+                total = sf.total_fee or Decimal(0)
+                paid_plus_concession = sf.paid_amount + sf.concession
+                sf.due_amount = max(Decimal(0), total - paid_plus_concession)
+                
+                if sf.due_amount <= 0 and total > 0:
+                    sf.status = "Paid"
+                elif sf.paid_amount > 0:
+                    sf.status = "Partial"
+                else:
+                    sf.status = "Pending"
+
+            payment.status = 'I'
+            payment.cancel_reason = reason
+
+        db.session.commit()
+        logger.info("Receipt %s successfully cancelled by user %s. Reason: %s", receipt_no, current_user.username, reason)
+
+        return jsonify({
+            "message": f"Receipt {receipt_no} has been cancelled successfully.",
+            "receipt_no": receipt_no,
+            "cancelled_count": len(active_payments)
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+@bp.route("/api/fees/receipts/search", methods=["GET"])
+@token_required
+def search_fee_receipts(current_user):
+    """Search and filter fee receipts with consolidated information."""
+    try:
+        # Check permissions: delete-fee-receipt or read permission
+        has_access = (
+            has_permission(current_user, "fees.fee.delete-fee-receipt", "read") or
+            has_permission(current_user, "fees.fee.delete-fee-receipt", "delete") or
+            has_permission(current_user, "fees.fee.take-fee", "read") or
+            has_permission(current_user, "fees.fee.fee-reports", "read")
+        )
+        if not has_access:
+            return jsonify({"error": "Forbidden: missing permission"}), 403
+
+        search = request.args.get("search", "").strip()
+        receipt_no_param = request.args.get("receipt_no", "").strip()
+        class_name = request.args.get("class", "").strip()
+        section = request.args.get("section", "").strip()
+        start_date = request.args.get("start_date", "").strip()
+        end_date = request.args.get("end_date", "").strip()
+        status = request.args.get("status", "all").strip()  # 'A', 'I', 'all'
+        limit = min(int(request.args.get("limit", 100)), 500)
+
+        h_year = request.headers.get("X-Academic-Year") or request.args.get("academic_year")
+        h_branch = request.headers.get("X-Branch") or request.args.get("branch")
+
+        # Base query joining Student and StudentAcademicRecord
+        query = db.session.query(FeePayment, Student, StudentAcademicRecord)\
+            .join(Student, FeePayment.student_id == Student.student_id)\
+            .outerjoin(StudentAcademicRecord, (Student.student_id == StudentAcademicRecord.student_id) & 
+                       (StudentAcademicRecord.academic_year == FeePayment.academic_year))
+
+        # Academic Year Filter
+        if h_year:
+            query = query.filter(or_(FeePayment.academic_year == h_year, FeePayment.academic_year.is_(None)))
+
+        # Branch Filter
+        allowed = get_user_allowed_branches(current_user)
+        if not allowed['is_unlimited']:
+            if h_branch and h_branch != "All" and h_branch in allowed['names']:
+                query = query.filter(FeePayment.branch == h_branch)
+            else:
+                query = query.filter(FeePayment.branch.in_(allowed['names']))
+        else:
+            if h_branch and h_branch != "All" and h_branch != "All Branches":
+                query = query.filter(FeePayment.branch == h_branch)
+
+        # Status Filter
+        if status == "A":
+            query = query.filter(FeePayment.status == "A")
+        elif status == "I":
+            query = query.filter(FeePayment.status == "I")
+
+        # Specific Receipt No
+        if receipt_no_param:
+            query = query.filter(FeePayment.receipt_no == receipt_no_param)
+
+        # General Search (receipt_no, student name, admission_no, enrollment_no)
+        if search:
+            search_pattern = f"%{search}%"
+            query = query.filter(
+                or_(
+                    FeePayment.receipt_no.ilike(search_pattern),
+                    Student.first_name.ilike(search_pattern),
+                    Student.last_name.ilike(search_pattern),
+                    Student.admission_no.ilike(search_pattern),
+                    Student.enrollment_no.ilike(search_pattern)
+                )
+            )
+
+        # Class / Section Filter
+        if class_name:
+            query = query.filter(StudentAcademicRecord.class_name == class_name)
+        if section:
+            query = query.filter(StudentAcademicRecord.section == section)
+
+        # Date range
+        if start_date:
+            try:
+                s_date = datetime.strptime(start_date, "%Y-%m-%d").date()
+                query = query.filter(FeePayment.payment_date >= s_date)
+            except ValueError:
+                pass
+
+        if end_date:
+            try:
+                e_date = datetime.strptime(end_date, "%Y-%m-%d").date()
+                query = query.filter(FeePayment.payment_date <= e_date)
+            except ValueError:
+                pass
+
+        results = query.order_by(FeePayment.payment_date.desc(), FeePayment.id.desc()).limit(limit * 5).all()
+
+        # Group rows by receipt_no
+        receipt_map = {}
+        for p, s, sar in results:
+            r_no = p.receipt_no
+            if not r_no:
+                continue
+
+            if r_no not in receipt_map:
+                s_name = f"{s.first_name or ''} {s.StudentMiddleName or ''} {s.last_name or ''}".strip()
+                f_name = f"{s.Fatherfirstname or ''} {s.FatherLastName or ''}".strip()
+                f_phone = s.FatherPhone or s.phone or ""
+                c_name = (sar.class_name if sar else s.clazz) or ""
+                c_sec = (sar.section if sar else s.section) or ""
+
+                receipt_map[r_no] = {
+                    "receipt_no": r_no,
+                    "student_id": s.student_id,
+                    "student_name": s_name or f"Student #{s.student_id}",
+                    "admission_no": s.admission_no or "",
+                    "enrollment_no": s.enrollment_no or "",
+                    "father_name": f_name,
+                    "father_phone": f_phone,
+                    "branch": p.branch or s.branch,
+                    "academic_year": p.academic_year,
+                    "class_name": c_name,
+                    "section": c_sec,
+                    "payment_date": p.payment_date.isoformat() if p.payment_date else None,
+                    "payment_mode": p.payment_mode,
+                    "payment_note": p.note or "",
+                    "collected_by": p.collected_by_name or "",
+                    "status": p.status,  # 'A' or 'I'
+                    "cancel_reason": p.cancel_reason or "",
+                    "items": [],
+                    "total_paid": Decimal(0),
+                    "total_concession": Decimal(0),
+                    "total_gross": Decimal(0),
+                    "total_due": Decimal(0)
+                }
+
+            # Add line item
+            item_paid = p.amount_paid or Decimal(0)
+            item_concession = p.concession_amount or Decimal(0)
+            item_gross = p.gross_amount or (item_paid + item_concession)
+            item_due = p.due_amount or Decimal(0)
+
+            receipt_map[r_no]["items"].append({
+                "payment_id": p.id,
+                "fee_type": p.fee_type,
+                "installment": p.installment_name,
+                "amount_paid": str(item_paid),
+                "concession_amount": str(item_concession),
+                "gross_amount": str(item_gross),
+                "due_amount": str(item_due),
+                "status": p.status
+            })
+
+            receipt_map[r_no]["total_paid"] += item_paid
+            receipt_map[r_no]["total_concession"] += item_concession
+            receipt_map[r_no]["total_gross"] += item_gross
+            receipt_map[r_no]["total_due"] += item_due
+
+            # If any payment in receipt is active, consider receipt active; if all cancelled, 'I'
+            if p.status == 'A':
+                receipt_map[r_no]["status"] = 'A'
+
+        receipts_list = []
+        for r in receipt_map.values():
+            r["total_paid"] = str(r["total_paid"])
+            r["total_concession"] = str(r["total_concession"])
+            r["total_gross"] = str(r["total_gross"])
+            r["total_due"] = str(r["total_due"])
+            receipts_list.append(r)
+
+        # Apply limit to distinct receipts
+        receipts_list = receipts_list[:limit]
+
+        return jsonify({
+            "receipts": receipts_list,
+            "total_count": len(receipts_list)
+        }), 200
+
+    except Exception as e:
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 

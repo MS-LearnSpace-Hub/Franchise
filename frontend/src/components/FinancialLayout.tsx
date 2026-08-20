@@ -31,6 +31,7 @@ const FinancialLayout: React.FC<FinancialLayoutProps> = ({ children, currentPage
                 { name: 'Create Class Fee Structure', page: 'class-fee-structure' as Page, icon: <SchoolIcon className="w-4 h-4" />, permission: 'fees.fee.class-fee-structure' },
                 { name: 'Update Student Fee Structure', page: 'update-student-fee-structure' as Page, icon: <UserIcon className="w-4 h-4" />, permission: 'fees.fee.update-student-fee-structure' },
                 { name: 'Update Rebate Date', page: 'update-rebate-date' as Page, icon: <TimeIcon className="w-4 h-4" />, permission: 'fees.fee.update-rebate-date' },
+                { name: 'Delete Fee Receipt', page: 'delete-fee-receipt' as Page, icon: <TrashIcon className="w-4 h-4" />, permission: 'fees.fee.delete-fee-receipt' },
             ]
         },
         {

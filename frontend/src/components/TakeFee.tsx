@@ -262,51 +262,6 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
         }
     }, [showCancelled]);
 
-    const handleDeleteReceipt = async (receiptNo: string) => {
-        if (
-            !window.confirm(
-                "Are you sure you want to cancel this ENTIRE RECEIPT? This will revert all associated fee payments."
-            )
-        )
-            return;
-
-        const reason = prompt("Please enter a valid reason for cancellation:");
-        if (!reason || reason.trim() === "") {
-            alert("Cancellation aborted. Reason is required.");
-            return;
-        }
-
-        const paymentsToDelete = paymentHistory.filter(p => p.receipt_no === receiptNo);
-        const canDeleteReceipt = hasPermission('fees.fee.take-fee', 'delete');
-
-        if (!canDeleteReceipt) {
-            alert('You do not have permission to cancel receipts.');
-            return;
-        }
-        try {
-            for (const p of paymentsToDelete) {
-                await api.delete(`/fees/payment/${p.payment_id}`, {
-                    data: { reason }
-                });
-            }
-
-            alert("Receipt cancelled successfully.");
-            fetchPaymentHistory();
-
-            if (selectedStudent) {
-                const globalBranch = localStorage.getItem('currentBranch') || 'All';
-                const branchParam =
-                    globalBranch === "All Branches" || globalBranch === "All" ? "All" : globalBranch;
-                const response = await api.get(
-                    `/fees/student-details/${selectedStudent.student_id}?branch=${branchParam}`
-                );
-                setInstallments(response.data.installments || []);
-            }
-        } catch (error: any) {
-            console.error("Error deleting receipt:", error);
-            alert(error.response?.data?.error || "Failed to delete receipt.");
-        }
-    };
 
     const handlePrintHistoryReceipt = (receiptNo: string) => {
         const payments = paymentHistory.filter(p => p.receipt_no === receiptNo);
@@ -1278,20 +1233,10 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
                                                     <button
                                                         onClick={() => handlePrintHistoryReceipt(first.receipt_no)}
                                                         title="Print Receipt"
-                                                        className="text-blue-600 hover:text-blue-800"
+                                                        className="text-blue-600 hover:text-blue-800 p-1 rounded hover:bg-blue-50 transition-colors"
                                                     >
                                                         <PrinterIcon className="w-5 h-5" />
                                                     </button>
-
-                                                    {/* ── Cancel – ADMIN ONLY ─────────────────────────── */}
-                                                    <button
-                                                        onClick={() => handleDeleteReceipt(first.receipt_no)}
-                                                        title="Cancel Receipt"
-                                                        className="text-red-600 hover:text-red-800"
-                                                    >
-                                                        <TrashIcon className="w-5 h-5" />
-                                                    </button>
-                                                    {/* ────────────────────────────────────────────────── */}
                                                 </div>
                                             </td>
                                         </tr>

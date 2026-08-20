@@ -52,6 +52,7 @@ PERMISSION_CATALOG = [
     permission("Fees", "Fee", "Update Student Fee Structure", "fees.fee.update-student-fee-structure"),
     permission("Fees", "Fee", "Update Rebate Date", "fees.fee.update-rebate-date"),
     permission("Fees", "Fee", "Fee Installments", "fees.fee.fee-installments"),
+    permission("Fees", "Fee", "Delete Fee Receipt", "fees.fee.delete-fee-receipt", "Access to cancel or delete fee receipts"),
     permission("Fees", "Fee", "Concession Master", "fees.fee.concession-master"),
     permission("Fees", "Fee", "Fee Reports", "fees.fee.fee-reports"),
     permission("Fees", "Fee", "Fee Report Components", "fees.fee.fee-report-components"),
