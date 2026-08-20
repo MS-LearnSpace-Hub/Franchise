@@ -32,6 +32,8 @@ const Fee: React.FC<FeeProps> = ({ navigateTo }) => {
             navigateTo('update-student-fee-structure');
         } else if (item === 'Update Rebate Date') {
             navigateTo('update-rebate-date');
+        } else if (item === 'Delete Fee Receipt') {
+            navigateTo('delete-fee-receipt');
         } else if (item === 'Petty-Cash Report') {
             navigateTo('petty-cash-report');
         } else if (item === 'Deleted Receipts') {
@@ -52,7 +54,7 @@ const Fee: React.FC<FeeProps> = ({ navigateTo }) => {
     }
 
     const dropdownItems: { [key: string]: (string | DropdownItem)[] } = {
-        feeMasters: ['Fee Type', 'Fee Installments', 'Assign Special Fee Type', 'Create Class Fee Structure', 'Update Student Fee Structure', 'Update Rebate Date'/*'Fee Category', 'Fee Type group',  'Special Fee Type',  'Remove Special Fee Type', 'Manage Bank Account', 'Assign Fee Group To Students', 'Transfer Fee Due', 'Fee Setting', 'Update Student Fee Group', 'Import Fee Group'*/],
+        feeMasters: ['Fee Type', 'Fee Installments', 'Assign Special Fee Type', 'Create Class Fee Structure', 'Update Student Fee Structure', 'Update Rebate Date', 'Delete Fee Receipt'/*'Fee Category', 'Fee Type group',  'Special Fee Type',  'Remove Special Fee Type', 'Manage Bank Account', 'Assign Fee Group To Students', 'Transfer Fee Due', 'Fee Setting', 'Update Student Fee Group', 'Import Fee Group'*/],
         /*cheque: ['Manage Cheques', 'Fee PDC', 'Fee All PDC', 'Bounced Cheque Report', 'Cheque Date Report', 'Cheque Clearance Report'],*/
         concession: [
             { name: 'Concession Template', action: () => navigateTo('concession-master') },

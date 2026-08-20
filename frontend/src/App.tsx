@@ -24,6 +24,7 @@ export type Page =
   | "student-concession"
   | "update-student-fee-structure"
   | "update-rebate-date"
+  | "delete-fee-receipt"
   | "staffsupport"
   | "create-student"
   | "import-student-data"
