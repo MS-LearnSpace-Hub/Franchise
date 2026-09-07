@@ -106,25 +106,7 @@ const HRLayout: React.FC<HRLayoutProps> = ({ children, currentPage, navigateTo }
                         </h2>
                     </div>
 
-                    {/* Navigation Tabs */}
-                    <div className="px-6 flex items-center space-x-1 mt-2">
-                        {menuItems.map((item) => (
-                            canAccess(item.permission) && (
-                                <button
-                                    key={item.name}
-                                    onClick={() => handleTabClick(item)}
-                                    className={`flex items-center space-x-2 px-4 py-3 border-b-2 font-medium text-sm transition-colors
-                                        ${activeMenu.name === item.name 
-                                            ? 'border-emerald-600 text-emerald-600' 
-                                            : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-                                        }`}
-                                >
-                                    {item.icon}
-                                    <span>{item.name}</span>
-                                </button>
-                            )
-                        ))}
-                    </div>
+
                 </div>
 
                 {/* Sub-navigation Menu for Active Tab */}
