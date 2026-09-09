@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify, send_file, current_app
 from extensions import db, get_now, to_local_time
-from models import DocumentType, StudentDocument, Student, User, Branch, UserBranchAccess
+from models import DocumentType, StudentDocument, Student, User, Branch, UserBranchAccess, StaffMaster, StaffDocument, StaffDocumentType
 from helpers import token_required
 from datetime import datetime
 import os
@@ -352,5 +352,6 @@ def download_document(current_user, doc_id):
             return jsonify({'message': 'File not found in object storage.'}), 404
     except Exception as e:
         return jsonify({'message': str(e)}), 500
+
 
 

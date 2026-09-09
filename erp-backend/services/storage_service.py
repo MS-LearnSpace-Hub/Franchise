@@ -218,3 +218,30 @@ def generate_student_document_key(student_id, doc_type_name, filename):
     clean_doc_type = slugify(doc_type_name)
     return f"franchise/{school_slug}_{school_id}/{branch_slug}_{branch_id}/{admission_no}/{clean_doc_type}.{ext}"
 
+def generate_staff_document_key(staff_id, doc_type_code, filename):
+    try:
+        from models import StaffMaster, School, Branch
+        staff = StaffMaster.query.get(staff_id) if not isinstance(staff_id, StaffMaster) else staff_id
+        if staff:
+            school_name = "unknown-school"
+            school_id = staff.school_id or 0
+            if staff.school_id:
+                school = School.query.get(staff.school_id)
+                if school and school.school_name:
+                    school_name = school.school_name
+
+            branch_name = "unknown-branch"
+            branch_id = staff.branch_id or 0
+            if staff.branch_id:
+                branch = Branch.query.get(staff.branch_id)
+                if branch and branch.branch_name:
+                    branch_name = branch.branch_name
+
+            emp_code = staff.employee_id or staff.staff_code or f"EMP{staff.id}"
+            clean_doc_type = slugify(doc_type_code)
+            return f"franchise/{slugify(school_name)}_{school_id}/{slugify(branch_name)}_{branch_id}/Staff/{emp_code}/documents/{clean_doc_type}/{filename}"
+    except Exception as e:
+        print(f"Error fetching staff details for document key generation: {e}")
+
+    clean_doc_type = slugify(doc_type_code)
+    return f"franchise/staff/documents/{staff_id}/{clean_doc_type}/{filename}"

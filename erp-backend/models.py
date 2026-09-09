@@ -1362,6 +1362,100 @@ class StaffMaster(db.Model, AuditMixin):
     staff_category = db.relationship('StaffCategoryMaster', foreign_keys=[staff_category_id])
     staff_status = db.relationship('StaffStatusMaster', foreign_keys=[staff_status_id])
 
+class StaffDocumentType(db.Model, AuditMixin):
+    __tablename__ = "staff_document_type_master"
+    __audit_module__ = "HR"
+    
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    code = db.Column(db.String(50), unique=True, nullable=False) # e.g., 'AADHAAR', 'PAN'
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.String(255))
+    is_required = db.Column(db.Boolean, default=False)
+    allowed_extensions = db.Column(db.String(100), default='pdf,jpg,jpeg,png')
+    max_file_size = db.Column(db.Integer, default=5242880) # 5MB default
+    requires_expiry = db.Column(db.Boolean, default=False)
+    requires_document_number = db.Column(db.Boolean, default=False)
+    is_active = db.Column(db.Boolean, default=True)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
+
+class StaffDocument(db.Model, AuditMixin):
+    __tablename__ = "staff_documents"
+    __audit_module__ = "HR"
+    
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    staff_id = db.Column(db.Integer, db.ForeignKey('staff_master.id', ondelete='CASCADE'), nullable=False)
+    document_type_id = db.Column(db.Integer, db.ForeignKey('staff_document_type_master.id', ondelete='RESTRICT'), nullable=False)
+    
+    document_no = db.Column(db.String(100))
+    issue_date = db.Column(db.Date)
+    expiry_date = db.Column(db.Date)
+    issued_by = db.Column(db.String(100))
+    notes = db.Column(db.Text)
+    
+    file_name = db.Column(db.String(255), nullable=False)
+    file_path = db.Column(db.String(500), nullable=False) # OCI Object Key
+    file_size = db.Column(db.Integer)
+    mime_type = db.Column(db.String(100))
+    
+    is_verified = db.Column(db.Boolean, default=False)
+    verified_by = db.Column(db.Integer, db.ForeignKey('users.user_id'), nullable=True)
+    verified_at = db.Column(db.DateTime, nullable=True)
+    is_active = db.Column(db.Boolean, default=True)
+    
+    staff = db.relationship('StaffMaster', backref=db.backref('documents', lazy=True, cascade="all, delete-orphan"))
+    document_type = db.relationship('StaffDocumentType')
+
+class StaffAccountDetail(db.Model, AuditMixin):
+    __tablename__ = "staff_account_details"
+    __audit_module__ = "PAYROLL"
+    
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    staff_id = db.Column(db.Integer, db.ForeignKey('staff_master.id', ondelete='CASCADE'), unique=True, nullable=False)
+    
+    # Bank Details
+    account_holder_name = db.Column(db.String(150))
+    bank_name = db.Column(db.String(150))
+    branch_name = db.Column(db.String(150))
+    account_number = db.Column(db.String(50))
+    ifsc_code = db.Column(db.String(20))
+    account_type = db.Column(db.String(50))
+    upi_id = db.Column(db.String(100))
+    
+    # Statutory Details
+    pan_number = db.Column(db.String(20))
+    aadhaar_number = db.Column(db.String(20))
+    pf_applicable = db.Column(db.Boolean, default=False)
+    pf_number = db.Column(db.String(50)) # UAN
+    esi_applicable = db.Column(db.Boolean, default=False)
+    esi_number = db.Column(db.String(50))
+    pt_applicable = db.Column(db.Boolean, default=False)
+    tds_applicable = db.Column(db.Boolean, default=False)
+    
+    staff = db.relationship('StaffMaster', backref=db.backref('account_detail', uselist=False, lazy=True, cascade="all, delete-orphan"))
+
+class StaffSalaryDetail(db.Model, AuditMixin):
+    __tablename__ = "staff_salary_details"
+    __audit_module__ = "PAYROLL"
+    
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    staff_id = db.Column(db.Integer, db.ForeignKey('staff_master.id', ondelete='CASCADE'), unique=True, nullable=False)
+    
+    salary_type = db.Column(db.String(50)) # Monthly, Daily, Hourly
+    basic_salary = db.Column(db.Numeric(10, 2))
+    gross_salary = db.Column(db.Numeric(10, 2))
+    salary_structure_id = db.Column(db.Integer, nullable=True) # Refers to a future SalaryStructure master
+    payment_mode = db.Column(db.String(50)) # Bank Transfer, Cheque, Cash
+    effective_from = db.Column(db.Date)
+    payroll_status = db.Column(db.String(50), default='ACTIVE')
+    
+    gratuity_applicable = db.Column(db.Boolean, default=False)
+    bonus_applicable = db.Column(db.Boolean, default=False)
+    overtime_applicable = db.Column(db.Boolean, default=False)
+    notice_period_days = db.Column(db.Integer, default=30)
+    payroll_remarks = db.Column(db.Text)
+    
+    staff = db.relationship('StaffMaster', backref=db.backref('salary_detail', uselist=False, lazy=True, cascade="all, delete-orphan"))
+
 class BiometricDeviceMaster(db.Model, AuditMixin):
     __tablename__ = "biometric_device_master"
     __audit_module__ = "HR"

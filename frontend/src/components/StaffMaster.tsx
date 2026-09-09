@@ -125,6 +125,7 @@ export const StaffMaster: React.FC = () => {
         // System access
         role_id: '',
         // Identifiers
+        id_generation_method: 'AUTO',
         staff_code: '',
         employee_id: '',
         biometric_id: '',
@@ -261,6 +262,7 @@ export const StaffMaster: React.FC = () => {
                 default_shift_id: data.default_shift_id ? String(data.default_shift_id) : '',
                 attendance_source: data.attendance_source || 'MANUAL',
                 role_id: '', // Exclude role_id when editing
+                id_generation_method: 'MANUAL', // For edit, it's effectively manual since we show the existing IDs
                 staff_code: data.staff_code || '',
                 employee_id: data.employee_id || '',
                 biometric_id: data.biometric_id || '',
@@ -453,7 +455,7 @@ export const StaffMaster: React.FC = () => {
                     <div className="bg-gradient-to-r from-emerald-600 to-teal-600 px-6 py-4">
                         <h3 className="text-white font-bold text-base">{form.id ? 'Edit Staff Details' : 'New Staff Registration'}</h3>
                         <p className="text-emerald-100 text-xs mt-0.5">
-                            {form.id ? 'Update the details for this staff member' : 'Staff code, employee ID and login will be auto-generated on save'}
+                            {form.id ? 'Update the details for this staff member' : 'Staff code, employee ID and login will be generated on save or provided manually'}
                         </p>
                     </div>
 
@@ -494,10 +496,40 @@ export const StaffMaster: React.FC = () => {
                         {/* ── Identifiers ───────────────────────────────────── */}
                         <section>
                             <SectionHeader icon="🪪" title="Identifiers" subtitle="Staff Code, Employee ID, Biometric ID" />
+                            {!form.id && (
+                                <div className="mt-4 mb-2">
+                                    <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 cursor-pointer">
+                                        <input 
+                                            type="checkbox" 
+                                            className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500"
+                                            checked={form.id_generation_method === 'MANUAL'}
+                                            onChange={(e) => set('id_generation_method', e.target.checked ? 'MANUAL' : 'AUTO')}
+                                        />
+                                        Enter Staff Identifiers Manually
+                                    </label>
+                                </div>
+                            )}
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-                                {renderInput({ label: "Staff Code", field: "staff_code", placeholder: "Auto-generated on save", disabled: true })}
-                                {renderInput({ label: "Employee ID", field: "employee_id", placeholder: "Auto-generated on save", disabled: true })}
-                                {renderInput({ label: "Biometric ID", field: "biometric_id", placeholder: "Auto-generated on save", disabled: true })}
+                                {renderInput({ 
+                                    label: "Staff Code", 
+                                    field: "staff_code", 
+                                    placeholder: form.id_generation_method === 'MANUAL' ? "Enter Staff Code" : "Auto-generated on save", 
+                                    disabled: form.id ? true : form.id_generation_method !== 'MANUAL', 
+                                    required: form.id_generation_method === 'MANUAL' 
+                                })}
+                                {renderInput({ 
+                                    label: "Employee ID", 
+                                    field: "employee_id", 
+                                    placeholder: form.id_generation_method === 'MANUAL' ? "Enter Employee ID" : "Auto-generated on save", 
+                                    disabled: form.id ? true : form.id_generation_method !== 'MANUAL', 
+                                    required: form.id_generation_method === 'MANUAL' 
+                                })}
+                                {renderInput({ 
+                                    label: "Biometric ID", 
+                                    field: "biometric_id", 
+                                    placeholder: form.id_generation_method === 'MANUAL' ? "Enter Biometric ID (Optional)" : "Auto-generated on save", 
+                                    disabled: form.id ? true : form.id_generation_method !== 'MANUAL' 
+                                })}
                             </div>
                         </section>
 

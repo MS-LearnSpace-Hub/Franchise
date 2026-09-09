@@ -2,8 +2,15 @@ import React, { useState, useEffect } from 'react';
 import api from '../api';
 import { useAuth } from '../contexts/AuthContext';
 import { UserIcon } from './icons';
+import { StaffOverviewTab } from './hr/staff-profile/StaffOverviewTab';
+import { StaffPersonalTab } from './hr/staff-profile/StaffPersonalTab';
+import { StaffEmploymentTab } from './hr/staff-profile/StaffEmploymentTab';
+import { StaffBankStatutoryTab } from './hr/staff-profile/StaffBankStatutoryTab';
+import { StaffSalaryTab } from './hr/staff-profile/StaffSalaryTab';
+import { StaffDocumentsTab } from './hr/staff-profile/StaffDocumentsTab';
+import { StaffLoginAccessTab } from './hr/staff-profile/StaffLoginAccessTab';
 
-interface StaffProfileData {
+export interface StaffProfileData {
     id: number;
     staff_code: string;
     employee_id: string | null;
@@ -48,6 +55,7 @@ const StaffProfile: React.FC<StaffProfileProps> = ({ staffId, onBack, navigateTo
     const [profile, setProfile] = useState<StaffProfileData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [activeTab, setActiveTab] = useState('overview');
 
     useEffect(() => {
         const fetchProfile = async () => {
@@ -83,6 +91,16 @@ const StaffProfile: React.FC<StaffProfileProps> = ({ staffId, onBack, navigateTo
         );
     }
 
+    const tabs = [
+        { id: 'overview', label: 'Overview' },
+        { id: 'personal', label: 'Personal' },
+        { id: 'employment', label: 'Employment' },
+        { id: 'bank', label: 'Bank & Statutory' },
+        { id: 'salary', label: 'Salary & Payroll' },
+        { id: 'documents', label: 'Documents' },
+        { id: 'login', label: 'Login & Access' }
+    ];
+
     return (
         <div className="max-w-6xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
             {onBack && (
@@ -117,155 +135,35 @@ const StaffProfile: React.FC<StaffProfileProps> = ({ staffId, onBack, navigateTo
                     </div>
                 </div>
 
-                {/* Details Grid */}
-                <div className="border-t border-slate-100 p-6 md:p-8">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 text-sm">
-                        <div>
-                            <p className="text-slate-400 mb-1">Gender</p>
-                            <p className="font-semibold text-slate-700 capitalize">{profile.gender.toLowerCase()}</p>
-                        </div>
-                        <div>
-                            <p className="text-slate-400 mb-1">DOB</p>
-                            <p className="font-semibold text-slate-700">
-                                {profile.date_of_birth ? new Date(profile.date_of_birth).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}
-                            </p>
-                        </div>
-                        <div>
-                            <p className="text-slate-400 mb-1">Nationality</p>
-                            <p className="font-semibold text-slate-700">{profile.nationality}</p>
-                        </div>
-                        <div>
-                            <p className="text-slate-400 mb-1">Biometric Code</p>
-                            <p className="font-semibold text-slate-700">{profile.biometric_id || '-'}</p>
-                        </div>
-
-                        <div>
-                            <p className="text-slate-400 mb-1">Staff Code</p>
-                            <p className="font-semibold text-slate-700">{profile.staff_code}</p>
-                        </div>
-                        <div>
-                            <p className="text-slate-400 mb-1">Email</p>
-                            <p className="font-semibold text-slate-700">{profile.email || '-'}</p>
-                        </div>
-                        <div>
-                            <p className="text-slate-400 mb-1">Qualification</p>
-                            <p className="font-semibold text-slate-700">{profile.qualification}</p>
-                        </div>
-                        <div>
-                            <p className="text-slate-400 mb-1">Join Date</p>
-                            <p className="font-semibold text-slate-700">
-                                {profile.joining_date ? new Date(profile.joining_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}
-                            </p>
-                        </div>
-
-                        <div>
-                            <p className="text-slate-400 mb-1">Designation</p>
-                            <p className="font-semibold text-slate-700">{profile.designation_name || '-'}</p>
-                        </div>
-                        <div>
-                            <p className="text-slate-400 mb-1">Mobile No</p>
-                            <p className="font-semibold text-slate-700">{profile.mobile || '-'}</p>
-                        </div>
-                        <div>
-                            <p className="text-slate-400 mb-1">Employee-ID</p>
-                            <p className="font-semibold text-slate-700">{profile.employee_id || '-'}</p>
-                        </div>
-                        <div>
-                            <p className="text-slate-400 mb-1">Employment Status</p>
-                            <p className="font-semibold text-slate-700 capitalize">{profile.employment_type.toLowerCase()}</p>
-                        </div>
-
-                        <div>
-                            <p className="text-slate-400 mb-1">Department</p>
-                            <p className="font-semibold text-slate-700">{profile.department_name || '-'}</p>
-                        </div>
-                        <div>
-                            <p className="text-slate-400 mb-1">Blood Group</p>
-                            <p className="font-semibold text-slate-700">{profile.blood_group}</p>
-                        </div>
-                        <div>
-                            <p className="text-slate-400 mb-1">UAN No</p>
-                            <p className="font-semibold text-slate-700">{profile.uan_no}</p>
-                        </div>
-                        <div>
-                            <p className="text-slate-400 mb-1">School & Branch</p>
-                            <p className="font-semibold text-slate-700">
-                                {profile.school_name || 'N/A'}<br />
-                                <span className="text-xs text-slate-500 font-normal">{profile.branch_name || 'N/A'}</span>
-                            </p>
-                        </div>
+                {/* Tabs */}
+                <div className="border-t border-slate-100 px-6 md:px-8 bg-slate-50/50">
+                    <div className="flex space-x-6 overflow-x-auto">
+                        {tabs.map((tab) => (
+                            <button
+                                key={tab.id}
+                                onClick={() => setActiveTab(tab.id)}
+                                className={`whitespace-nowrap py-4 border-b-2 font-medium text-sm transition-colors ${
+                                    activeTab === tab.id
+                                        ? 'border-emerald-600 text-emerald-600'
+                                        : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+                                }`}
+                            >
+                                {tab.label}
+                            </button>
+                        ))}
                     </div>
                 </div>
             </div>
 
-            {/* Bottom Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Attendance */}
-                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                    <div className="flex justify-between items-center mb-6">
-                        <h2 className="text-lg font-bold text-slate-800">Today's Attendance</h2>
-                        {navigateTo && (
-                            <button
-                                onClick={() => navigateTo('hr-attendance-summary')}
-                                className="text-sm font-semibold text-red-500 hover:text-red-600"
-                            >
-                                View Attendance &rarr;
-                            </button>
-                        )}
-                    </div>
-
-                    <div className="space-y-4">
-                        <div className="flex justify-between items-center py-2">
-                            <div>
-                                <p className="text-sm text-slate-500">Morning</p>
-                                <p className="font-bold text-emerald-500">IN</p>
-                            </div>
-                            <div className="text-right">
-                                <p className="text-sm text-slate-500">Check In Time</p>
-                                <p className="font-bold text-slate-700">
-                                    {profile.today_attendance?.first_in || '-'}
-                                </p>
-                            </div>
-                        </div>
-                        <div className="flex justify-between items-center py-2 border-t border-slate-100">
-                            <div>
-                                <p className="text-sm text-slate-500">Evening</p>
-                                <p className="font-bold text-red-500">OUT</p>
-                            </div>
-                            <div className="text-right">
-                                <p className="text-sm text-slate-500">Check Out Time</p>
-                                <p className="font-bold text-slate-700">
-                                    {profile.today_attendance?.last_out || '-'}
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Leave Balance */}
-                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                    <div className="flex justify-between items-center mb-6">
-                        <h2 className="text-lg font-bold text-slate-800">My Leave Balance</h2>
-                        <button className="text-sm font-semibold text-red-500 hover:text-red-600">
-                            View Leave History &rarr;
-                        </button>
-                    </div>
-
-                    <div className="space-y-6">
-                        <div>
-                            <p className="text-sm font-medium text-slate-700">Compensatory Leave (Paid Leave)</p>
-                            <p className="text-xs text-blue-500 mt-1">
-                                Total Leaves: 0 | Leaves Taken: 0 | Leaves Balance: 0
-                            </p>
-                        </div>
-                        <div className="border-t border-slate-100 pt-4">
-                            <p className="text-sm font-medium text-slate-700">Causal Leave (Paid Leave)</p>
-                            <p className="text-xs text-blue-500 mt-1">
-                                Total Leaves: 12 | Leaves Taken: 0 | Leaves Balance: 12
-                            </p>
-                        </div>
-                    </div>
-                </div>
+            {/* Tab Content Area */}
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 md:p-8">
+                {activeTab === 'overview' && <StaffOverviewTab profile={profile} />}
+                {activeTab === 'personal' && <StaffPersonalTab profile={profile} />}
+                {activeTab === 'employment' && <StaffEmploymentTab profile={profile} />}
+                {activeTab === 'bank' && <StaffBankStatutoryTab profile={profile} />}
+                {activeTab === 'salary' && <StaffSalaryTab profile={profile} />}
+                {activeTab === 'documents' && <StaffDocumentsTab profile={profile} />}
+                {activeTab === 'login' && <StaffLoginAccessTab profile={profile} />}
             </div>
         </div>
     );

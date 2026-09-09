@@ -161,7 +161,7 @@ def process_queue(config):
         payload = json.loads(payload_str)
         try:
             logging.info(f"Pushing payload for sync_time: {payload.get('sync_time')}")
-            response = requests.post(url, json=payload, headers=headers, timeout=10)
+            response = requests.post(url, json=payload, headers=headers, timeout=60)
             
             if response.status_code == 200:
                 logging.info(f"Success: {response.json()}")

@@ -1,10 +1,15 @@
 import logging
-from flask import Blueprint, request, jsonify, g
+from flask import Blueprint, request, jsonify, g, current_app, send_file
+import uuid
+import os
+from werkzeug.utils import secure_filename
+from datetime import datetime
+from extensions import to_local_time
 from extensions import db
 from models import (
     DepartmentMaster, DesignationMaster, ShiftMaster, StaffMaster,
     StaffCategoryMaster, StaffStatusMaster, User, Role, Branch,
-    StaffCodeSequence, EmployeeIdSequence
+    StaffCodeSequence, EmployeeIdSequence, StaffAccountDetail, StaffSalaryDetail, StaffDocument, StaffDocumentType
 )
 from helpers import permission_required, token_required, get_now, hash_user_password, get_user_allowed_schools, get_target_school_id, scope_query
 
@@ -678,14 +683,25 @@ def create_staff(current_user):
             return jsonify({"error": "Configuration Error: Default 'stafflogin' role is inactive."}), 500
 
     try:
-        # Generate staff code and employee ID via new independent sequence tables
-        staff_code, employee_id, sequence = _generate_staff_ids(
-            branch_id, department_id, school_id
-        )
+        # Generate staff code and employee ID via new independent sequence tables if not provided manually
+        is_manual = data.get('id_generation_method') == 'MANUAL'
+        
+        if is_manual:
+            staff_code = data.get('staff_code')
+            employee_id = data.get('employee_id')
+            biometric_id = data.get('biometric_id') or employee_id
+            sequence = None
+            if not staff_code or not employee_id:
+                return jsonify({"error": "Staff code and Employee ID are required for manual entry"}), 400
+        else:
+            staff_code, employee_id, sequence = _generate_staff_ids(
+                branch_id, department_id, school_id
+            )
+            biometric_id = employee_id
 
         # Guard against race conditions
         if StaffMaster.query.filter_by(staff_code=staff_code).first():
-            return jsonify({"error": f"Staff code {staff_code} already exists. Please retry."}), 409
+            return jsonify({"error": f"Staff code {staff_code} already exists."}), 409
 
         first_name   = data['first_name']
         last_name    = data.get('last_name', '')
@@ -695,7 +711,7 @@ def create_staff(current_user):
             school_id=school_id,          # ← NEW: denormalized from branch
             staff_code=staff_code,
             employee_id=employee_id,
-            biometric_id=employee_id,
+            biometric_id=biometric_id,
             employee_sequence=sequence,
             first_name=first_name,
             middle_name=data.get('middle_name'),
@@ -997,3 +1013,299 @@ def update_staff_status(current_user, stat_id):
         stat.status_type = data['status_type']
     db.session.commit()
     return jsonify({"message": "Staff status updated"}), 200
+
+# ==========================================
+# STAFF ACCOUNT DETAILS
+# ==========================================
+
+@bp.route('/staff/<int:staff_id>/profile/account', methods=['GET', 'PUT'])
+@token_required
+@permission_required("hr.staff.profile", "write")
+def manage_staff_account_detail(current_user, staff_id):
+    staff = StaffMaster.query.get_or_404(staff_id)
+    account_detail = staff.account_detail
+    
+    if request.method == 'GET':
+        if not account_detail:
+            return jsonify({}), 200
+        return jsonify({
+            'account_holder_name': account_detail.account_holder_name,
+            'bank_name': account_detail.bank_name,
+            'branch_name': account_detail.branch_name,
+            'account_number': account_detail.account_number,
+            'ifsc_code': account_detail.ifsc_code,
+            'account_type': account_detail.account_type,
+            'upi_id': account_detail.upi_id,
+            'pan_number': account_detail.pan_number,
+            'aadhaar_number': account_detail.aadhaar_number,
+            'pf_applicable': account_detail.pf_applicable,
+            'pf_number': account_detail.pf_number,
+            'esi_applicable': account_detail.esi_applicable,
+            'esi_number': account_detail.esi_number,
+            'pt_applicable': account_detail.pt_applicable,
+            'tds_applicable': account_detail.tds_applicable
+        }), 200
+
+    # PUT
+    data = request.json or {}
+    if not account_detail:
+        account_detail = StaffAccountDetail(staff_id=staff.id)
+        db.session.add(account_detail)
+
+    fields = ['account_holder_name', 'bank_name', 'branch_name', 'account_number', 'ifsc_code', 
+              'account_type', 'upi_id', 'pan_number', 'aadhaar_number', 'pf_applicable', 'pf_number', 
+              'esi_applicable', 'esi_number', 'pt_applicable', 'tds_applicable']
+              
+    for field in fields:
+        if field in data:
+            setattr(account_detail, field, data[field] if data[field] != '' else None)
+            
+    db.session.commit()
+    return jsonify({"message": "Staff account details updated successfully"}), 200
+
+# ==========================================
+# STAFF SALARY DETAILS
+# ==========================================
+
+@bp.route('/staff/<int:staff_id>/profile/salary', methods=['GET', 'PUT'])
+@token_required
+@permission_required("hr.staff.profile", "write")
+def manage_staff_salary_detail(current_user, staff_id):
+    staff = StaffMaster.query.get_or_404(staff_id)
+    salary_detail = staff.salary_detail
+    
+    if request.method == 'GET':
+        if not salary_detail:
+            return jsonify({}), 200
+        return jsonify({
+            'salary_type': salary_detail.salary_type,
+            'basic_salary': float(salary_detail.basic_salary) if salary_detail.basic_salary else None,
+            'gross_salary': float(salary_detail.gross_salary) if salary_detail.gross_salary else None,
+            'payment_mode': salary_detail.payment_mode,
+            'effective_from': salary_detail.effective_from.isoformat() if salary_detail.effective_from else None,
+            'payroll_status': salary_detail.payroll_status,
+            'gratuity_applicable': salary_detail.gratuity_applicable,
+            'bonus_applicable': salary_detail.bonus_applicable,
+            'overtime_applicable': salary_detail.overtime_applicable,
+            'notice_period_days': salary_detail.notice_period_days,
+            'payroll_remarks': salary_detail.payroll_remarks
+        }), 200
+
+    # PUT
+    data = request.json or {}
+    if not salary_detail:
+        salary_detail = StaffSalaryDetail(staff_id=staff.id)
+        db.session.add(salary_detail)
+        
+    fields = ['salary_type', 'basic_salary', 'gross_salary', 'payment_mode', 'effective_from', 
+              'payroll_status', 'gratuity_applicable', 'bonus_applicable', 'overtime_applicable', 
+              'notice_period_days', 'payroll_remarks']
+              
+    for field in fields:
+        if field in data:
+            if field == 'effective_from' and data[field]:
+                setattr(salary_detail, field, datetime.strptime(data[field], '%Y-%m-%d').date())
+            else:
+                setattr(salary_detail, field, data[field] if data[field] != '' else None)
+                
+    db.session.commit()
+    return jsonify({"message": "Staff salary details updated successfully"}), 200
+
+# ==========================================
+# STAFF DOCUMENTS
+# ==========================================
+
+ALLOWED_EXTENSIONS = {'pdf', 'png', 'jpg', 'jpeg', 'doc', 'docx'}
+
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+@bp.route('/staff/upload', methods=['POST'])
+@token_required
+def upload_staff_document(current_user):
+    try:
+        from helpers import get_user_allowed_schools
+        if 'file' not in request.files:
+            return jsonify({'message': 'No file part in the request'}), 400
+
+        max_content_length = current_app.config.get('MAX_CONTENT_LENGTH')
+        content_length = request.content_length
+
+        if (max_content_length is not None and content_length is not None and content_length > max_content_length):
+            return jsonify({'message': 'File too large. Maximum size is 16 MB.'}), 413
+
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'message': 'No selected file'}), 400
+
+        if not allowed_file(file.filename):
+            return jsonify({'message': 'File type not allowed. Allowed: PDF, PNG, JPG, JPEG, DOC, DOCX'}), 400
+
+        staff_id = request.form.get('staff_id')
+        document_type_id = request.form.get('document_type_id')
+
+        if not staff_id or not document_type_id:
+            return jsonify({'message': 'Missing staff_id or document_type_id'}), 400
+
+        staff = StaffMaster.query.get(staff_id)
+        doc_type = StaffDocumentType.query.get(document_type_id)
+
+        if not staff or not doc_type:
+            return jsonify({'message': 'Invalid staff or document type'}), 400
+
+        # Optional metadata
+        document_no  = request.form.get('document_no')
+        issued_by    = request.form.get('issued_by')
+        issue_date_str = request.form.get('issue_date')
+        expiry_date_str = request.form.get('expiry_date')
+        notes        = request.form.get('notes')
+
+        issue_date = None
+        if issue_date_str:
+            issue_date = datetime.strptime(issue_date_str, '%Y-%m-%d').date()
+            
+        expiry_date = None
+        if expiry_date_str:
+            expiry_date = datetime.strptime(expiry_date_str, '%Y-%m-%d').date()
+
+        # Unique filename: DOCTYPECODE_YYYYMMDDHHMMSS_xxxxxx.ext
+        original_ext   = file.filename.rsplit('.', 1)[1].lower()
+        timestamp      = get_now().strftime('%Y%m%d%H%M%S')
+        unique_id      = str(uuid.uuid4().hex)[:6]
+        secure_code    = secure_filename(doc_type.code)
+        new_filename   = f"{secure_code}_{timestamp}_{unique_id}.{original_ext}"
+
+        from services.storage_service import upload_file_to_storage, generate_staff_document_key
+        
+        object_key = generate_staff_document_key(staff.id, secure_code, new_filename)
+        
+        # Extract folder and upload_name
+        folder = '/'.join(object_key.split('/')[:-1])
+        upload_name = object_key.split('/')[-1]
+
+        file_bytes = file.stream.read()
+        file.stream.seek(0)
+
+        upload_file_to_storage(
+            file.stream,
+            upload_name,
+            folder=folder
+        )
+        
+        relative_path = object_key
+        file_size = len(file_bytes)
+        
+        existing_doc = StaffDocument.query.filter_by(
+            staff_id=staff.id,
+            document_type_id=doc_type.id
+        ).first()
+
+        if existing_doc:
+            existing_doc.document_no = document_no
+            existing_doc.issued_by = issued_by
+            existing_doc.issue_date = issue_date
+            existing_doc.expiry_date = expiry_date
+            existing_doc.notes = notes
+            existing_doc.file_name = new_filename
+            existing_doc.file_path = relative_path
+            existing_doc.file_size = file_size
+            existing_doc.mime_type = file.content_type
+            existing_doc.updated_by = current_user.user_id
+            new_doc = existing_doc
+        else:
+            new_doc = StaffDocument(
+                staff_id=staff.id,
+                document_type_id=doc_type.id,
+                document_no=document_no,
+                issued_by=issued_by,
+                issue_date=issue_date,
+                expiry_date=expiry_date,
+                notes=notes,
+                file_name=new_filename,
+                file_path=relative_path,
+                file_size=file_size,
+                mime_type=file.content_type,
+                created_by=current_user.user_id
+            )
+            db.session.add(new_doc)
+        db.session.commit()
+
+        return jsonify({
+            'message': 'Staff document uploaded successfully',
+            'document_id': new_doc.id,
+            'file_name': new_filename,
+            'stored_at': relative_path
+        }), 201
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'message': f'Error uploading staff document: {str(e)}'}), 500
+
+
+@bp.route('/staff/<int:staff_id>/documents', methods=['GET'])
+@token_required
+def get_staff_documents(current_user, staff_id):
+    try:
+        staff = StaffMaster.query.get(staff_id)
+        if not staff:
+            return jsonify({'message': 'Staff not found'}), 404
+
+        documents = StaffDocument.query.filter_by(staff_id=staff_id).all()
+
+        user_ids = {doc.created_by for doc in documents if doc.created_by}
+        users = User.query.filter(User.user_id.in_(user_ids)).all() if user_ids else []
+        user_map = {u.user_id: u.username for u in users}
+
+        result = []
+        for doc in documents:
+            result.append({
+                'id': doc.id,
+                'document_type_id': doc.document_type_id,
+                'document_type_code': doc.document_type.code,
+                'document_type_name': doc.document_type.name,
+                'document_no': doc.document_no,
+                'issued_by': doc.issued_by,
+                'issue_date': doc.issue_date.strftime('%Y-%m-%d') if doc.issue_date else None,
+                'expiry_date': doc.expiry_date.strftime('%Y-%m-%d') if doc.expiry_date else None,
+                'notes': doc.notes,
+                'file_name': doc.file_name,
+                'uploaded_at': to_local_time(doc.created_at).strftime('%Y-%m-%d %H:%M:%S') if doc.created_at else None,
+                'is_verified': doc.is_verified,
+                'upload_by_name': user_map.get(doc.created_by, 'System')
+            })
+
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
+
+@bp.route('/staff/download/<int:doc_id>', methods=['GET'])
+@token_required
+def download_staff_document(current_user, doc_id):
+    try:
+        doc = StaffDocument.query.get(doc_id)
+        if not doc:
+            return jsonify({'message': 'Document not found'}), 404
+
+        # OCI Storage (local fallback included in service)
+        try:
+            from services.storage_service import get_file_stream
+            from oci.exceptions import ServiceError
+            
+            stream = get_file_stream(doc.file_path)
+            if stream:
+                import io
+                return send_file(
+                    io.BytesIO(stream.read()),
+                    as_attachment=True,
+                    download_name=doc.file_name,
+                    mimetype=doc.mime_type
+                )
+            else:
+                return jsonify({'message': 'File not found in object storage.'}), 404
+        except ImportError:
+            return jsonify({'message': 'Object storage client unavailable.'}), 500
+        except (FileNotFoundError, ServiceError):
+            return jsonify({'message': 'File not found in object storage.'}), 404
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
