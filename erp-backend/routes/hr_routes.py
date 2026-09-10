@@ -24,7 +24,7 @@ from sqlalchemy import or_
 
 @bp.route('/staff-categories', methods=['GET'])
 @token_required
-@permission_required("hr.hr.staff-master", "read")
+@permission_required(["hr.hr.staff-master", "hr.hr.staff-profile", "hr.hr.staff-update"], "read")
 def get_staff_categories(current_user):
     target_school_id = get_target_school_id(current_user)
     if not target_school_id and current_user.role == 'SuperAdmin':
@@ -84,7 +84,7 @@ def create_staff_category(current_user):
 
 @bp.route('/staff-statuses', methods=['GET'])
 @token_required
-@permission_required("hr.hr.staff-master", "read")
+@permission_required(["hr.hr.staff-master", "hr.hr.staff-profile", "hr.hr.staff-update"], "read")
 def get_staff_statuses(current_user):
     """List all HR employment statuses (Active, Probation, Resigned, etc.)"""
     target_school_id = get_target_school_id(current_user)
@@ -424,7 +424,7 @@ def _generate_staff_ids(branch_id, department_id, school_id):
 
 @bp.route('/staff', methods=['GET'])
 @token_required
-@permission_required("hr.hr.staff-master", "read")
+@permission_required(["hr.hr.staff-master", "hr.hr.staff-profile", "hr.hr.staff-update"], "read")
 def get_staff(current_user):
     try:
         target_school_id = get_target_school_id(current_user)
@@ -568,7 +568,7 @@ def get_staff_profile(current_user):
 
 @bp.route('/staff/<int:staff_id>/profile', methods=['GET'])
 @token_required
-@permission_required("hr.hr.staff-master", "read")
+@permission_required(["hr.hr.staff-master", "hr.hr.staff-profile", "hr.hr.staff-update"], "read")
 def get_staff_profile_by_id(current_user, staff_id):
     try:
         s = StaffMaster.query.get(staff_id)
@@ -797,7 +797,7 @@ def create_staff(current_user):
 
 @bp.route('/staff/<int:staff_id>', methods=['GET'])
 @token_required
-@permission_required("hr.hr.staff-master", "read")
+@permission_required(["hr.hr.staff-master", "hr.hr.staff-profile", "hr.hr.staff-update"], "read")
 def get_staff_detail(current_user, staff_id):
     s = StaffMaster.query.get_or_404(staff_id)
     return jsonify({
@@ -885,7 +885,7 @@ def get_managers(current_user):
 
 @bp.route('/staff/<int:staff_id>', methods=['PUT'])
 @token_required
-@permission_required("hr.hr.staff-master", "write")
+@permission_required(["hr.hr.staff-master", "hr.hr.staff-update"], "write")
 def update_staff(current_user, staff_id):
     s = StaffMaster.query.get_or_404(staff_id)
     data = request.json or {}

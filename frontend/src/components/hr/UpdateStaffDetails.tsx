@@ -2,18 +2,19 @@ import React, { useState, useEffect, useRef } from 'react';
 import api from '../../api';
 import { useAuth } from '../../contexts/AuthContext';
 
-interface CreateStaffWizardProps {
-    onClose: () => void;
-    onSuccess: (staffId: number) => void;
-}
-
 interface SelectOption {
     id: number;
     label: string;
     [key: string]: any;
 }
 
-const CreateStaffWizard: React.FC<CreateStaffWizardProps> = ({ onClose, onSuccess }) => {
+interface Props {
+    staffId: number;
+    onClose: () => void;
+    onSuccess: () => void;
+}
+
+export const UpdateStaffDetails: React.FC<Props> = ({ staffId, onClose, onSuccess }) => {
     const { user, hasPermission } = useAuth();
     
     const allowedBranches = (user?.allowed_branches ?? []).map((b) => ({
@@ -21,33 +22,38 @@ const CreateStaffWizard: React.FC<CreateStaffWizardProps> = ({ onClose, onSucces
         branch_name: b.branch_name,
         branch_code: b.branch_code,
     }));
-    const isSingleBranch = allowedBranches.length <= 1;
 
     // Permissions
     const showBankTab = hasPermission('hr.hr.staff-bank', 'write') || hasPermission('hr.hr.staff-payroll', 'write');
     const showSalaryTab = hasPermission('hr.hr.staff-payroll', 'write');
-    const showDocumentsTab = hasPermission('hr.hr.staff-documents', 'write') || true; // typically anyone creating staff can add docs
+    const showDocumentsTab = hasPermission('hr.hr.staff-documents', 'write') || true;
     const showLoginTab = hasPermission('hr.hr.staff-login', 'write') || true;
 
     const [activeTab, setActiveTab] = useState('personal');
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    // Form states
-    const [form, setForm] = useState({
-        branch_id: isSingleBranch && allowedBranches[0] ? String(allowedBranches[0].branch_id) : '',
+    const [departments, setDepartments] = useState<SelectOption[]>([]);
+    const [designations, setDesignations] = useState<SelectOption[]>([]);
+    const [shifts, setShifts] = useState<SelectOption[]>([]);
+    const [categories, setCategories] = useState<SelectOption[]>([]);
+    const [statuses, setStatuses] = useState<SelectOption[]>([]);
+    const [managers, setManagers] = useState<SelectOption[]>([]);
+    const [roles, setRoles] = useState<SelectOption[]>([]);
+
+    const [form, setForm] = useState<any>({
+        branch_id: '',
         first_name: '', middle_name: '', last_name: '',
         gender: 'MALE', date_of_birth: '',
         mobile: '', email: '',
         address: '', city: '', state: '', country: '', pincode: '',
-        joining_date: '',
+        joining_date: '', confirmation_date: '',
         employment_type: 'PERMANENT',
         staff_category_id: '', staff_status_id: '',
         department_id: '', designation_id: '', default_shift_id: '',
-        reporting_manager_id: '', attendance_source: 'MANUAL',
-        id_generation_method: 'AUTO',
-        staff_code: '', employee_id: '', biometric_id: ''
+        reporting_manager_id: '',
+        attendance_source: 'MANUAL',
     });
 
     const [bankForm, setBankForm] = useState({
@@ -67,47 +73,100 @@ const CreateStaffWizard: React.FC<CreateStaffWizardProps> = ({ onClose, onSucces
         notice_period_days: '30', payroll_remarks: ''
     });
 
+    const [existingDocs, setExistingDocs] = useState<any[]>([]);
     const [documents, setDocuments] = useState<File[]>([]);
     const [roleId, setRoleId] = useState<string>('');
 
-    const [departments, setDepartments] = useState<SelectOption[]>([]);
-    const [designations, setDesignations] = useState<SelectOption[]>([]);
-    const [categories, setCategories] = useState<SelectOption[]>([]);
-    const [statuses, setStatuses] = useState<SelectOption[]>([]);
-    const [shifts, setShifts] = useState<SelectOption[]>([]);
-    const [managers, setManagers] = useState<SelectOption[]>([]);
-    const [roles, setRoles] = useState<SelectOption[]>([]);
-
     useEffect(() => {
-        const fetchMasterData = async () => {
-            setLoading(true);
+        const fetchInitialData = async () => {
             try {
-                const params = form.branch_id ? { branch_id: form.branch_id } : {};
-                const [deptRes, desigRes, catRes, statusRes, shiftRes, mgrRes, rolesRes] = await Promise.all([
+                // Fetch staff details
+                const res = await api.get(`/hr/staff/${staffId}`);
+                const data = res.data;
+                
+                setForm({
+                    branch_id: data.branch_id ? String(data.branch_id) : '',
+                    first_name: data.first_name || '',
+                    middle_name: data.middle_name || '',
+                    last_name: data.last_name || '',
+                    gender: data.gender || 'MALE',
+                    date_of_birth: data.date_of_birth || '',
+                    mobile: data.mobile || '',
+                    email: data.email || '',
+                    address: data.address || '',
+                    city: data.city || '',
+                    state: data.state || '',
+                    country: data.country || '',
+                    pincode: data.pincode || '',
+                    joining_date: data.joining_date || '',
+                    confirmation_date: data.confirmation_date || '',
+                    employment_type: data.employment_type || 'PERMANENT',
+                    staff_category_id: data.staff_category_id ? String(data.staff_category_id) : '',
+                    staff_status_id: data.staff_status_id ? String(data.staff_status_id) : '',
+                    department_id: data.department_id ? String(data.department_id) : '',
+                    designation_id: data.designation_id ? String(data.designation_id) : '',
+                    default_shift_id: data.default_shift_id ? String(data.default_shift_id) : '',
+                    reporting_manager_id: data.reporting_manager_id ? String(data.reporting_manager_id) : '',
+                    attendance_source: data.attendance_source || 'MANUAL',
+                });
+
+                if (showBankTab || showSalaryTab) {
+                    try {
+                        const [bankRes, salaryRes] = await Promise.all([
+                            api.get(`/hr/staff/${staffId}/profile/bank`),
+                            api.get(`/hr/staff/${staffId}/profile/salary`)
+                        ]);
+                        
+                        if (bankRes.data && Object.keys(bankRes.data).length > 0) {
+                            setBankForm(prev => ({ ...prev, ...bankRes.data }));
+                        }
+                        if (salaryRes.data && Object.keys(salaryRes.data).length > 0) {
+                            setSalaryForm(prev => ({ ...prev, ...salaryRes.data }));
+                        }
+                    } catch (e) {
+                        console.error("Failed to load payroll data", e);
+                    }
+                }
+
+                if (showDocumentsTab) {
+                    try {
+                        const docsRes = await api.get(`/hr/staff/${staffId}/documents`);
+                        setExistingDocs(docsRes.data || []);
+                    } catch (e) {
+                        console.error("Failed to load existing documents", e);
+                    }
+                }
+
+                // Fetch masters
+                const params = data.branch_id ? { branch_id: data.branch_id } : {};
+                const [deptRes, desigRes, shiftRes, catRes, statusRes, mgrRes, rolesRes] = await Promise.all([
                     api.get('/hr/departments', { params }),
                     api.get('/hr/designations', { params }),
+                    api.get('/hr/shifts', { params }),
                     api.get('/hr/staff-categories', { params }),
                     api.get('/hr/staff-statuses', { params }),
-                    api.get('/hr/shifts', { params }),
                     api.get('/hr/staff/managers', { params }),
                     api.get('/rbac/roles')
                 ]);
+
                 setDepartments((deptRes.data || []).map((d: any) => ({ id: d.id, label: d.department_name })));
                 setDesignations((desigRes.data || []).map((d: any) => ({ id: d.id, label: d.designation_name, department_id: d.department_id })));
+                setShifts((shiftRes.data || []).map((s: any) => ({ id: s.id, label: s.shift_name })));
                 setCategories((catRes.data || []).map((c: any) => ({ id: c.id, label: c.category_name })));
                 setStatuses((statusRes.data || []).map((s: any) => ({ id: s.id, label: s.status_name })));
-                setShifts((shiftRes.data || []).map((s: any) => ({ id: s.id, label: s.shift_name })));
                 setManagers((mgrRes.data || []).map((m: any) => ({ id: m.id, label: `${m.first_name} ${m.last_name || ''} (${m.staff_code})` })));
                 setRoles((rolesRes.data?.roles || []).map((r: any) => ({ id: r.id, label: r.name || r.role_name })));
-            } catch (err) {
-                console.error(err);
-                setError('Failed to load master data');
+
+            } catch (e: any) {
+                console.error(e);
+                setError("Failed to load staff details for editing.");
             } finally {
                 setLoading(false);
             }
         };
-        fetchMasterData();
-    }, [form.branch_id]);
+
+        fetchInitialData();
+    }, [staffId, showBankTab, showSalaryTab, showDocumentsTab]);
 
     const filteredDesignations = form.department_id
         ? designations.filter((d) => d.department_id === Number(form.department_id))
@@ -123,9 +182,11 @@ const CreateStaffWizard: React.FC<CreateStaffWizardProps> = ({ onClose, onSucces
         setDocuments(documents.filter((_, i) => i !== index));
     };
 
-    const handleSubmit = async () => {
+    const handleSubmit = async (e?: React.FormEvent) => {
+        if (e) e.preventDefault();
+        
         if (!form.first_name || !form.joining_date || !form.department_id || !form.designation_id || !form.staff_status_id || !form.branch_id) {
-            setError('Please fill all mandatory fields (First Name, Joining Date, Department, Designation, Status, Branch) in Personal & Employment.');
+            setError('Please fill all mandatory fields (First Name, Joining Date, Department, Designation, Status, Branch) in Personal & Employment Details.');
             setActiveTab('employment');
             return;
         }
@@ -133,24 +194,23 @@ const CreateStaffWizard: React.FC<CreateStaffWizardProps> = ({ onClose, onSucces
         setSaving(true);
         setError(null);
         try {
-            // 1. Create Staff
             const payload = {
                 ...form,
+                branch_id: form.branch_id ? Number(form.branch_id) : null,
+                department_id: form.department_id ? Number(form.department_id) : null,
+                designation_id: form.designation_id ? Number(form.designation_id) : null,
+                default_shift_id: form.default_shift_id ? Number(form.default_shift_id) : null,
+                staff_category_id: form.staff_category_id ? Number(form.staff_category_id) : null,
+                staff_status_id: form.staff_status_id ? Number(form.staff_status_id) : null,
+                reporting_manager_id: form.reporting_manager_id ? Number(form.reporting_manager_id) : null,
                 role_id: roleId ? Number(roleId) : undefined
             };
-            const staffRes = await api.post('/hr/staff', payload);
-            if (!staffRes.data.success || !staffRes.data.staff_id) {
-                throw new Error(staffRes.data.message || 'Failed to create staff');
-            }
-            
-            const staffId = staffRes.data.staff_id;
 
-            // 2. Save Bank Details
+            await api.put(`/hr/staff/${staffId}`, payload);
+
             if (showBankTab && (bankForm.account_number || bankForm.pan_number || bankForm.aadhaar_number)) {
                 await api.put(`/hr/staff/${staffId}/profile/bank`, bankForm);
             }
-            
-            // 3. Save Salary Details
             if (showSalaryTab && (salaryForm.basic_salary || salaryForm.gross_salary)) {
                 await api.put(`/hr/staff/${staffId}/profile/salary`, {
                     ...salaryForm,
@@ -160,12 +220,11 @@ const CreateStaffWizard: React.FC<CreateStaffWizardProps> = ({ onClose, onSucces
                 });
             }
 
-            // 4. Upload Documents
             if (showDocumentsTab && documents.length > 0) {
                 const formData = new FormData();
                 documents.forEach(doc => {
                     formData.append('documents', doc);
-                    formData.append('document_types', 'OTHER'); // Generic type for now
+                    formData.append('document_types', 'OTHER');
                 });
                 try {
                     await api.post(`/hr/staff/${staffId}/documents`, formData, {
@@ -173,17 +232,24 @@ const CreateStaffWizard: React.FC<CreateStaffWizardProps> = ({ onClose, onSucces
                     });
                 } catch (docErr) {
                     console.error("Document upload failed:", docErr);
-                    // Non-fatal, we still created the staff
                 }
             }
 
-            onSuccess(staffId);
-        } catch (err: any) {
-            setError(err.response?.data?.message || err.message || 'Error creating staff record');
+            onSuccess();
+        } catch (e: any) {
+            setError(e.response?.data?.error || 'Failed to update staff details.');
         } finally {
             setSaving(false);
         }
     };
+
+    if (loading) {
+        return (
+            <div className="flex justify-center p-12">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
+            </div>
+        );
+    }
 
     const tabs = [
         { id: 'personal', label: '1. Personal' },
@@ -197,7 +263,7 @@ const CreateStaffWizard: React.FC<CreateStaffWizardProps> = ({ onClose, onSucces
     return (
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mb-6 max-w-6xl mx-auto">
             <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
-                <h2 className="text-xl font-bold text-slate-800">Create New Staff</h2>
+                <h2 className="text-xl font-bold text-slate-800">Update Staff Details</h2>
                 <button onClick={onClose} className="text-slate-400 hover:text-slate-600 font-bold text-xl">✕</button>
             </div>
 
@@ -293,8 +359,8 @@ const CreateStaffWizard: React.FC<CreateStaffWizardProps> = ({ onClose, onSucces
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                 <div>
                                     <label className="block text-sm font-medium text-slate-700 mb-1">Branch *</label>
-                                    <select className="w-full p-2.5 border border-slate-300 rounded focus:ring-1 focus:ring-emerald-500 bg-white"
-                                        value={form.branch_id} onChange={e => setForm({...form, branch_id: e.target.value})}>
+                                    <select className="w-full p-2.5 border border-slate-300 rounded focus:ring-1 focus:ring-emerald-500 bg-slate-100"
+                                        value={form.branch_id} onChange={e => setForm({...form, branch_id: e.target.value})} disabled>
                                         <option value="">Select Branch</option>
                                         {allowedBranches.map(b => <option key={b.branch_id} value={b.branch_id}>{b.branch_name}</option>)}
                                     </select>
@@ -442,6 +508,25 @@ const CreateStaffWizard: React.FC<CreateStaffWizardProps> = ({ onClose, onSucces
                 {/* Tab: Documents */}
                 {activeTab === 'documents' && showDocumentsTab && (
                     <div className="space-y-6">
+                        {existingDocs.length > 0 && (
+                            <div>
+                                <h3 className="text-sm font-semibold text-slate-700 mb-3">Existing Documents</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {existingDocs.map((doc: any) => (
+                                        <div key={doc.id} className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                                            <div className="text-2xl">📄</div>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-sm font-medium text-slate-700 truncate">{doc.file_name || doc.document_type}</p>
+                                            </div>
+                                            <a href={`/api/hr/staff/${staffId}/documents/${doc.id}/download`} target="_blank" rel="noreferrer" className="text-blue-600 text-xs font-semibold hover:underline">
+                                                View
+                                            </a>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                        <h3 className="text-sm font-semibold text-slate-700 mb-3 border-t border-slate-100 pt-4">Upload New Documents</h3>
                         <div className="bg-slate-50 p-6 rounded-xl border border-dashed border-slate-300 text-center">
                             <input 
                                 type="file" 
@@ -450,7 +535,7 @@ const CreateStaffWizard: React.FC<CreateStaffWizardProps> = ({ onClose, onSucces
                                 ref={fileInputRef}
                                 onChange={handleFileSelect}
                             />
-                            <div className="text-slate-500 mb-4">Upload identity, educational, or experience documents.</div>
+                            <div className="text-slate-500 mb-4">Select identity, educational, or experience documents to upload.</div>
                             <button 
                                 type="button"
                                 onClick={() => fileInputRef.current?.click()}
@@ -481,14 +566,11 @@ const CreateStaffWizard: React.FC<CreateStaffWizardProps> = ({ onClose, onSucces
                 {/* Tab: Login & Access */}
                 {activeTab === 'login' && showLoginTab && (
                     <div className="space-y-8">
-                        <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl text-blue-800">
-                            <strong>Note:</strong> A login account is generated automatically using the Staff Code as both username and password. The user will be forced to change their password on first login.
-                        </div>
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Assign Initial Role</label>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">Update Role Assignment</label>
                             <select className="w-full p-2.5 border border-slate-300 rounded focus:ring-1 focus:ring-emerald-500 max-w-md"
                                 value={roleId} onChange={e => setRoleId(e.target.value)}>
-                                <option value="">Select Role (Optional)</option>
+                                <option value="">No Change</option>
                                 {roles.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
                             </select>
                         </div>
@@ -516,7 +598,7 @@ const CreateStaffWizard: React.FC<CreateStaffWizardProps> = ({ onClose, onSucces
                             disabled={saving}
                             className="px-8 py-2.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 font-bold shadow-sm transition"
                         >
-                            {saving ? 'Creating Staff...' : 'Save & Create Staff'}
+                            {saving ? 'Updating...' : 'Save & Update Staff'}
                         </button>
                     </div>
                 </div>
@@ -524,5 +606,3 @@ const CreateStaffWizard: React.FC<CreateStaffWizardProps> = ({ onClose, onSucces
         </div>
     );
 };
-
-export default CreateStaffWizard;

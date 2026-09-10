@@ -481,11 +481,13 @@ def has_permission(user, permission_code, action="read"):
     return bool(permission.get(f"can_{action}", False))
 
 
-def permission_required(permission_code, action="read"):
+def permission_required(permission_codes, action="read"):
     def decorator(func):
         @wraps(func)
         def wrapper(current_user, *args, **kwargs):
-            if not has_permission(current_user, permission_code, action):
+            codes = permission_codes if isinstance(permission_codes, list) else [permission_codes]
+            has_perm = any(has_permission(current_user, code, action) for code in codes)
+            if not has_perm:
                 return jsonify({"error": "Forbidden: missing permission"}), 403
             return func(current_user, *args, **kwargs)
         return wrapper

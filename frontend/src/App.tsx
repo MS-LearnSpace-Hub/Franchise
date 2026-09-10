@@ -60,6 +60,8 @@ export type Page =
   | 'hr-attendance-summary'
   | 'hr-punch-log'
   | 'hr-staff-directory'
+  | 'hr-staff-profile-list'
+  | 'hr-staff-update-list'
   | 'staff-profile';
 
 // Inner component that can access AuthContext

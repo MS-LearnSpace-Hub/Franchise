@@ -61,7 +61,7 @@ const hrPages = [
   'hr-management', 'hr-departments', 'hr-designations', 'hr-shifts', 'hr-staff-master', 'hr-staff-directory',
   'hr-staff-categories', 'hr-staff-statuses',
   'hr-biometric-devices', 'hr-biometric-mapping', 'hr-attendance-summary', 'hr-punch-log',
-  'staff-profile'
+  'hr-staff-profile-list', 'hr-staff-update-list', 'staff-profile'
 ];
 
 const financialPages = [
@@ -137,7 +137,9 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout, initialPage }) => {
               {currentPage === 'hr-departments' && <DepartmentMaster />}
               {currentPage === 'hr-designations' && <DesignationMaster />}
               {currentPage === 'hr-shifts' && <ShiftMaster />}
-              {currentPage === 'hr-staff-master' && <StaffMaster />}
+              {currentPage === 'hr-staff-master' && <StaffMaster mode="master" />}
+              {currentPage === 'hr-staff-profile-list' && <StaffMaster mode="profile" />}
+              {currentPage === 'hr-staff-update-list' && <StaffMaster mode="update" />}
               {currentPage === 'hr-staff-directory' && <StaffDirectory />}
               {currentPage === 'hr-staff-categories' && <StaffCategoryMaster />}
               {currentPage === 'hr-staff-statuses' && <StaffStatusMaster />}
