@@ -42,6 +42,10 @@ export interface StaffProfileData {
     } | null;
     school_name: string | null;
     branch_name: string | null;
+    role?: string;
+    username?: string;
+    account_status?: string;
+    last_login?: string | null;
 }
 
 interface StaffProfileProps {

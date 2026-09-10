@@ -102,6 +102,7 @@ PERMISSION_CATALOG = [
     permission("HR", "HR", "Staff Profile", "hr.hr.staff-profile", "View individual staff profile"),
     permission("HR", "HR", "Staff Update", "hr.hr.staff-update", "Update existing staff details"),
     permission("HR", "HR", "Staff Documents", "hr.hr.staff-documents", "Manage staff KYC and documents"),
+    permission("HR", "HR", "Staff Document Types", "hr.hr.staff-document-types", "Manage document types for staff"),
     permission("HR", "HR", "Staff Payroll", "hr.hr.staff-payroll", "Manage staff salary and payroll details"),
     permission("HR", "HR", "Staff Bank Details", "hr.hr.staff-bank-details", "Manage staff bank accounts and statutory details"),
     permission("HR", "HR", "Staff Login Access", "hr.hr.staff-login", "Manage staff login roles and passwords"),

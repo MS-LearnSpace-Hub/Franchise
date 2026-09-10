@@ -55,6 +55,7 @@ export type Page =
   | 'hr-staff-master'
   | 'hr-staff-categories'
   | 'hr-staff-statuses'
+  | 'hr-staff-document-types'
   | 'hr-biometric-devices'
   | 'hr-biometric-mapping'
   | 'hr-attendance-summary'

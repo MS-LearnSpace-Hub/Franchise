@@ -13,9 +13,9 @@ export const StaffBankStatutoryTab: React.FC<Props> = ({ profile }) => {
     useEffect(() => {
         const fetchAccount = async () => {
             try {
-                const res = await api.get(`/hr/staff/${profile.id}/account`);
-                if (res.data.success) {
-                    setAccount(res.data.data);
+                const res = await api.get(`/hr/staff/${profile.id}/profile/account`);
+                if (res.data && Object.keys(res.data).length > 0) {
+                    setAccount(res.data);
                 }
             } catch (err) {
                 console.error("Failed to fetch bank account details", err);

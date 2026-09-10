@@ -10,7 +10,7 @@ interface HRManagementProps {
 type MainCategory = 'hr_master' | 'employee_details' | 'attendance' | null;
 
 const HRManagement: React.FC<HRManagementProps> = ({ navigateTo }) => {
-    const { hasPermission } = useAuth();
+    const { user, hasPermission } = useAuth();
     const [activeCategory, setActiveCategory] = useState<MainCategory>(null);
 
     const canAccess = (permission?: string) => {
@@ -64,6 +64,16 @@ const HRManagement: React.FC<HRManagementProps> = ({ navigateTo }) => {
             category: 'hr_master'
         },
         {
+            id: 'staff-document-types',
+            name: 'Document Types',
+            icon: <DocumentIcon className="w-8 h-8" />,
+            iconBg: 'bg-indigo-50',
+            iconColor: 'text-indigo-600',
+            page: 'hr-staff-document-types' as Page,
+            permission: 'hr.hr.staff-document-types',
+            category: 'hr_master'
+        },
+        {
             id: 'staff-statuses',
             name: 'Staff Statuses',
             icon: <DocumentIcon className="w-8 h-8" />,
@@ -109,7 +119,7 @@ const HRManagement: React.FC<HRManagementProps> = ({ navigateTo }) => {
             icon: <UserIcon className="w-8 h-8" />,
             iconBg: 'bg-teal-50',
             iconColor: 'text-teal-600',
-            page: 'hr-staff-profile-list' as Page,
+            page: (user?.role === 'Admin' || user?.role === 'HR') ? 'hr-staff-profile-list' as Page : 'staff-profile' as Page,
             permission: 'hr.hr.staff-profile',
             category: 'employee_details'
         },

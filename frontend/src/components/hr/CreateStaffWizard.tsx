@@ -26,7 +26,6 @@ const CreateStaffWizard: React.FC<CreateStaffWizardProps> = ({ onClose, onSucces
     // Permissions
     const showBankTab = hasPermission('hr.hr.staff-bank', 'write') || hasPermission('hr.hr.staff-payroll', 'write');
     const showSalaryTab = hasPermission('hr.hr.staff-payroll', 'write');
-    const showDocumentsTab = hasPermission('hr.hr.staff-documents', 'write') || true; // typically anyone creating staff can add docs
     const showLoginTab = hasPermission('hr.hr.staff-login', 'write') || true;
 
     const [activeTab, setActiveTab] = useState('personal');
@@ -67,7 +66,6 @@ const CreateStaffWizard: React.FC<CreateStaffWizardProps> = ({ onClose, onSucces
         notice_period_days: '30', payroll_remarks: ''
     });
 
-    const [documents, setDocuments] = useState<File[]>([]);
     const [roleId, setRoleId] = useState<string>('');
 
     const [departments, setDepartments] = useState<SelectOption[]>([]);
@@ -97,7 +95,7 @@ const CreateStaffWizard: React.FC<CreateStaffWizardProps> = ({ onClose, onSucces
                 setCategories((catRes.data || []).map((c: any) => ({ id: c.id, label: c.category_name })));
                 setStatuses((statusRes.data || []).map((s: any) => ({ id: s.id, label: s.status_name })));
                 setShifts((shiftRes.data || []).map((s: any) => ({ id: s.id, label: s.shift_name })));
-                setManagers((mgrRes.data || []).map((m: any) => ({ id: m.id, label: `${m.first_name} ${m.last_name || ''} (${m.staff_code})` })));
+                setManagers((mgrRes.data || []).map((m: any) => ({ id: m.id, label: `${m.display_name} (${m.staff_code})` })));
                 setRoles((rolesRes.data?.roles || []).map((r: any) => ({ id: r.id, label: r.name || r.role_name })));
             } catch (err) {
                 console.error(err);
@@ -112,16 +110,6 @@ const CreateStaffWizard: React.FC<CreateStaffWizardProps> = ({ onClose, onSucces
     const filteredDesignations = form.department_id
         ? designations.filter((d) => d.department_id === Number(form.department_id))
         : designations;
-
-    const fileInputRef = useRef<HTMLInputElement>(null);
-    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files) {
-            setDocuments([...documents, ...Array.from(e.target.files)]);
-        }
-    };
-    const removeDocument = (index: number) => {
-        setDocuments(documents.filter((_, i) => i !== index));
-    };
 
     const handleSubmit = async () => {
         if (!form.first_name || !form.joining_date || !form.department_id || !form.designation_id || !form.staff_status_id || !form.branch_id) {
@@ -146,8 +134,8 @@ const CreateStaffWizard: React.FC<CreateStaffWizardProps> = ({ onClose, onSucces
             const staffId = staffRes.data.staff_id;
 
             // 2. Save Bank Details
-            if (showBankTab && (bankForm.account_number || bankForm.pan_number || bankForm.aadhaar_number)) {
-                await api.put(`/hr/staff/${staffId}/profile/bank`, bankForm);
+            if (showBankTab && Object.keys(bankForm).length > 0) {
+                await api.put(`/hr/staff/${staffId}/profile/account`, bankForm);
             }
             
             // 3. Save Salary Details
@@ -158,23 +146,6 @@ const CreateStaffWizard: React.FC<CreateStaffWizardProps> = ({ onClose, onSucces
                     gross_salary: Number(salaryForm.gross_salary) || null,
                     notice_period_days: Number(salaryForm.notice_period_days) || 0
                 });
-            }
-
-            // 4. Upload Documents
-            if (showDocumentsTab && documents.length > 0) {
-                const formData = new FormData();
-                documents.forEach(doc => {
-                    formData.append('documents', doc);
-                    formData.append('document_types', 'OTHER'); // Generic type for now
-                });
-                try {
-                    await api.post(`/hr/staff/${staffId}/documents`, formData, {
-                        headers: { 'Content-Type': 'multipart/form-data' }
-                    });
-                } catch (docErr) {
-                    console.error("Document upload failed:", docErr);
-                    // Non-fatal, we still created the staff
-                }
             }
 
             onSuccess(staffId);
@@ -190,8 +161,7 @@ const CreateStaffWizard: React.FC<CreateStaffWizardProps> = ({ onClose, onSucces
         { id: 'employment', label: '2. Employment' },
         ...(showBankTab ? [{ id: 'bank', label: '3. Bank & Statutory' }] : []),
         ...(showSalaryTab ? [{ id: 'salary', label: '4. Salary & Payroll' }] : []),
-        ...(showDocumentsTab ? [{ id: 'documents', label: '5. Documents' }] : []),
-        ...(showLoginTab ? [{ id: 'login', label: '6. Login & Access' }] : []),
+        ...(showLoginTab ? [{ id: 'login', label: '5. Login & Access' }] : []),
     ];
 
     return (
@@ -436,45 +406,6 @@ const CreateStaffWizard: React.FC<CreateStaffWizardProps> = ({ onClose, onSucces
                                 </div>
                             </div>
                         </div>
-                    </div>
-                )}
-
-                {/* Tab: Documents */}
-                {activeTab === 'documents' && showDocumentsTab && (
-                    <div className="space-y-6">
-                        <div className="bg-slate-50 p-6 rounded-xl border border-dashed border-slate-300 text-center">
-                            <input 
-                                type="file" 
-                                multiple 
-                                className="hidden" 
-                                ref={fileInputRef}
-                                onChange={handleFileSelect}
-                            />
-                            <div className="text-slate-500 mb-4">Upload identity, educational, or experience documents.</div>
-                            <button 
-                                type="button"
-                                onClick={() => fileInputRef.current?.click()}
-                                className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 transition shadow-sm"
-                            >
-                                + Select Files
-                            </button>
-                        </div>
-                        {documents.length > 0 && (
-                            <div className="bg-white rounded-lg border border-slate-200">
-                                {documents.map((file, i) => (
-                                    <div key={i} className="flex items-center justify-between p-3 border-b border-slate-100 last:border-0">
-                                        <div className="flex items-center gap-3">
-                                            <div className="text-2xl">📄</div>
-                                            <div>
-                                                <p className="text-sm font-medium text-slate-700">{file.name}</p>
-                                                <p className="text-xs text-slate-500">{(file.size / 1024).toFixed(1)} KB</p>
-                                            </div>
-                                        </div>
-                                        <button onClick={() => removeDocument(i)} className="text-red-500 hover:text-red-700 p-2">✕</button>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
                     </div>
                 )}
 

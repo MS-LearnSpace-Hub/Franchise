@@ -363,9 +363,18 @@ def get_user_allowed_branches(user):
         }
         
     # 2. Check if user has explicit UserSchoolAccess. If so, they can access all branches of those schools!
-    allowed_schools = get_user_allowed_schools(user)
-    if allowed_schools['ids']:
-        branches = Branch.query.filter(Branch.school_id.in_(allowed_schools['ids']), Branch.is_active == True).all()
+    from models import UserSchoolAccess, School
+    school_access_records = UserSchoolAccess.query.join(School).filter(
+        UserSchoolAccess.user_id == user.user_id,
+        UserSchoolAccess.is_active == True,
+        UserSchoolAccess.start_date <= today,
+        (UserSchoolAccess.end_date.is_(None)) | (UserSchoolAccess.end_date >= today),
+        School.is_active == True
+    ).all()
+
+    if school_access_records:
+        explicit_school_ids = {r.school_id for r in school_access_records}
+        branches = Branch.query.filter(Branch.school_id.in_(explicit_school_ids), Branch.is_active == True).all()
         if branches:
             return {
                 'names': {b.branch_name for b in branches},

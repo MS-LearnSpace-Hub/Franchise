@@ -52,6 +52,7 @@ import StaffMaster from './StaffMaster';
 import StaffDirectory from './StaffDirectory';
 import { StaffCategoryMaster } from './StaffCategoryMaster';
 import { StaffStatusMaster } from './StaffStatusMaster';
+import { StaffDocumentTypeMaster } from './hr/StaffDocumentTypeMaster';
 import StaffProfile from './StaffProfile';
 import { BiometricDevices } from './BiometricDevices';
 import HRPunchLog from './HRPunchLog';
@@ -59,7 +60,7 @@ import { Page } from '../App';
 
 const hrPages = [
   'hr-management', 'hr-departments', 'hr-designations', 'hr-shifts', 'hr-staff-master', 'hr-staff-directory',
-  'hr-staff-categories', 'hr-staff-statuses',
+  'hr-staff-categories', 'hr-staff-statuses', 'hr-staff-document-types',
   'hr-biometric-devices', 'hr-biometric-mapping', 'hr-attendance-summary', 'hr-punch-log',
   'hr-staff-profile-list', 'hr-staff-update-list', 'staff-profile'
 ];
@@ -143,6 +144,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout, initialPage }) => {
               {currentPage === 'hr-staff-directory' && <StaffDirectory />}
               {currentPage === 'hr-staff-categories' && <StaffCategoryMaster />}
               {currentPage === 'hr-staff-statuses' && <StaffStatusMaster />}
+              {currentPage === 'hr-staff-document-types' && <StaffDocumentTypeMaster />}
               {currentPage === 'hr-biometric-devices' && <BiometricDevices />}
               {currentPage === 'hr-biometric-mapping' && <div className="p-6">Staff Biometric Mapping (Coming Soon)</div>}
               {currentPage === 'hr-attendance-summary' && <HRAttendanceSummary />}
@@ -157,8 +159,8 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout, initialPage }) => {
               {currentPage === 'timetable' && <Timetable />}
               {currentPage === 'setup' && <SetupSchool navigateTo={navigateTo} />}
               {currentPage === 'classes-management' && <ClassesManagement />}
-              {currentPage === 'student-attendance' && <StudentAttendance />}
-              {currentPage === 'student-administration' && <StudentAdministration />}
+              {currentPage === 'student-attendance' && <StudentAttendance navigateTo={navigateTo} />}
+              {currentPage === 'student-administration' && <StudentAdministration navigateTo={navigateTo} />}
               {currentPage === 'configuration' && <Configuration navigateTo={navigateTo} />}
               {currentPage === 'document-management' && <DocumentManagement />}
               {currentPage === 'user-management' && <UserManagement />}

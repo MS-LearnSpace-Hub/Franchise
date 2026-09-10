@@ -18,7 +18,7 @@ export const StaffLoginAccessTab: React.FC<Props> = ({ profile }) => {
                         <div>
                             <label className="block text-slate-500 mb-1">Username</label>
                             <p className="font-semibold text-slate-800">
-                                {profile.email ? profile.email.split('@')[0] : (profile.first_name + '.' + (profile.last_name || '')).toLowerCase()}
+                                {profile.username || (profile.email ? profile.email.split('@')[0] : (profile.first_name + '.' + (profile.last_name || '')).toLowerCase())}
                             </p>
                         </div>
                         <div>
@@ -27,11 +27,13 @@ export const StaffLoginAccessTab: React.FC<Props> = ({ profile }) => {
                         </div>
                         <div>
                             <label className="block text-slate-500 mb-1">Account Status</label>
-                            <p className="font-semibold text-emerald-600">● Active</p>
+                            <p className={`font-semibold ${profile.account_status === 'Active' ? 'text-emerald-600' : 'text-red-600'}`}>
+                                ● {profile.account_status || 'Unknown'}
+                            </p>
                         </div>
                         <div>
                             <label className="block text-slate-500 mb-1">Last Login</label>
-                            <p className="font-semibold text-slate-800">Not available</p>
+                            <p className="font-semibold text-slate-800">{profile.last_login || 'Not available'}</p>
                         </div>
                     </div>
                 </div>
@@ -46,7 +48,7 @@ export const StaffLoginAccessTab: React.FC<Props> = ({ profile }) => {
                     <div className="mb-4">
                         <label className="block text-slate-500 mb-1">Current Role</label>
                         <div className="inline-block px-4 py-2 bg-white border border-slate-200 rounded-lg font-semibold text-slate-800">
-                            Staff / Employee
+                            {profile.role || 'Staff / Employee'}
                         </div>
                     </div>
                     <p className="text-xs text-slate-500">Role changes are restricted based on your organizational hierarchy.</p>
