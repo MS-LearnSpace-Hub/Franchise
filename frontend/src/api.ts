@@ -274,7 +274,7 @@ export const hr = {
   },
   processAttendanceSync: async () => {
     try {
-      const response = await api.post('/attendance/sync/process');
+      const response = await api.post('/attendance/sync/process', {}, { timeout: 120000 });
       return handleApiResponse(response);
     } catch (error: any) {
       throw handleApiError(error);

@@ -40,12 +40,12 @@ from routes.rbac_routes import bp as rbac_bp
 from routes.petty_cash_routes import petty_cash_bp
 from routes.petty_cash_report_routes import petty_cash_report_bp
 from routes.sms_routes import bp as sms_bp
-from routes.sms_routes import bp as sms_bp
 
 # HR & Attendance Modules
 from routes.hr_routes import bp as hr_bp
 from routes.biometric_routes import bp as biometric_bp
 from routes.attendance_sync import attendance_sync_bp
+from routes.staff_attendance_routes import bp as staff_attendance_bp
 from routes.media_routes import bp as media_bp
 # -----------------------------
 # LOAD ENV
@@ -167,6 +167,7 @@ def create_app():
     app.register_blueprint(hr_bp, url_prefix="/api/hr")
     app.register_blueprint(biometric_bp, url_prefix="/api/biometric")
     app.register_blueprint(attendance_sync_bp)
+    app.register_blueprint(staff_attendance_bp)
 
     # -----------------------------
     # SERVE UPLOADS (legacy - kept for backward compatibility)
