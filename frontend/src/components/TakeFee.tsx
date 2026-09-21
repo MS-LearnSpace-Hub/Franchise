@@ -613,14 +613,14 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
                 const phone = selectedStudent.fatherPhone;
                 if (phone) {
                     await api.post('/sms/send-fee-receipt', {
-                phone: String(phone).replace('+91', '').trim(),
-                paid_amount: Number(paidInput),
-                total_amount: selectedStudent.total_fee,
-                admission_no: selectedStudent.admNo,
-                balance: selectedStudent.due_amount - Number(paidInput),
-                branch_name: selectedStudent.branch || 'School',
-                student_id: selectedStudent.student_id
-            });
+                        phone: String(phone).replace('+91', '').trim(),
+                        paid_amount: Number(paidInput),
+                        total_amount: selectedStudent.total_fee,
+                        admission_no: selectedStudent.admNo,
+                        balance: selectedStudent.due_amount - Number(paidInput),
+                        branch_name: selectedStudent.branch || 'School',
+                        student_id: selectedStudent.student_id
+                    });
                 }
             } catch (smsErr) {
                 // SMS failure should not block the receipt
@@ -1015,7 +1015,7 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
                                         <input
                                             type="date"
                                             value={paymentDate}
-                                            disabled={true}
+                                            //disabled={true}
                                             onChange={e => setPaymentDate(e.target.value)}
                                             className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-violet-500 focus:border-violet-500"
                                         />
