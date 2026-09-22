@@ -15,6 +15,7 @@ import ClassesManagement from './ClassesManagement';
 import AcademicManagement from './AcademicManagement';
 import Academics from './Academics';
 import Timetable from './Timetable';
+import OnlineClass from './OnlineClass';
 import StudentAttendance from './StudentAttendance';
 import StudentAdministration from './StudentAdministration';
 import ConcessionMaster from './ConcessionMaster';
@@ -153,6 +154,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout, initialPage }) => {
               {currentPage === 'academic' && <AcademicManagement navigateTo={navigateTo} />}
               {currentPage === 'academics' && <Academics />}
               {currentPage === 'timetable' && <Timetable />}
+              {currentPage === 'online-class' && <OnlineClass />}
               {currentPage === 'setup' && <SetupSchool navigateTo={navigateTo} />}
               {currentPage === 'classes-management' && <ClassesManagement />}
               {currentPage === 'student-attendance' && <StudentAttendance />}
