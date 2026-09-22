@@ -16,6 +16,7 @@ export type Page =
   | "academic"
   | "academics"
   | "timetable"
+  | "online-class"
   | "setup"
   | "classes-management"
   | "student-attendance"

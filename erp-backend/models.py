@@ -1593,6 +1593,116 @@ class SyncLog(db.Model, AuditMixin):
     agent_version = db.Column(db.String(50), nullable=True)
     status = db.Column(db.Enum('SUCCESS', 'FAILED', 'PARTIAL'), default='SUCCESS')
 
+    # ----------------------------------------------------------
+# ONLINE CLASSES MODULE
+# ----------------------------------------------------------
+
+class ZoomCredentials(db.Model, AuditMixin):
+    """
+    Zoom Server-to-Server OAuth app credentials.
+    branch_id = NULL  -> shared, school-wide credentials (fallback for every branch)
+    branch_id = <id>  -> that specific branch's own Zoom account (takes priority)
+    """
+    __tablename__ = "zoom_credentials"
+    __audit_module__ = "ONLINE_CLASSES"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
+    branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='CASCADE'), nullable=True)
+
+    account_id = db.Column(db.String(120), nullable=False)
+    client_id = db.Column(db.String(120), nullable=False)
+    client_secret_encrypted = db.Column(db.Text, nullable=False)
+    default_host_email = db.Column(db.String(200), nullable=False)
+
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+
+    __table_args__ = (
+        db.UniqueConstraint('school_id', 'branch_id', name='uq_zoom_credentials_school_branch'),
+    )
+
+
+class GoogleOAuthToken(db.Model, AuditMixin):
+    """Per-teacher Google OAuth token — each teacher's Meet links are created under their own Google account."""
+    __tablename__ = "google_oauth_tokens"
+    __audit_module__ = "ONLINE_CLASSES"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    staff_id = db.Column(db.Integer, db.ForeignKey('staff_master.id', ondelete='CASCADE'), nullable=False, unique=True)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
+    branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
+
+    refresh_token_encrypted = db.Column(db.Text, nullable=False)
+    access_token_encrypted = db.Column(db.Text, nullable=True)
+    token_expiry = db.Column(db.DateTime, nullable=True)
+    scope = db.Column(db.String(300), nullable=True)
+    google_email = db.Column(db.String(200), nullable=True)
+
+    staff = db.relationship('StaffMaster', foreign_keys=[staff_id])
+
+
+class OnlineClass(db.Model, AuditMixin):
+    __tablename__ = "online_classes"
+    __audit_module__ = "ONLINE_CLASSES"
+
+    PLATFORM_ZOOM = "zoom"
+    PLATFORM_GOOGLE_MEET = "google_meet"
+
+    STATUS_SCHEDULED = "SCHEDULED"
+    STATUS_CANCELLED = "CANCELLED"
+    STATUS_COMPLETED = "COMPLETED"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
+    branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
+
+    title = db.Column(db.String(200), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    subject_id = db.Column(db.Integer, db.ForeignKey('subjectmaster.id', ondelete='SET NULL'), nullable=True)
+
+    class_id = db.Column(db.Integer, db.ForeignKey('classes.id', ondelete='SET NULL'), nullable=True)
+    section_id = db.Column(db.Integer, db.ForeignKey('class_sections.id', ondelete='SET NULL'), nullable=True)
+
+    teacher_id = db.Column(db.Integer, db.ForeignKey('staff_master.id', ondelete='RESTRICT'), nullable=False, index=True)
+
+    platform = db.Column(db.String(20), nullable=False)  # "zoom" | "google_meet"
+    external_meeting_id = db.Column(db.String(120), nullable=True)
+    join_url = db.Column(db.String(500), nullable=True)
+    start_url = db.Column(db.String(500), nullable=True)
+    meeting_password = db.Column(db.String(50), nullable=True)
+
+    timezone = db.Column(db.String(60), default="Asia/Kolkata", nullable=False)
+    start_datetime = db.Column(db.DateTime, nullable=False)
+    duration_minutes = db.Column(db.Integer, nullable=False, default=45)
+
+    is_recurring = db.Column(db.Boolean, default=False, nullable=False)
+    recurrence_days = db.Column(db.String(30), nullable=True)  # e.g. "MO,WE,FR"
+    recurrence_end_date = db.Column(db.Date, nullable=True)
+
+    academic_year = db.Column(db.String(20), nullable=True)
+    target_section_ids = db.Column(db.String(300), nullable=True)  # comma-separated ClassSection ids
+
+    status = db.Column(db.String(20), default=STATUS_SCHEDULED, nullable=False, index=True)
+    cancel_reason = db.Column(db.String(255), nullable=True)
+
+    # --- Zoom/Meet webhook sync fields ---
+    actual_start_time = db.Column(db.DateTime, nullable=True)
+    actual_end_time = db.Column(db.DateTime, nullable=True)
+    zoom_uuid = db.Column(db.String(120), nullable=True)
+    sync_source = db.Column(db.String(20), nullable=True)  # "webhook" | "auto_expiry" | None
+
+    teacher = db.relationship('StaffMaster', foreign_keys=[teacher_id])
+    class_obj = db.relationship('ClassMaster', foreign_keys=[class_id])
+    section = db.relationship('ClassSection', foreign_keys=[section_id])
+    subject = db.relationship('SubjectMaster', foreign_keys=[subject_id])
+
+    __table_args__ = (
+        db.Index('idx_online_class_teacher_time', 'teacher_id', 'start_datetime'),
+        db.Index('idx_online_class_branch_year', 'branch_id', 'academic_year'),
+        db.Index('idx_online_class_external_meeting', 'external_meeting_id'),
+    )
+
 # ----------------------------------------------------------
 # GLOBAL AUDIT EVENT LISTENERS
 # ----------------------------------------------------------
