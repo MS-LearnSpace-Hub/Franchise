@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { CalendarClock, ChevronDown, Trash2, Plus, Copy, Check, X, Printer } from "lucide-react";
+import { CalendarClock, Trash2, Plus, Copy, Check, X, Printer } from "lucide-react";
 import api from "../api";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -55,30 +55,6 @@ interface SlotRow {
 /* -------------------------------------------------------------------------
    Small shared UI bits
    ------------------------------------------------------------------------- */
-
-const NavDropdown: React.FC<{ title: string; items: { label: string; onClick: () => void }[] }> = ({ title, items }) => {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="relative" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
-      <button className="flex items-center gap-1 px-3 py-2 text-sm font-medium text-white bg-[#337ab7] hover:bg-[#286090] rounded">
-        {title} <ChevronDown size={14} />
-      </button>
-      {open && (
-        <div className="absolute right-0 z-50 w-64 bg-white border shadow rounded-b py-2">
-          {items.map((item, idx) => (
-            <button
-              key={idx}
-              onClick={item.onClick}
-              className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 hover:text-[#337ab7]"
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
 
 /** Branch / Class / Section / Academic Year selector shared across sub-views */
 const ContextBar: React.FC<{
@@ -904,8 +880,16 @@ const Timetable: React.FC = () => {
                 <CalendarClock className="text-gray-400" />
                 TIMETABLE
               </h1>
-              <div className="flex gap-2 flex-wrap">
-                {items.length > 0 && <NavDropdown title="Timetable Actions" items={items} />}
+                            <div className="flex gap-2 flex-wrap">
+                {items.map((item, idx) => (
+                  <button
+                    key={idx}
+                    onClick={item.onClick}
+                    className="px-3 py-2 text-sm font-medium text-white bg-[#337ab7] hover:bg-[#286090] rounded"
+                  >
+                    {item.label}
+                  </button>
+                ))}
               </div>
             </div>
           )}

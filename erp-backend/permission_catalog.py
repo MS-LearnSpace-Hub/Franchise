@@ -79,6 +79,8 @@ PERMISSION_CATALOG = [
     permission("Academics", "Academic", "Marks Entry", "academics.academic.marks-entry"),
     permission("Academics", "Academic", "Marks Entry All Subjects", "academics.academic.marks-entry-all-subjects"),
     permission("Academics", "Academic", "Marks Upload", "academics.academic.marks-upload"),
+    permission("Academics", "Online Class", "Online Class", "academics.online-class.online-class", "Schedule and manage online classes (Zoom/Google Meet)"),
+    permission("Academics", "Online Class", "Zoom Settings", "academics.online-class.zoom-settings", "Configure Zoom credentials for branch/school"),
 
     permission("Attendance", "Attendance", "Student Attendance", "attendance.attendance.student-attendance"),
     permission("Attendance", "Attendance", "Set Exam Attendance", "attendance.attendance.set-exam-attendance"),

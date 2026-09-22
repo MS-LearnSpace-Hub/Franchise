@@ -25,6 +25,7 @@ from routes.report_routes import bp as report_bp
 from routes.org_routes import bp as org_bp
 from routes.academic_routes import bp as academic_bp
 from routes.timetable_routes import timetable_bp
+from routes.online_class_routes import online_class_bp
 from routes.class_routes import bp as class_bp
 from routes.test_type_routes import test_type_bp
 from routes.class_test_routes import class_test_bp
@@ -146,6 +147,7 @@ def create_app():
     app.register_blueprint(org_bp)
     app.register_blueprint(academic_bp)
     app.register_blueprint(timetable_bp, url_prefix="/api/timetable")
+    app.register_blueprint(online_class_bp)
     app.register_blueprint(class_bp)
     app.register_blueprint(test_type_bp, url_prefix="/api/test-types")
     app.register_blueprint(class_test_bp, url_prefix="/api/class-tests")
