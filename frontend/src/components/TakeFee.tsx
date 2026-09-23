@@ -45,11 +45,19 @@ const groupInstallments = (items: any[]) => {
     });
 
     otherFees.forEach(f => {
+        const paid = parseFloat(f.amount_paid || f.paid || 0);
+        const due = parseFloat(f.due_amount || f.due || 0);
+        const concession = parseFloat(f.concession_amount || f.concession || 0);
+        const gross = parseFloat(f.gross_amount || f.amount || 0) || (paid + due + concession);
         groups.push({
             title: f.fee_type === "General" ? "One-Time Fee" : f.fee_type,
-            amount: parseFloat(f.amount_paid),
-            concession: parseFloat(f.concession_amount),
-            payable: parseFloat(f.gross_amount || f.amount_paid),
+            amount: gross,
+            amount_paid: paid,
+            paid: paid,
+            concession: concession,
+            payable: gross,
+            due_amount: due,
+            due: due,
             originalItems: [f]
         });
     });
@@ -58,23 +66,28 @@ const groupInstallments = (items: any[]) => {
 };
 
 const createGroupedItem = (type: string, items: any[]) => {
-    const start = items[0].installment.replace(" Fee", "");
-    const end = items[items.length - 1].installment.replace(" Fee", "");
+    const start = (items[0].installment || items[0].title || "").replace(" Fee", "");
+    const end = (items[items.length - 1].installment || items[items.length - 1].title || "").replace(" Fee", "");
 
     let title = `${type} - ${start} Fee`;
     if (items.length > 1) {
         title = `Payment for ${start} Fee to ${end} Fee`;
     }
 
-    const totalPaid = items.reduce((sum: number, i: any) => sum + parseFloat(i.amount_paid), 0);
-    const totalConcession = items.reduce((sum: number, i: any) => sum + parseFloat(i.concession_amount), 0);
-    const totalGross = items.reduce((sum: number, i: any) => sum + parseFloat(i.gross_amount || i.amount_paid), 0);
+    const totalPaid = items.reduce((sum: number, i: any) => sum + parseFloat(i.amount_paid || i.paid || 0), 0);
+    const totalConcession = items.reduce((sum: number, i: any) => sum + parseFloat(i.concession_amount || i.concession || 0), 0);
+    const totalDue = items.reduce((sum: number, i: any) => sum + parseFloat(i.due_amount || i.due || 0), 0);
+    const totalGross = items.reduce((sum: number, i: any) => sum + parseFloat(i.gross_amount || i.amount || 0), 0) || (totalPaid + totalDue + totalConcession);
 
     return {
         title,
-        amount: totalPaid,
+        amount: totalGross,
+        amount_paid: totalPaid,
+        paid: totalPaid,
         concession: totalConcession,
         payable: totalGross,
+        due_amount: totalDue,
+        due: totalDue,
         originalItems: items
     };
 };
@@ -268,19 +281,44 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
         const payments = paymentHistory.filter(p => p.receipt_no === receiptNo);
         if (payments.length === 0) return;
 
-        const totalPaid = payments.reduce((sum, p) => sum + parseFloat(p.amount_paid), 0);
-        const totalConcession = payments.reduce((sum, p) => sum + parseFloat(p.concession_amount), 0);
-        const totalGross =
-            payments.reduce((sum, p) => sum + parseFloat(p.gross_amount || 0), 0) ||
-            totalPaid + totalConcession;
+        const totalPaid = payments.reduce((sum, p) => sum + parseFloat(p.amount_paid || 0), 0);
+        const totalConcession = payments.reduce((sum, p) => sum + parseFloat(p.concession_amount || 0), 0);
         const totalDue = payments.reduce((sum, p) => sum + parseFloat(p.due_amount || 0), 0);
+        const totalGross = payments.reduce(
+            (sum, p) =>
+                sum +
+                (parseFloat(p.previous_due || 0) ||
+                    parseFloat(p.amount_paid || 0) +
+                        parseFloat(p.due_amount || 0) +
+                        parseFloat(p.concession_amount || 0) ||
+                    parseFloat(p.gross_amount || 0)),
+            0
+        );
         const netPayable = totalGross - totalConcession;
 
         const enrichedPayments = payments.map(p => {
             const match = installments.find(
                 i => i.title === p.installment || i.title === `${p.installment} Fee`
             );
-            return { ...p, sr: match ? match.sr : 0 };
+            const paid = parseFloat(p.amount_paid || 0);
+            const due = parseFloat(p.due_amount || 0);
+            const concession = parseFloat(p.concession_amount || 0);
+            const amount =
+                parseFloat(p.previous_due || 0) ||
+                paid + due + concession ||
+                parseFloat(p.gross_amount || 0);
+            return {
+                ...p,
+                sr: match ? match.sr : 0,
+                amount,
+                gross_amount: amount,
+                amount_paid: paid,
+                paid: paid,
+                due_amount: due,
+                due: due,
+                concession_amount: concession,
+                concession: concession
+            };
         });
 
         const groupedItems = groupInstallments(enrichedPayments);
@@ -288,11 +326,13 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
         const items = groupedItems.map((g, index) => ({
             sr: index + 1,
             title: g.title,
-            payable: g.payable,
-            dueAmount: 0,
-            paidAmount: g.amount,
-            concession: g.concession,
-            paid: true
+            amount: g.amount,
+            payable: g.amount,
+            amount_paid: g.amount_paid !== undefined ? g.amount_paid : g.paid || 0,
+            paid: g.amount_paid !== undefined ? g.amount_paid : g.paid || 0,
+            due_amount: g.due_amount !== undefined ? g.due_amount : g.due || 0,
+            due: g.due_amount !== undefined ? g.due_amount : g.due || 0,
+            concession: g.concession || 0
         }));
 
         const data = {
@@ -750,14 +790,23 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
                 .map((item: FeeInstallment) => {
                     const alloc = activeAllocations.find(a => a.student_fee_id === item.student_fee_id);
                     const feeTypeMatch = feeTypes.find(ft => ft.id === item.fee_type_id);
+                    const grossNeeded =
+                        item.dueAmount !== undefined && item.dueAmount > 0 ? item.dueAmount : item.payable;
+                    const paidNow = alloc ? alloc.amount : 0;
+                    const concessionNow = alloc ? alloc.concession_amount : 0;
+                    const dueRemaining = Math.max(0, grossNeeded - paidNow - concessionNow);
                     return {
                         installment: item.title,
                         fee_type: feeTypeMatch?.fee_type || "Tuition Fee",
                         sr: item.sr,
-                        amount_paid: alloc ? alloc.amount : 0,
-                        concession_amount: alloc ? alloc.concession_amount : 0,
-                        gross_amount:
-                            item.dueAmount !== undefined && item.dueAmount > 0 ? item.dueAmount : item.payable
+                        amount_paid: paidNow,
+                        paid: paidNow,
+                        concession_amount: concessionNow,
+                        concession: concessionNow,
+                        gross_amount: grossNeeded,
+                        amount: grossNeeded,
+                        due_amount: dueRemaining,
+                        due: dueRemaining
                     };
                 });
 
