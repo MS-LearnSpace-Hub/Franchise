@@ -395,7 +395,10 @@ def record_fee_payment(current_user):
         receipt_no = SequenceService.generate_receipt_number(branch_id, ay_id, include_prefix=False)
 
         total_allocated = sum(
-            _process_fee_allocation(alloc, student, receipt_no, payment_mode, payment_date, note, transaction_details, current_user)
+            _process_fee_allocation(
+                alloc, student, receipt_no, payment_mode, payment_date, note, transaction_details, current_user,
+                cheque_no=cheque_no, bank_name=bank_name, cheque_date=cheque_date_val
+            )
             for alloc in allocations
         )
         
