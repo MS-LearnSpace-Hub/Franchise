@@ -55,9 +55,21 @@ const FeeReports: React.FC = () => {
             const enrichedPayments = payments.map((p: any) => {
                 // Match by title (flexible match for "March" vs "March Fee")
                 const match = installments.find((i: any) => i.title === p.installment || i.title === `${p.installment} Fee`);
+                const paid = parseFloat(p.amount_paid || 0);
+                const due = parseFloat(p.due_amount || 0);
+                const concession = parseFloat(p.concession_amount || 0);
+                const gross = parseFloat(p.previous_due || 0) || (paid + due + concession) || parseFloat(p.gross_amount || 0);
                 return {
                     ...p,
-                    sr: match ? match.sr : 0
+                    sr: match ? match.sr : 0,
+                    amount: gross,
+                    gross_amount: gross,
+                    amount_paid: paid,
+                    paid: paid,
+                    due_amount: due,
+                    due: due,
+                    concession_amount: concession,
+                    concession: concession
                 };
             });
 
@@ -65,15 +77,19 @@ const FeeReports: React.FC = () => {
             const groupedItems = groupInstallments(enrichedPayments);
 
             // 5. Calculate Totals based on the raw payments to ensure accuracy
-            const totalPaid = payments.reduce((sum: number, p: any) => sum + parseFloat(p.amount_paid), 0);
-            const totalConcession = payments.reduce((sum: number, p: any) => sum + parseFloat(p.concession_amount), 0);
-            const totalGross = payments.reduce((sum: number, p: any) => sum + parseFloat(p.gross_amount || 0), 0) || (totalPaid + totalConcession);
-
-            // For historical receipts, "due" matches the snapshot at that time usually, or 0 if paid. 
-            // The receipt displays the CURRENT due for the student usually, or the due for those specific items?
-            // In TakeFee, 'due' is the remaining balance on the receipt items? No, usually total student due.
-            // Let's stick to the Receipt Data's total due if available, or 0.
+            const totalPaid = payments.reduce((sum: number, p: any) => sum + parseFloat(p.amount_paid || 0), 0);
+            const totalConcession = payments.reduce((sum: number, p: any) => sum + parseFloat(p.concession_amount || 0), 0);
             const totalDue = payments.reduce((sum: number, p: any) => sum + parseFloat(p.due_amount || 0), 0);
+            const totalGross = payments.reduce(
+                (sum: number, p: any) =>
+                    sum +
+                    (parseFloat(p.previous_due || 0) ||
+                        parseFloat(p.amount_paid || 0) +
+                            parseFloat(p.due_amount || 0) +
+                            parseFloat(p.concession_amount || 0) ||
+                        parseFloat(p.gross_amount || 0)),
+                0
+            );
 
             // 6. Construct Receipt Data object
             const formattedData = {
@@ -89,7 +105,12 @@ const FeeReports: React.FC = () => {
                 paymentNote: res.data.paymentNote || "",
                 items: groupedItems.map((g, i) => ({
                     title: g.title,
-                    payable: g.payable
+                    amount: g.amount,
+                    payable: g.amount,
+                    amount_paid: g.amount_paid !== undefined ? g.amount_paid : g.paid || 0,
+                    paid: g.amount_paid !== undefined ? g.amount_paid : g.paid || 0,
+                    due_amount: g.due_amount !== undefined ? g.due_amount : g.due || 0,
+                    due: g.due_amount !== undefined ? g.due_amount : g.due || 0
                 })),
                 amount: totalGross,
                 concession: totalConcession,
@@ -214,10 +235,19 @@ const groupInstallments = (items: any[]) => {
     });
 
     otherFees.forEach(f => {
+        const paid = parseFloat(f.amount_paid || f.paid || 0);
+        const due = parseFloat(f.due_amount || f.due || 0);
+        const concession = parseFloat(f.concession_amount || f.concession || 0);
+        const gross = parseFloat(f.gross_amount || f.amount || 0) || (paid + due + concession);
         groups.push({
             title: f.fee_type === "General" ? "One-Time Fee" : f.fee_type,
-            amount: parseFloat(f.amount_paid),
-            payable: parseFloat(f.gross_amount || f.amount_paid),
+            amount: gross,
+            amount_paid: paid,
+            paid: paid,
+            concession: concession,
+            payable: gross,
+            due_amount: due,
+            due: due,
             originalItems: [f]
         });
     });
@@ -226,21 +256,28 @@ const groupInstallments = (items: any[]) => {
 };
 
 const createGroupedItem = (type: string, items: any[]) => {
-    const start = items[0].installment.replace(" Fee", "");
-    const end = items[items.length - 1].installment.replace(" Fee", "");
+    const start = (items[0].installment || items[0].title || "").replace(" Fee", "");
+    const end = (items[items.length - 1].installment || items[items.length - 1].title || "").replace(" Fee", "");
 
     let title = `${type} - ${start} Fee`;
     if (items.length > 1) {
         title = `Payment for ${start} Fee to ${end} Fee`;
     }
 
-    const totalPaid = items.reduce((sum: number, i: any) => sum + parseFloat(i.amount_paid), 0);
-    const totalGross = items.reduce((sum: number, i: any) => sum + parseFloat(i.gross_amount || i.amount_paid), 0);
+    const totalPaid = items.reduce((sum: number, i: any) => sum + parseFloat(i.amount_paid || i.paid || 0), 0);
+    const totalConcession = items.reduce((sum: number, i: any) => sum + parseFloat(i.concession_amount || i.concession || 0), 0);
+    const totalDue = items.reduce((sum: number, i: any) => sum + parseFloat(i.due_amount || i.due || 0), 0);
+    const totalGross = items.reduce((sum: number, i: any) => sum + parseFloat(i.gross_amount || i.amount || 0), 0) || (totalPaid + totalDue + totalConcession);
 
     return {
         title,
-        amount: totalPaid,
+        amount: totalGross,
+        amount_paid: totalPaid,
+        paid: totalPaid,
+        concession: totalConcession,
         payable: totalGross,
+        due_amount: totalDue,
+        due: totalDue,
         originalItems: items
     };
 };
