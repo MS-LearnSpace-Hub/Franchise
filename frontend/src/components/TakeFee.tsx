@@ -232,11 +232,12 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
     const [selectedConcession, setSelectedConcession] = useState('0');
     const [appliedConcession, setAppliedConcession] = useState(0);
     const [itemConcessions, setItemConcessions] = useState<Record<number, number>>({});
+    const [itemPayingAmounts, setItemPayingAmounts] = useState<Record<number, number | string>>({});
     const [paidInput, setPaidInput] = useState('0');
 
     const [concessions, setConcessions] = useState<Concession[]>([]);
     const [feeTypes, setFeeTypes] = useState<{ id: number; fee_type: string }[]>([]);
-    const [selectedFeeType, setSelectedFeeType] = useState('');
+    const [selectedFeeType, setSelectedFeeType] = useState('all');
 
     const [showHistory, setShowHistory] = useState(false);
     const [paymentHistory, setPaymentHistory] = useState<any[]>([]);
@@ -318,7 +319,7 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
     };
 
     const filteredInstallments = useMemo(() => {
-        if (!selectedFeeType) return [];
+        if (!selectedFeeType || selectedFeeType === 'all') return installments;
         return installments.filter(i => i.fee_type_id === Number(selectedFeeType));
     }, [installments, selectedFeeType]);
 
@@ -339,7 +340,7 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
         const feeTypeIdStr = e.target.value;
         setSelectedFeeType(feeTypeIdStr);
 
-        if (!feeTypeIdStr || !selectedStudent) return;
+        if (!feeTypeIdStr || feeTypeIdStr === 'all' || !selectedStudent) return;
 
         const feeTypeId = Number(feeTypeIdStr);
         const exists = installments.some(i => i.fee_type_id === feeTypeId);
@@ -462,20 +463,39 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
             setSummary({ totalPaids: 0, totalDue: 0, currentDue: 0 });
             return;
         }
-        const paids = installments
-            .filter(i => i.paid)
-            .reduce((sum, i) => sum + (i.paidAmount || i.payable), 0);
-        const dues = installments.filter(i => !i.paid);
-        const totalDue = dues.reduce((sum, i) => sum + i.payable, 0);
-        const currentDue = dues.length > 0 ? dues[0].payable : 0;
+        const paids = installments.reduce(
+            (sum, i) => sum + (i.paidAmount || (i.paid ? i.payable : 0)),
+            0
+        );
+        const dues = installments.filter(
+            i => !i.paid && (i.dueAmount === undefined || i.dueAmount > 0)
+        );
+        const totalDue = dues.reduce((sum, i) => {
+            const dueAmt =
+                i.dueAmount !== undefined ? i.dueAmount : i.payable - (i.paidAmount || 0);
+            return sum + dueAmt;
+        }, 0);
+        const currentDue =
+            dues.length > 0
+                ? dues[0].dueAmount !== undefined
+                    ? dues[0].dueAmount
+                    : dues[0].payable - (dues[0].paidAmount || 0)
+                : 0;
         setSummary({ totalPaids: paids, totalDue, currentDue });
     }, [installments]);
 
     const handleSelect = (sr: number) => {
+        const item = installments.find(i => i.sr === sr);
+        if (!item) return;
+
         setSelectedIds(prev => {
             const isCurrentlySelected = prev.includes(sr);
             if (isCurrentlySelected) {
-                return prev.filter(id => id < sr);
+                // Deselect this item and any subsequent items OF THE SAME fee_type_id
+                const sameTypeLaterSrs = installments
+                    .filter(i => i.fee_type_id === item.fee_type_id && i.sr >= sr)
+                    .map(i => i.sr);
+                return prev.filter(id => !sameTypeLaterSrs.includes(id));
             } else {
                 return [...prev, sr].sort((a, b) => a - b);
             }
@@ -533,27 +553,113 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
         }
     };
 
-    const selectedItems = installments.filter(i => selectedIds.includes(i.sr));
+    const selectedItems = useMemo(
+        () => installments.filter(i => selectedIds.includes(i.sr)),
+        [installments, selectedIds]
+    );
 
     const amount = selectedItems.reduce((sum, item) => {
-        const amountToPay =
-            item.dueAmount !== undefined && item.dueAmount > 0 ? item.dueAmount : item.payable;
-        return sum + amountToPay;
+        const grossNeeded =
+            item.dueAmount !== undefined && item.dueAmount > 0
+                ? item.dueAmount
+                : item.payable - (item.paidAmount || 0);
+        return sum + grossNeeded;
     }, 0);
 
-    const payable = amount - appliedConcession;
-    const due = payable - Number(paidInput);
+    const payable = Math.max(0, amount - appliedConcession);
+
+    // Initialize or update paying amounts for selected items
+    useEffect(() => {
+        setItemPayingAmounts(prev => {
+            const next: Record<number, number | string> = {};
+            for (const item of selectedItems) {
+                const itemConcession = itemConcessions[item.sr] || 0;
+                const grossNeeded =
+                    item.dueAmount !== undefined && item.dueAmount > 0
+                        ? item.dueAmount
+                        : item.payable - (item.paidAmount || 0);
+                const netNeeded = Math.max(0, grossNeeded - itemConcession);
+
+                if (prev[item.sr] !== undefined && prev[item.sr] !== '') {
+                    next[item.sr] = Math.min(Number(prev[item.sr]), netNeeded);
+                } else if (prev[item.sr] === '') {
+                    next[item.sr] = '';
+                } else {
+                    next[item.sr] = netNeeded;
+                }
+            }
+            return next;
+        });
+    }, [selectedIds, itemConcessions]);
+
+    const handleItemPayingChange = (sr: number, valStr: string) => {
+        if (valStr === '') {
+            setItemPayingAmounts(prev => ({ ...prev, [sr]: '' }));
+            return;
+        }
+        const num = parseFloat(valStr);
+        if (isNaN(num)) return;
+
+        const item = installments.find(i => i.sr === sr);
+        if (!item) return;
+        const itemConcession = itemConcessions[item.sr] || 0;
+        const grossNeeded =
+            item.dueAmount !== undefined && item.dueAmount > 0
+                ? item.dueAmount
+                : item.payable - (item.paidAmount || 0);
+        const netNeeded = Math.max(0, grossNeeded - itemConcession);
+
+        const capped = Math.max(0, Math.min(num, netNeeded));
+        setItemPayingAmounts(prev => ({ ...prev, [sr]: capped }));
+    };
+
+    const handleItemPayingBlur = (sr: number) => {
+        setItemPayingAmounts(prev => {
+            const current = prev[sr];
+            if (current === '' || current === undefined || isNaN(Number(current))) {
+                return { ...prev, [sr]: 0 };
+            }
+            return prev;
+        });
+    };
+
+    const totalPaying = useMemo(() => {
+        return selectedItems.reduce((sum, item) => {
+            const val = itemPayingAmounts[item.sr];
+            const num = val === '' || val === undefined ? 0 : Number(val);
+            return sum + (isNaN(num) ? 0 : num);
+        }, 0);
+    }, [selectedItems, itemPayingAmounts]);
+
+    const due = Math.max(0, payable - totalPaying);
 
     useEffect(() => {
-        setPaidInput(String(payable > 0 ? payable : 0));
-    }, [payable, selectedIds]);
+        setPaidInput(String(totalPaying));
+    }, [totalPaying]);
+
+    const handleEqualClick = () => {
+        setItemPayingAmounts(() => {
+            const next: Record<number, number | string> = {};
+            for (const item of selectedItems) {
+                const itemConcession = itemConcessions[item.sr] || 0;
+                const grossNeeded =
+                    item.dueAmount !== undefined && item.dueAmount > 0
+                        ? item.dueAmount
+                        : item.payable - (item.paidAmount || 0);
+                next[item.sr] = Math.max(0, grossNeeded - itemConcession);
+            }
+            return next;
+        });
+    };
 
     const handleReset = () => {
         setSelectedIds([]);
         setSelectedConcession('0');
         setAppliedConcession(0);
         setItemConcessions({});
+        setItemPayingAmounts({});
         setPaidInput('0');
+        setSelectedFeeType('all');
         setSchoolReceiptNo('');
         setPaymentNote('');
         setPaymentMode('Cash');
@@ -571,29 +677,39 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
             return;
         }
 
-        try {
-            let remainingAmount = Number(paidInput);
+        const totalToPay = totalPaying;
+        if (totalToPay <= 0 && appliedConcession <= 0) {
+            alert('Please enter a paying amount greater than 0.');
+            return;
+        }
 
+        try {
             const feeAllocations = selectedItems.map((item: FeeInstallment) => {
                 const currentConcession = itemConcessions[item.sr] || 0;
-                let grossAmountNeeded =
-                    item.dueAmount !== undefined && item.dueAmount > 0 ? item.dueAmount : item.payable;
-                const amountNeeded = Math.max(0, grossAmountNeeded - currentConcession);
-                const allocatedAmount = Math.min(amountNeeded, remainingAmount);
-                remainingAmount -= allocatedAmount;
+                const val = itemPayingAmounts[item.sr];
+                const payingAmount = val === '' || val === undefined ? 0 : Number(val) || 0;
                 return {
                     student_fee_id: item.student_fee_id,
-                    amount: allocatedAmount,
+                    amount: payingAmount,
                     concession_amount: currentConcession
                 };
             });
+
+            const activeAllocations = feeAllocations.filter(
+                a => a.amount > 0 || a.concession_amount > 0
+            );
+
+            if (activeAllocations.length === 0) {
+                alert('Please enter a paying amount greater than 0.');
+                return;
+            }
 
             const globalBranch = localStorage.getItem('currentBranch') || 'All';
             const branchParam =
                 globalBranch === "All Branches" || globalBranch === "All" ? "All" : globalBranch;
             const response = await api.post(`/fees/payment?branch=${branchParam}`, {
                 student_id: selectedStudent.student_id,
-                amount_paid: Number(paidInput),
+                amount_paid: totalToPay,
                 payment_mode: paymentMode,
                 payment_date: paymentDate,
                 note: paymentNote,
@@ -603,7 +719,7 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
                 cheque_no: chequeNo,
                 bank_name: bankName,
                 cheque_date: chequeDate,
-                fee_allocations: feeAllocations
+                fee_allocations: activeAllocations
             });
 
             const realReceiptNo = response.data.receipt_no;
@@ -614,32 +730,37 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
                 if (phone) {
                     await api.post('/sms/send-fee-receipt', {
                         phone: String(phone).replace('+91', '').trim(),
-                        paid_amount: Number(paidInput),
+                        paid_amount: totalToPay,
                         total_amount: selectedStudent.total_fee,
                         admission_no: selectedStudent.admNo,
-                        balance: selectedStudent.due_amount - Number(paidInput),
+                        balance: selectedStudent.due_amount - totalToPay,
                         branch_name: selectedStudent.branch || 'School',
                         student_id: selectedStudent.student_id
                     });
                 }
             } catch (smsErr) {
-                // SMS failure should not block the receipt
                 console.warn('Fee SMS failed (non-blocking):', smsErr);
             }
 
-            const receiptLineItemsRaw = selectedItems.map((item: FeeInstallment, index: number) => {
-                const alloc = feeAllocations[index];
-                const feeTypeMatch = feeTypes.find(ft => ft.id === item.fee_type_id);
-                return {
-                    installment: item.title,
-                    fee_type: feeTypeMatch?.fee_type || "Tuition Fee",
-                    sr: item.sr,
-                    amount_paid: alloc.amount,
-                    concession_amount: alloc.concession_amount,
-                    gross_amount:
-                        item.dueAmount !== undefined && item.dueAmount > 0 ? item.dueAmount : item.payable
-                };
-            });
+            const receiptLineItemsRaw = selectedItems
+                .filter(item => {
+                    const alloc = activeAllocations.find(a => a.student_fee_id === item.student_fee_id);
+                    return alloc && (alloc.amount > 0 || alloc.concession_amount > 0);
+                })
+                .map((item: FeeInstallment) => {
+                    const alloc = activeAllocations.find(a => a.student_fee_id === item.student_fee_id);
+                    const feeTypeMatch = feeTypes.find(ft => ft.id === item.fee_type_id);
+                    return {
+                        installment: item.title,
+                        fee_type: feeTypeMatch?.fee_type || "Tuition Fee",
+                        sr: item.sr,
+                        amount_paid: alloc ? alloc.amount : 0,
+                        concession_amount: alloc ? alloc.concession_amount : 0,
+                        gross_amount:
+                            item.dueAmount !== undefined && item.dueAmount > 0 ? item.dueAmount : item.payable
+                    };
+                });
+
             const groupedReceiptItems = groupInstallments(receiptLineItemsRaw);
 
             const data = {
@@ -660,7 +781,7 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
                 amount,
                 concession: appliedConcession,
                 payable,
-                paid: Number(paidInput),
+                paid: totalToPay,
                 due
             };
             setReceiptData(data);
@@ -740,9 +861,9 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
                                         disabled={!selectedStudent}
                                         className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-violet-500 focus:border-violet-500 text-sm"
                                     >
-                                        <option value="">-- Select Fee Type --</option>
+                                        <option value="all">-- All Fee Types --</option>
                                         {feeTypes.map(ft => (
-                                            <option key={ft.id} value={ft.id}>{ft.fee_type}</option>
+                                            <option key={ft.id} value={String(ft.id)}>{ft.fee_type}</option>
                                         ))}
                                     </select>
                                 </div>
@@ -811,9 +932,9 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
                                 <div className="bg-blue-500 text-white px-4 py-2 flex justify-between items-center">
                                     <h4 className="font-semibold relative">
                                         Installment
-                                        {installments.length > 0 && (
+                                        {filteredInstallments.length > 0 && (
                                             <span className="absolute -top-2 -right-5 bg-orange-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                                                {installments.length}
+                                                {filteredInstallments.length}
                                             </span>
                                         )}
                                     </h4>
@@ -841,8 +962,10 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
                                                         const isPaid = inst.paid;
                                                         let isDisabled = false;
                                                         if (!isPaid) {
-                                                            const allPreviousCleared = filteredInstallments
+                                                            const previousInSameFeeType = filteredInstallments
                                                                 .slice(0, index)
+                                                                .filter(p => p.fee_type_id === inst.fee_type_id);
+                                                            const allPreviousCleared = previousInSameFeeType
                                                                 .every(p => p.paid || selectedIds.includes(p.sr));
                                                             if (!allPreviousCleared) isDisabled = true;
                                                         }
@@ -921,33 +1044,56 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
                                                 <th className="border p-2 text-left font-medium text-gray-600">Title</th>
                                                 <th className="border p-2 text-right font-medium text-gray-600">Payable</th>
                                                 <th className="border p-2 text-right font-medium text-gray-600">Paid</th>
+                                                <th className="border p-2 text-right font-medium text-gray-600 w-28">Paying</th>
                                                 <th className="border p-2 text-right font-medium text-gray-600">Due</th>
-                                                <th className="border p-2 w-32 font-medium text-gray-600">+ Extra Charge</th>
+                                                <th className="border p-2 w-28 font-medium text-gray-600">+ Extra Charge</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {selectedItems.length > 0 ? (
                                                 selectedItems.map(item => {
-                                                    const displayAmount =
+                                                    const grossPayable = item.payable;
+                                                    const paidAlready = item.paidAmount || 0;
+                                                    const itemConcession = itemConcessions[item.sr] || 0;
+                                                    const grossNeeded =
                                                         item.dueAmount !== undefined && item.dueAmount > 0
                                                             ? item.dueAmount
-                                                            : item.payable;
-                                                    const paidAlready = item.paidAmount || 0;
-                                                    const dueRemaining = item.dueAmount || 0;
+                                                            : grossPayable - paidAlready;
+                                                    const netNeeded = Math.max(0, grossNeeded - itemConcession);
+                                                    const payingVal = itemPayingAmounts[item.sr];
+                                                    const payingNum =
+                                                        payingVal === '' || payingVal === undefined
+                                                            ? 0
+                                                            : Number(payingVal) || 0;
+                                                    const rowDue = Math.max(0, netNeeded - payingNum);
+
                                                     return (
-                                                        <tr key={item.sr}>
+                                                        <tr key={item.sr} className="hover:bg-gray-50">
                                                             <td className="border p-2"></td>
-                                                            <td className="border p-2">{item.title}</td>
-                                                            <td className="border p-2 text-right">{displayAmount.toFixed(0)}</td>
-                                                            <td className="border p-2 text-right">{paidAlready.toFixed(0)}</td>
-                                                            <td className="border p-2 text-right">{dueRemaining.toFixed(0)}</td>
+                                                            <td className="border p-2 font-medium text-gray-800">{item.title}</td>
+                                                            <td className="border p-2 text-right">{grossPayable.toFixed(0)}</td>
+                                                            <td className="border p-2 text-right text-gray-600">{paidAlready.toFixed(0)}</td>
+                                                            <td className="border p-2 text-right">
+                                                                <input
+                                                                    type="number"
+                                                                    min="0"
+                                                                    max={netNeeded}
+                                                                    value={payingVal ?? ''}
+                                                                    onChange={e => handleItemPayingChange(item.sr, e.target.value)}
+                                                                    onBlur={() => handleItemPayingBlur(item.sr)}
+                                                                    className="w-24 px-2 py-1 border border-gray-300 rounded text-right text-sm font-semibold text-gray-800 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                                                                />
+                                                            </td>
+                                                            <td className="border p-2 text-right font-semibold text-red-600">
+                                                                {rowDue.toFixed(0)}
+                                                            </td>
                                                             <td className="border p-2"></td>
                                                         </tr>
                                                     );
                                                 })
                                             ) : (
                                                 <tr>
-                                                    <td className="border p-2 h-8 text-center text-gray-400" colSpan={6}>
+                                                    <td className="border p-2 h-8 text-center text-gray-400" colSpan={7}>
                                                         Select installments to pay
                                                     </td>
                                                 </tr>
@@ -972,17 +1118,7 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
                                     </div>
                                     <div className="flex justify-between items-center text-sm border-t pt-2">
                                         <span className="text-gray-600">Paid</span>
-                                        <div className="flex items-center">
-                                            <input
-                                                type="text"
-                                                value={paidInput}
-                                                onChange={e => setPaidInput(e.target.value)}
-                                                className="w-24 px-2 py-1 border border-gray-300 rounded-md shadow-sm text-right focus:outline-none focus:ring-violet-500 focus:border-violet-500"
-                                            />
-                                            <button className="ml-2 px-3 py-1 bg-green-500 text-white rounded-md text-lg font-bold hover:bg-green-600">
-                                                =
-                                            </button>
-                                        </div>
+                                        <span className="font-semibold text-gray-800">{totalPaying.toLocaleString()}</span>
                                     </div>
                                     <div className="flex justify-between items-center text-sm font-semibold text-red-600 border-t pt-2">
                                         <span>Due (Payable - Paid)</span>
@@ -992,9 +1128,6 @@ const TakeFee: React.FC<{ navigateTo?: (page: Page) => void }> = () => {
                             </div>
 
                             <div className="border rounded-lg p-4 space-y-4 bg-gray-50/50 shadow-sm">
-                                <div className="text-center text-sm text-orange-600 bg-orange-100 p-2 rounded-md">
-                                    Hit "ENTER" or Equal(=) button after entering "Paid" amount
-                                </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700">Payment Mode*</label>
