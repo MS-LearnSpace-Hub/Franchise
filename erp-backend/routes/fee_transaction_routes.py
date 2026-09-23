@@ -471,6 +471,7 @@ def get_student_payment_history(current_user, student_id):
             "concession_amount": str(p.concession_amount),
             "gross_amount": str(p.gross_amount),
             "due_amount": str(p.due_amount),
+            "previous_due": str((p.amount_paid or Decimal(0)) + (p.due_amount or Decimal(0)) + (p.concession_amount or Decimal(0))),
             "fee_type": p.fee_type,
             "installment": p.installment_name,
             "mode": p.payment_mode,

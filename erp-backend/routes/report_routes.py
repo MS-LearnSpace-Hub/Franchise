@@ -728,6 +728,7 @@ def get_receipt_data(current_user, receipt_no):
                 "concession_amount": str(p.concession_amount),
                 "gross_amount": str(p.gross_amount),
                 "due_amount": str(p.due_amount),
+                "previous_due": str((float(p.amount_paid or 0)) + (float(p.due_amount or 0)) + (float(p.concession_amount or 0))),
                 "student_id": p.student_id,
                 "branch": p.branch
             })

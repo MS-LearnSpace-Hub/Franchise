@@ -342,7 +342,16 @@ const DeleteFeeReceipt: React.FC = () => {
 
             const totalPaid = payments.reduce((sum: number, p: any) => sum + parseFloat(p.amount || p.amount_paid || 0), 0);
             const totalConcession = payments.reduce((sum: number, p: any) => sum + parseFloat(p.concession || p.concession_amount || 0), 0);
-            const totalGross = payments.reduce((sum: number, p: any) => sum + parseFloat(p.gross_amount || 0), 0) || (totalPaid + totalConcession);
+            const totalGross = payments.reduce(
+                (sum: number, p: any) =>
+                    sum +
+                    (parseFloat(p.previous_due || 0) ||
+                        parseFloat(p.amount_paid || p.amount || 0) +
+                            parseFloat(p.due_amount || 0) +
+                            parseFloat(p.concession_amount || p.concession || 0) ||
+                        parseFloat(p.gross_amount || 0)),
+                0
+            );
             const totalDue = payments.reduce((sum: number, p: any) => sum + parseFloat(p.due_amount || 0), 0);
 
             const formatted = {
@@ -356,10 +365,24 @@ const DeleteFeeReceipt: React.FC = () => {
                 paymentDate: res.data.paymentDate || payments[0]?.payment_date,
                 paymentMode: res.data.paymentMode || payments[0]?.mode || "Cash",
                 paymentNote: res.data.paymentNote || "",
-                items: payments.map((p: any) => ({
-                    title: `${p.fee_type || ''} ${p.installment || ''}`.trim() || 'Fee Item',
-                    payable: parseFloat(p.gross_amount || p.amount || 0)
-                })),
+                items: payments.map((p: any) => {
+                    const paid = parseFloat(p.amount_paid || p.amount || 0);
+                    const due = parseFloat(p.due_amount || 0);
+                    const concession = parseFloat(p.concession_amount || p.concession || 0);
+                    const amount =
+                        parseFloat(p.previous_due || 0) ||
+                        paid + due + concession ||
+                        parseFloat(p.gross_amount || 0);
+                    return {
+                        title: `${p.fee_type || ''} ${p.installment || p.installment_name || ''}`.trim() || 'Fee Item',
+                        amount: amount,
+                        amount_paid: paid,
+                        paid: paid,
+                        due_amount: due,
+                        due: due,
+                        payable: amount
+                    };
+                }),
                 amount: totalGross,
                 concession: totalConcession,
                 payable: totalGross - totalConcession,
