@@ -731,35 +731,35 @@ def reschedule_class(current_user, class_id):
             if not cred:
                 return jsonify({"error": "Zoom credentials not found for updating this meeting."}), 400
             try:
-                    zoom_client.update_meeting(
-                        account_id=cred.account_id,
-                        client_id=cred.client_id,
-                        client_secret=decrypt_secret(cred.client_secret_encrypted),
-                        meeting_id=oc.external_meeting_id,
-                        start_datetime=new_start,
-                        duration_minutes=new_duration,
-                        timezone=oc.timezone,
-                    )
-                except Exception as e:
-                    zoom_detail = getattr(getattr(e, "response", None), "text", None)
-                    return jsonify({
-                        "error": f"Failed to update Zoom meeting: {e}",
-                        "zoom_detail": zoom_detail,
-                    }), 502
+                zoom_client.update_meeting(
+                    account_id=cred.account_id,
+                    client_id=cred.client_id,
+                    client_secret=decrypt_secret(cred.client_secret_encrypted),
+                    meeting_id=oc.external_meeting_id,
+                    start_datetime=new_start,
+                    duration_minutes=new_duration,
+                    timezone=oc.timezone,
+                )
+            except Exception as e:
+                zoom_detail = getattr(getattr(e, "response", None), "text", None)
+                return jsonify({
+                    "error": f"Failed to update Zoom meeting: {e}",
+                    "zoom_detail": zoom_detail,
+                }), 502
         elif oc.platform == OnlineClass.PLATFORM_GOOGLE_MEET and oc.external_meeting_id:
             access_token, token_err = _get_valid_google_access_token(oc.teacher_id)
             if not access_token:
                 return jsonify({"error": token_err or "Google credentials not found for updating this meeting."}), 400
             try:
-                    google_meet_client.update_meeting(
-                        access_token=access_token,
-                        event_id=oc.external_meeting_id,
-                        start_datetime=new_start,
-                        duration_minutes=new_duration,
-                        timezone_str=oc.timezone,
-                    )
-                except Exception as e:
-                    return jsonify({"error": f"Failed to update Google Meet event: {e}"}), 502
+                google_meet_client.update_meeting(
+                    access_token=access_token,
+                    event_id=oc.external_meeting_id,
+                    start_datetime=new_start,
+                    duration_minutes=new_duration,
+                    timezone_str=oc.timezone,
+                )
+            except Exception as e:
+                return jsonify({"error": f"Failed to update Google Meet event: {e}"}), 502
 
         oc.start_datetime = new_start
         oc.duration_minutes = new_duration
