@@ -127,12 +127,14 @@ const StaffProfile: React.FC<StaffProfileProps> = ({ staffId, onBack, navigateTo
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                 <div className="h-32 bg-gradient-to-r from-emerald-600 to-teal-600 relative">
                     <div className="absolute top-4 right-6 flex gap-3">
-                        <button
-                            onClick={() => setIsEditing(true)}
-                            className="text-sm font-semibold text-white bg-emerald-700/50 hover:bg-emerald-700 px-4 py-1.5 rounded-lg transition"
-                        >
-                            Edit Profile
-                        </button>
+                        {(hasPermission('hr.hr.staff-update', 'write') || hasPermission('hr.hr.staff-master', 'write')) && (
+                            <button
+                                onClick={() => setIsEditing(true)}
+                                className="text-sm font-semibold text-white bg-emerald-700/50 hover:bg-emerald-700 px-4 py-1.5 rounded-lg transition"
+                            >
+                                Edit Profile
+                            </button>
+                        )}
                         {onBack && (
                             <button
                                 onClick={onBack}

@@ -203,7 +203,7 @@ def generate_staff_photo_key(staff_id, filename):
                 if branch and branch.branch_name:
                     branch_name = branch.branch_name
 
-            emp_code = staff.employee_id or staff.staff_code or f"EMP{staff.id}"
+            emp_code = slugify(staff.employee_id or staff.staff_code or f"EMP{staff.id}")
             ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else 'jpg'
             return f"franchise/{slugify(school_name)}_{school_id}/{slugify(branch_name)}_{branch_id}/Staff/{emp_code}/profile.{ext}"
     except Exception as e:
@@ -237,7 +237,7 @@ def generate_staff_document_key(staff_id, doc_type_code, filename):
                 if branch and branch.branch_name:
                     branch_name = branch.branch_name
 
-            emp_code = staff.employee_id or staff.staff_code or f"EMP{staff.id}"
+            emp_code = slugify(staff.employee_id or staff.staff_code or f"EMP{staff.id}")
             clean_doc_type = slugify(doc_type_code)
             return f"franchise/{slugify(school_name)}_{school_id}/{slugify(branch_name)}_{branch_id}/Staff/{emp_code}/documents/{clean_doc_type}/{filename}"
     except Exception as e:

@@ -127,7 +127,7 @@ const CreateStaffWizard: React.FC<CreateStaffWizardProps> = ({ onClose, onSucces
                 role_id: roleId ? Number(roleId) : undefined
             };
             const staffRes = await api.post('/hr/staff', payload);
-            if (!staffRes.data.success || !staffRes.data.staff_id) {
+            if (!staffRes.data.staff_id) {
                 throw new Error(staffRes.data.message || 'Failed to create staff');
             }
             

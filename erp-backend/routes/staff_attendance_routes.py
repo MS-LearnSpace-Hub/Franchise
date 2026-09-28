@@ -19,6 +19,7 @@ from helpers import (
     has_permission,
     get_effective_role_name
 )
+from datetime import datetime
 from services.attendance.attendance_engine import process_staging_records
 from sqlalchemy.orm import joinedload
 
@@ -154,6 +155,10 @@ def add_manual_staff_attendance(current_user):
         if not data or not data.get('staff_id') or not data.get('attendance_date') or not data.get('status'):
             return jsonify({"error": "staff_id, attendance_date, and status are required"}), 400
             
+        staff = scope_query(StaffMaster.query, StaffMaster).filter_by(id=data['staff_id']).first()
+        if not staff:
+            return jsonify({"error": "Staff member not found or access denied"}), 404
+
         head = AttendanceHead.query.filter_by(
             staff_id=data['staff_id'], 
             attendance_date=data['attendance_date']
@@ -173,10 +178,28 @@ def add_manual_staff_attendance(current_user):
         head.attendance_status = data['status']
         head.remarks = data.get('remarks')
         
+        try:
+            att_date = datetime.strptime(data['attendance_date'], '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify({"error": "Invalid attendance_date format"}), 400
+
         if data.get('first_in'):
-            head.first_in = data['first_in']
+            try:
+                head.first_in = datetime.combine(att_date, datetime.strptime(data['first_in'], '%H:%M:%S').time())
+            except ValueError:
+                try:
+                    head.first_in = datetime.combine(att_date, datetime.strptime(data['first_in'], '%H:%M').time())
+                except ValueError:
+                    return jsonify({"error": "Invalid first_in format"}), 400
+                    
         if data.get('last_out'):
-            head.last_out = data['last_out']
+            try:
+                head.last_out = datetime.combine(att_date, datetime.strptime(data['last_out'], '%H:%M:%S').time())
+            except ValueError:
+                try:
+                    head.last_out = datetime.combine(att_date, datetime.strptime(data['last_out'], '%H:%M').time())
+                except ValueError:
+                    return jsonify({"error": "Invalid last_out format"}), 400
             
         db.session.commit()
         return jsonify({"message": "Manual attendance saved successfully", "id": head.id}), 200

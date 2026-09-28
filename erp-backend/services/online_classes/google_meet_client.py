@@ -1,6 +1,8 @@
 import os
 import requests
 from datetime import timedelta
+import urllib.parse
+import uuid
 
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -12,10 +14,15 @@ def get_authorization_url(state):
     redirect_uri = os.environ.get("GOOGLE_REDIRECT_URI")
     if not client_id or not redirect_uri:
         raise RuntimeError("GOOGLE_CLIENT_ID / GOOGLE_REDIRECT_URI not configured in .env")
-    params = (
-        f"client_id={client_id}&redirect_uri={redirect_uri}&response_type=code"
-        f"&scope={SCOPES}&access_type=offline&prompt=consent&state={state}"
-    )
+    params = urllib.parse.urlencode({
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": SCOPES,
+        "access_type": "offline",
+        "prompt": "consent",
+        "state": state
+    })
     return f"{GOOGLE_AUTH_URL}?{params}"
 
 
@@ -62,7 +69,7 @@ def create_meeting(access_token, topic, start_datetime, duration_minutes, timezo
         "end": {"dateTime": end_datetime.isoformat(), "timeZone": timezone_str},
         "conferenceData": {
             "createRequest": {
-                "requestId": f"meet-{start_datetime.timestamp()}",
+                "requestId": str(uuid.uuid4()),
                 "conferenceSolutionKey": {"type": "hangoutsMeet"},
             }
         },

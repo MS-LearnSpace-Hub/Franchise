@@ -23,10 +23,17 @@ const formatClassDateTime = (isoString: string, timezone?: string | null) => {
   return `${formatted} (${timezone || 'Asia/Kolkata'})`;
 };
 
+const getLocalDateString = (d: Date = new Date()) => {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 const shiftDay = (isoDate: string, delta: number) => {
   const d = new Date(isoDate + 'T00:00:00');
   d.setDate(d.getDate() + delta);
-  return d.toISOString().slice(0, 10);
+  return getLocalDateString(d);
 };
 
 const OnlineClass: React.FC = () => {
@@ -83,7 +90,7 @@ const OnlineClass: React.FC = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
-  const [calendarDate, setCalendarDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [calendarDate, setCalendarDate] = useState(() => getLocalDateString());
 
     const fetchClasses = useCallback(async () => {
     setLoading(true);
@@ -254,7 +261,7 @@ const OnlineClass: React.FC = () => {
           <button onClick={() => setCalendarDate((d) => shiftDay(d, -1))} className="px-2 py-1 border rounded-md text-sm hover:bg-slate-50">‹ Prev</button>
           <input type="date" value={calendarDate} onChange={(e) => setCalendarDate(e.target.value)} className="px-3 py-1.5 border rounded-lg text-sm" />
           <button onClick={() => setCalendarDate((d) => shiftDay(d, 1))} className="px-2 py-1 border rounded-md text-sm hover:bg-slate-50">Next ›</button>
-          <button onClick={() => setCalendarDate(new Date().toISOString().slice(0, 10))} className="px-2 py-1 text-sm text-blue-600 hover:underline">Today</button>
+          <button onClick={() => setCalendarDate(getLocalDateString())} className="px-2 py-1 text-sm text-blue-600 hover:underline">Today</button>
         </div>
       )}
 

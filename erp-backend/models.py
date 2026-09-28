@@ -1664,7 +1664,7 @@ class OnlineClass(db.Model, AuditMixin):
     class_id = db.Column(db.Integer, db.ForeignKey('classes.id', ondelete='SET NULL'), nullable=True)
     section_id = db.Column(db.Integer, db.ForeignKey('class_sections.id', ondelete='SET NULL'), nullable=True)
 
-    teacher_id = db.Column(db.Integer, db.ForeignKey('staff_master.id', ondelete='RESTRICT'), nullable=False, index=True)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('staff_master.id', ondelete='RESTRICT'), nullable=False)
 
     platform = db.Column(db.String(20), nullable=False)  # "zoom" | "google_meet"
     external_meeting_id = db.Column(db.String(120), nullable=True)
@@ -1683,7 +1683,7 @@ class OnlineClass(db.Model, AuditMixin):
     academic_year = db.Column(db.String(20), nullable=True)
     target_section_ids = db.Column(db.String(300), nullable=True)  # comma-separated ClassSection ids
 
-    status = db.Column(db.String(20), default=STATUS_SCHEDULED, nullable=False, index=True)
+    status = db.Column(db.String(20), default=STATUS_SCHEDULED, nullable=False)
     cancel_reason = db.Column(db.String(255), nullable=True)
 
     # --- Zoom/Meet webhook sync fields ---
@@ -1701,6 +1701,7 @@ class OnlineClass(db.Model, AuditMixin):
         db.Index('idx_online_class_teacher_time', 'teacher_id', 'start_datetime'),
         db.Index('idx_online_class_branch_year', 'branch_id', 'academic_year'),
         db.Index('idx_online_class_external_meeting', 'external_meeting_id'),
+        db.Index('idx_online_class_status', 'status'),
     )
 
 # ----------------------------------------------------------

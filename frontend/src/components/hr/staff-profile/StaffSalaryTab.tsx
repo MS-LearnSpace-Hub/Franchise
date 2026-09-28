@@ -13,10 +13,8 @@ export const StaffSalaryTab: React.FC<Props> = ({ profile }) => {
     useEffect(() => {
         const fetchSalary = async () => {
             try {
-                const res = await api.get(`/hr/staff/${profile.id}/salary`);
-                if (res.data.success) {
-                    setSalary(res.data.data);
-                }
+                const res = await api.get(`/hr/staff/${profile.id}/profile/salary`);
+                setSalary(res.data);
             } catch (err) {
                 console.error("Failed to fetch salary details", err);
             } finally {
@@ -93,7 +91,7 @@ export const StaffSalaryTab: React.FC<Props> = ({ profile }) => {
                         </div>
                         <div className="md:col-span-2">
                             <label className="block text-sm font-medium text-slate-500 mb-1">Remarks</label>
-                            <p className="font-semibold text-slate-800">{salary.remarks || '-'}</p>
+                            <p className="font-semibold text-slate-800">{salary.payroll_remarks || '-'}</p>
                         </div>
                     </div>
                 ) : (

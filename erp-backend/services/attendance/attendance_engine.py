@@ -94,7 +94,16 @@ def process_staging_records():
 
         # Periodic commit every 1000 records to keep memory and transaction log small
         if (i + 1) % 1000 == 0:
-            db.session.commit()
+            try:
+                db.session.commit()
+            except Exception as e:
+                db.session.rollback()
+                failed_count += 1000
+                processed_count -= 1000
 
-    db.session.commit()
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        
     return processed_count, failed_count

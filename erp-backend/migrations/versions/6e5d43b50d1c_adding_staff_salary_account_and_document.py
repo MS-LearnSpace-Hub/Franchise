@@ -66,7 +66,7 @@ def upgrade():
     sa.ForeignKeyConstraint(['school_id'], ['schools.id'], ondelete='SET NULL'),
     sa.ForeignKeyConstraint(['updated_by'], ['users.user_id'], ),
     sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('code')
+    sa.UniqueConstraint('school_id', 'code')
     )
     op.create_table('staff_salary_details',
     sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),

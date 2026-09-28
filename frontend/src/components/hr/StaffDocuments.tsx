@@ -47,6 +47,7 @@ export const StaffDocuments: React.FC<Props> = ({ staffId, mode }) => {
         expiry_date: '',
         notes: ''
     });
+    const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
     const fetchDocuments = async () => {
         try {
@@ -69,34 +70,45 @@ export const StaffDocuments: React.FC<Props> = ({ staffId, mode }) => {
     const handleUploadClick = (typeId: number) => {
         setUploadingTypeId(typeId);
         setMetaForm({ document_no: '', issue_date: '', expiry_date: '', notes: '' });
+        setSelectedFile(null);
         setUploadError(null);
-        setTimeout(() => fileInputRef.current?.click(), 0);
     };
 
-    const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (!e.target.files || !e.target.files.length || !uploadingTypeId) return;
-        
-        const file = e.target.files[0];
+    const handleUploadSubmit = async () => {
+        if (!selectedFile || !uploadingTypeId) {
+            setUploadError("Please select a file to upload.");
+            return;
+        }
+
         const docType = types.find(t => t.id === uploadingTypeId);
-        
         if (!docType) return;
         
-        if (file.size > docType.max_file_size) {
+        if (selectedFile.size > docType.max_file_size) {
             setUploadError(`File size exceeds the limit of ${Math.round(docType.max_file_size / 1048576)}MB.`);
             return;
         }
         
-        const ext = file.name.split('.').pop()?.toLowerCase() || '';
+        const ext = selectedFile.name.split('.').pop()?.toLowerCase() || '';
         const allowedExts = docType.allowed_extensions.split(',').map(e => e.trim().toLowerCase().replace('.', ''));
         if (!allowedExts.includes(ext)) {
             setUploadError(`Invalid file type. Allowed: ${docType.allowed_extensions}`);
             return;
         }
 
+        if (docType.requires_document_number && !metaForm.document_no) {
+            setUploadError("Document Number is required for this document type.");
+            return;
+        }
+
+        if (docType.requires_expiry && !metaForm.expiry_date) {
+            setUploadError("Expiry Date is required for this document type.");
+            return;
+        }
+
         const formData = new FormData();
         formData.append('staff_id', staffId.toString());
         formData.append('document_type_id', uploadingTypeId.toString());
-        formData.append('file', file);
+        formData.append('file', selectedFile);
         if (metaForm.document_no) formData.append('document_no', metaForm.document_no);
         if (metaForm.issue_date) formData.append('issue_date', metaForm.issue_date);
         if (metaForm.expiry_date) formData.append('expiry_date', metaForm.expiry_date);
@@ -108,12 +120,11 @@ export const StaffDocuments: React.FC<Props> = ({ staffId, mode }) => {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
             await fetchDocuments();
+            setUploadingTypeId(null);
         } catch (err: any) {
             setUploadError(err.response?.data?.message || 'Upload failed');
         } finally {
             setLoading(false);
-            setUploadingTypeId(null);
-            if (fileInputRef.current) fileInputRef.current.value = '';
         }
     };
 
@@ -123,18 +134,61 @@ export const StaffDocuments: React.FC<Props> = ({ staffId, mode }) => {
 
     return (
         <div className="space-y-6">
-            {uploadError && (
-                <div className="p-4 bg-red-50 text-red-700 rounded-lg text-sm mb-4">
-                    {uploadError}
+            {uploadingTypeId !== null && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-lg font-bold text-slate-800">Upload Document</h3>
+                            <button onClick={() => setUploadingTypeId(null)} className="text-slate-400 hover:text-slate-600">✕</button>
+                        </div>
+                        {uploadError && <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm">{uploadError}</div>}
+                        
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">File *</label>
+                                <input 
+                                    type="file" 
+                                    className="w-full text-sm" 
+                                    onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                                />
+                            </div>
+                            
+                            {(() => {
+                                const docType = types.find(t => t.id === uploadingTypeId);
+                                return (
+                                    <>
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-700 mb-1">Document Number {docType?.requires_document_number ? '*' : ''}</label>
+                                            <input type="text" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" value={metaForm.document_no} onChange={e => setMetaForm({...metaForm, document_no: e.target.value})} />
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-sm font-medium text-slate-700 mb-1">Issue Date</label>
+                                                <input type="date" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" value={metaForm.issue_date} onChange={e => setMetaForm({...metaForm, issue_date: e.target.value})} />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-slate-700 mb-1">Expiry Date {docType?.requires_expiry ? '*' : ''}</label>
+                                                <input type="date" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" value={metaForm.expiry_date} onChange={e => setMetaForm({...metaForm, expiry_date: e.target.value})} />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-700 mb-1">Notes</label>
+                                            <input type="text" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" value={metaForm.notes} onChange={e => setMetaForm({...metaForm, notes: e.target.value})} />
+                                        </div>
+                                    </>
+                                );
+                            })()}
+                        </div>
+
+                        <div className="mt-6 flex justify-end gap-3">
+                            <button onClick={() => setUploadingTypeId(null)} className="px-4 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50">Cancel</button>
+                            <button onClick={handleUploadSubmit} disabled={loading} className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50">
+                                {loading ? 'Uploading...' : 'Upload'}
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
-            
-            <input 
-                type="file" 
-                className="hidden" 
-                ref={fileInputRef}
-                onChange={handleFileSelect}
-            />
 
             <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
                 <table className="min-w-full divide-y divide-slate-200">

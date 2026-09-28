@@ -178,7 +178,10 @@ def _auto_complete_expired(classes):
     changed = False
     for oc in classes:
         if oc.status == OnlineClass.STATUS_SCHEDULED:
-            end_dt = oc.start_datetime + timedelta(minutes=oc.duration_minutes)
+            if oc.is_recurring and oc.recurrence_end_date:
+                end_dt = datetime.combine(oc.recurrence_end_date, oc.start_datetime.time()) + timedelta(minutes=oc.duration_minutes)
+            else:
+                end_dt = oc.start_datetime + timedelta(minutes=oc.duration_minutes)
             try:
                 tz = ZoneInfo(oc.timezone or "Asia/Kolkata")
             except Exception:
@@ -411,6 +414,8 @@ def _zoom_cred_or_404(cred_id, current_user, scope):
     cred = ZoomCredentials.query.get(cred_id)
     if not cred or not cred.is_active:
         return None, (jsonify({"error": "Zoom configuration not found"}), 404)
+    if scope["school_id"] and cred.school_id != scope["school_id"]:
+        return None, (jsonify({"error": "Unauthorized access to this configuration"}), 403)
     if not scope["is_unlimited"]:
         if cred.branch_id and scope["allowed_branch_ids"] and cred.branch_id not in scope["allowed_branch_ids"]:
             return None, (jsonify({"error": "Unauthorized branch access"}), 403)
@@ -622,10 +627,13 @@ def schedule_class(current_user):
             recurrence_payload = None
             if recurrence_days:
                 weekly_days_map = {"MO": 2, "TU": 3, "WE": 4, "TH": 5, "FR": 6, "SA": 7, "SU": 1}
+                tz_obj = ZoneInfo(data.get("timezone", "Asia/Kolkata"))
+                local_end = datetime.combine(recurrence_end_date, datetime.min.time()).replace(tzinfo=tz_obj)
+                utc_end = local_end.astimezone(ZoneInfo("UTC"))
                 recurrence_payload = {
                     "type": 2,
                     "weekly_days": ",".join(str(weekly_days_map[d]) for d in recurrence_days.split(",")),
-                    "end_date_time": datetime.combine(recurrence_end_date, datetime.min.time()).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "end_date_time": utc_end.strftime("%Y-%m-%dT%H:%M:%SZ"),
                 }
             try:
                 meeting_info = zoom_client.create_meeting(
@@ -643,6 +651,8 @@ def schedule_class(current_user):
             except Exception as e:
                 return jsonify({"error": f"Failed to create Zoom meeting: {e}"}), 502
         else:
+            if data.get("is_recurring"):
+                return jsonify({"error": "Google Meet does not support recurring meetings yet."}), 400
             access_token, err = _get_valid_google_access_token(teacher_id)
             if err:
                 return jsonify({"error": err}), 400
@@ -718,8 +728,9 @@ def reschedule_class(current_user, class_id):
 
         if oc.platform == OnlineClass.PLATFORM_ZOOM and oc.external_meeting_id:
             cred = _get_zoom_credentials_for(oc.school_id, oc.branch_id)
-            if cred:
-                try:
+            if not cred:
+                return jsonify({"error": "Zoom credentials not found for updating this meeting."}), 400
+            try:
                     zoom_client.update_meeting(
                         account_id=cred.account_id,
                         client_id=cred.client_id,
@@ -737,8 +748,9 @@ def reschedule_class(current_user, class_id):
                     }), 502
         elif oc.platform == OnlineClass.PLATFORM_GOOGLE_MEET and oc.external_meeting_id:
             access_token, token_err = _get_valid_google_access_token(oc.teacher_id)
-            if access_token:
-                try:
+            if not access_token:
+                return jsonify({"error": token_err or "Google credentials not found for updating this meeting."}), 400
+            try:
                     google_meet_client.update_meeting(
                         access_token=access_token,
                         event_id=oc.external_meeting_id,
@@ -854,6 +866,14 @@ def zoom_webhook():
         return jsonify({"plainToken": plain_token, "encryptedToken": encrypted}), 200
 
     timestamp = request.headers.get("x-zm-request-timestamp", "")
+    if timestamp:
+        try:
+            ts_int = int(timestamp)
+            if abs(datetime.utcnow().timestamp() - ts_int) > 300:
+                return jsonify({"error": "Request timestamp is too old"}), 401
+        except ValueError:
+            pass
+            
     raw_body = request.get_data(as_text=True)
     if not _verify_zoom_webhook_signature(secret_token, timestamp, raw_body):
         return jsonify({"error": "Invalid signature"}), 401
@@ -933,9 +953,10 @@ def google_connect_start(current_user):
 
 @online_class_bp.route("/api/online-classes/google/callback", methods=["GET"])
 def google_connect_callback():
+    import html
     error = request.args.get("error")
     if error:
-        return f"<h3>Google sign-in was cancelled or denied ({error}). You can close this tab and try again.</h3>", 400
+        return f"<h3>Google sign-in was cancelled or denied ({html.escape(error)}). You can close this tab and try again.</h3>", 400
 
     code = request.args.get("code")
     state = request.args.get("state")
@@ -951,7 +972,7 @@ def google_connect_callback():
     try:
         tokens = google_meet_client.exchange_code_for_tokens(code)
     except Exception as e:
-        return f"<h3>Failed to connect Google account: {e}</h3>", 502
+        return f"<h3>Failed to connect Google account: {html.escape(str(e))}</h3>", 502
 
     refresh_token = tokens.get("refresh_token")
     access_token = tokens.get("access_token")
@@ -1118,7 +1139,7 @@ def google_connect_callback():
     <p class="eyebrow">Google Meet Connected</p>
     <h1>You're all set</h1>
     <p class="message">This teacher's Google account is now linked. Classes scheduled for them will run on their own Google Meet.</p>
-    <div class="email-pill"><span class="dot"></span>{display_email}</div>
+    <div class="email-pill"><span class="dot"></span>{html.escape(display_email)}</div>
     <div class="divider"></div>
     <div class="brand"><b>Learnspace</b> · Online Classes</div>
   </div>

@@ -119,7 +119,7 @@ const HRManagement: React.FC<HRManagementProps> = ({ navigateTo }) => {
             icon: <UserIcon className="w-8 h-8" />,
             iconBg: 'bg-teal-50',
             iconColor: 'text-teal-600',
-            page: (user?.role === 'Admin' || user?.role === 'HR') ? 'hr-staff-profile-list' as Page : 'staff-profile' as Page,
+            page: hasPermission('hr.hr.staff-master', 'read') ? 'hr-staff-profile-list' as Page : 'staff-profile' as Page,
             permission: 'hr.hr.staff-profile',
             category: 'employee_details'
         },

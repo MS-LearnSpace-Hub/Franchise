@@ -43,7 +43,7 @@ export const StaffDocumentTypeMaster: React.FC = () => {
 
     const fetchData = useCallback(async () => {
         const schoolId = localStorage.getItem('currentSchoolId');
-        if (!schoolId || schoolId === 'all') return;
+        if ((!schoolId || schoolId === 'all') && user?.role !== 'SuperAdmin') return;
         setLoading(true);
         try {
             const res = await api.get('/hr/staff-document-types');
