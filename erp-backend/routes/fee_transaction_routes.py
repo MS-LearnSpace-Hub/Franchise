@@ -395,7 +395,10 @@ def record_fee_payment(current_user):
         receipt_no = SequenceService.generate_receipt_number(branch_id, ay_id, include_prefix=False)
 
         total_allocated = sum(
-            _process_fee_allocation(alloc, student, receipt_no, payment_mode, payment_date, note, transaction_details, current_user)
+            _process_fee_allocation(
+                alloc, student, receipt_no, payment_mode, payment_date, note, transaction_details, current_user,
+                cheque_no=cheque_no, bank_name=bank_name, cheque_date=cheque_date_val
+            )
             for alloc in allocations
         )
         
@@ -468,6 +471,7 @@ def get_student_payment_history(current_user, student_id):
             "concession_amount": str(p.concession_amount),
             "gross_amount": str(p.gross_amount),
             "due_amount": str(p.due_amount),
+            "previous_due": str((p.amount_paid or Decimal(0)) + (p.due_amount or Decimal(0)) + (p.concession_amount or Decimal(0))),
             "fee_type": p.fee_type,
             "installment": p.installment_name,
             "mode": p.payment_mode,

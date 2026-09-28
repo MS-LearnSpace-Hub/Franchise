@@ -15,7 +15,16 @@ interface FeeReceiptProps {
     paymentDate: string;
     paymentMode: string;
     paymentNote: string;
-    items: { title: string; payable: number }[];
+    items: {
+      title: string;
+      payable?: number;
+      amount?: number;
+      amount_paid?: number;
+      paid?: number;
+      due_amount?: number;
+      due?: number;
+      concession?: number;
+    }[];
     amount: number;
     concession: number;
     payable: number;
@@ -69,16 +78,31 @@ const ReceiptTemplate = ({ data, copyType, logo, schoolName }: { data: any, copy
             <th className="px-4 py-2 font-semibold tracking-wider">SR. NO</th>
             <th className="px-4 py-2 font-semibold tracking-wider">FEE DETAILS</th>
             <th className="px-4 py-2 font-semibold tracking-wider text-right">AMOUNT</th>
+            <th className="px-4 py-2 font-semibold tracking-wider text-right">PAID</th>
+            <th className="px-4 py-2 font-semibold tracking-wider text-right">DUE</th>
           </tr>
         </thead>
         <tbody>
-          {items.map((item: any, index: number) => (
-            <tr key={index} className="border-b">
-              <td className="px-4 py-3">{index + 1}</td>
-              <td className="px-4 py-3 font-medium">{item.title}</td>
-              <td className="px-4 py-3 text-right font-mono">₹{item.payable.toLocaleString('en-IN')}</td>
-            </tr>
-          ))}
+          {items.map((item: any, index: number) => {
+            const rowPaid = Number(item.amount_paid ?? item.paid ?? item.paidAmount ?? 0);
+            const rowDue = Number(item.due_amount ?? item.due ?? item.dueAmount ?? 0);
+            const rowAmount = Number(
+              item.amount !== undefined
+                ? item.amount
+                : item.payable !== undefined
+                ? item.payable
+                : rowPaid + rowDue
+            );
+            return (
+              <tr key={index} className="border-b">
+                <td className="px-4 py-3">{index + 1}</td>
+                <td className="px-4 py-3 font-medium">{item.title}</td>
+                <td className="px-4 py-3 text-right font-mono">₹{rowAmount.toLocaleString('en-IN')}</td>
+                <td className="px-4 py-3 text-right font-mono font-medium text-green-700">₹{rowPaid.toLocaleString('en-IN')}</td>
+                <td className="px-4 py-3 text-right font-mono font-medium text-red-600">₹{rowDue.toLocaleString('en-IN')}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
 
