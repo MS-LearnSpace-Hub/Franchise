@@ -64,7 +64,10 @@ export type Page =
   | 'hr-staff-directory'
   | 'hr-staff-profile-list'
   | 'hr-staff-update-list'
-  | 'staff-profile';
+  | 'staff-profile'
+  | 'reconciliation-dashboard'
+  | 'remittance-approvals'
+  | 'remittance-deposit';
 
 // Inner component that can access AuthContext
 const AppInner: React.FC = () => {

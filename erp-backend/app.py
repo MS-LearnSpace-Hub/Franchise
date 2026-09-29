@@ -20,6 +20,8 @@ from routes.auth_routes import bp as auth_bp
 from routes.student_routes import bp as student_bp
 from routes.fee_master_routes import bp as fee_master_bp
 from routes.fee_transaction_routes import bp as fee_transaction_bp
+from routes.remittance_routes import bp as remittance_bp
+from routes.reconciliation_routes import bp as reconciliation_bp
 from routes.attendance_routes import bp as attendance_bp
 from routes.report_routes import bp as report_bp
 from routes.org_routes import bp as org_bp
@@ -142,6 +144,8 @@ def create_app():
     app.register_blueprint(student_bp)
     app.register_blueprint(fee_master_bp)
     app.register_blueprint(fee_transaction_bp)
+    app.register_blueprint(remittance_bp)
+    app.register_blueprint(reconciliation_bp)
     app.register_blueprint(attendance_bp)
     app.register_blueprint(report_bp)
     app.register_blueprint(org_bp)

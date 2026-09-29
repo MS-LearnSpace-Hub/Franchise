@@ -46,6 +46,9 @@ import FinancialLayout from './FinancialLayout';
 import SmsCenter from './SmsCenter';
 import HRManagement from './HRManagement';
 import HRLayout from './HRLayout';
+import ReconciliationDashboard from './ReconciliationDashboard';
+import RemittanceApprovals from './RemittanceApprovals';
+import RemittanceDeposit from './RemittanceDeposit';
 import DepartmentMaster from './DepartmentMaster';
 import DesignationMaster from './DesignationMaster';
 import ShiftMaster from './ShiftMaster';
@@ -71,7 +74,8 @@ const financialPages = [
   'fee-installments', 'take-fee', 'concession-master', 'student-concession',
   'update-student-fee-structure', 'update-rebate-date', 'delete-fee-receipt', 'fee-reports',
   'deleted-receipts', 'fee-concession-report', 'adjust-fee-report',
-  'petty-cash', 'petty-cash-report', 'fund-allocation', 'month-wise-ledger', 'petty-cash-approval'
+  'petty-cash', 'petty-cash-report', 'fund-allocation', 'month-wise-ledger', 'petty-cash-approval',
+  'reconciliation-dashboard', 'remittance-approvals', 'remittance-deposit'
 ];
 
 interface DashboardProps {
@@ -132,6 +136,9 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout, initialPage }) => {
               {currentPage === 'fund-allocation' && <FundAllocation />}
               {currentPage === 'month-wise-ledger' && <MonthWiseLedger />}
               {currentPage === 'petty-cash-approval' && <PettyCashApproval />}
+              {currentPage === 'reconciliation-dashboard' && <ReconciliationDashboard />}
+              {currentPage === 'remittance-approvals' && <RemittanceApprovals />}
+              {currentPage === 'remittance-deposit' && <RemittanceDeposit />}
             </FinancialLayout>
           ) : hrPages.includes(currentPage) ? (
             <HRLayout currentPage={currentPage} navigateTo={navigateTo}>

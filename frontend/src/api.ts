@@ -282,6 +282,26 @@ export const hr = {
   }
 };
 
+export const remittanceApi = {
+  listRemittances: async (params?: any, config?: any) => {
+    return api.get('/fees/remittance', { params, ...config });
+  },
+  updateStatus: async (id: number, status: string, remarks?: string) => {
+    return api.put(`/fees/remittance/${id}/status`, { status, remarks });
+  },
+  getCashPosition: async (params?: any, config?: any) => {
+    return api.get('/fees/remittance/cash-position', { params, ...config });
+  },
+  createRemittance: async (formData: FormData) => {
+    return api.post('/fees/remittance', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  getAttachmentUrl: (id: number) => {
+    return `${API_URL}/fees/remittance/${id}/attachment`;
+  }
+};
+
 // Export the configured API instance
 export default api;
 
