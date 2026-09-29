@@ -65,5 +65,31 @@ export interface Student {
   is_promoted?: boolean;
   is_locked?: boolean;
 }
-
+export interface OnlineClassItem {
+  id: number;
+  title: string;
+  description?: string | null;
+  subject_id?: number | null;
+  subject_name?: string | null;
+  class_id?: number | null;
+  class_name?: string | null;
+  section_id?: number | null;
+  section_name?: string | null;
+  teacher_id: number;
+  teacher_name?: string | null;
+  branch_id?: number | null;
+  platform: 'zoom' | 'google_meet';
+  join_url?: string | null;
+  start_url?: string | null;
+  meeting_password?: string | null;
+  timezone: string;
+  start_datetime: string;
+  duration_minutes: number;
+  is_recurring: boolean;
+  recurrence_days?: string | null;
+  recurrence_end_date?: string | null;
+  target_section_ids?: string | null;
+  status: 'SCHEDULED' | 'CANCELLED' | 'COMPLETED';
+  cancel_reason?: string | null;
+}
 

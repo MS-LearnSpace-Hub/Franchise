@@ -655,12 +655,77 @@ class BranchYearSequence(db.Model, AuditMixin):
     
     receipt_prefix = db.Column(db.String(20), nullable=False)
     last_receipt_no = db.Column(db.Integer, default=0, nullable=False)
+    
+    remittance_prefix = db.Column(db.String(20), server_default='REM', nullable=False)
+    last_remittance_no = db.Column(db.Integer, server_default='0', nullable=False)
 
     __table_args__ = (
         db.UniqueConstraint('branch_id', 'academic_year_id', name='uq_branch_year_sequence'),
         db.CheckConstraint('last_admission_no >= 0', name='chk_admission_no_positive'),
         db.CheckConstraint('last_receipt_no >= 0', name='chk_receipt_no_positive'),
+        db.CheckConstraint('last_remittance_no >= 0', name='chk_remittance_no_positive'),
     )
+
+# ----------------------------------------------------------
+# REMITTANCE MODELS
+# ----------------------------------------------------------
+
+class RemittanceMaster(db.Model, AuditMixin):
+    __tablename__ = "remittance_master"
+    __audit_module__ = "FEES"
+    
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    remittance_no = db.Column(db.String(50), nullable=False, unique=True, index=True)
+    branch_id = db.Column(db.Integer, db.ForeignKey('branches.id'), nullable=False, index=True)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
+    
+    business_date = db.Column(db.Date, nullable=False, index=True)
+    cash_in_hand = db.Column(db.Numeric(precision=12, scale=2), nullable=False)
+    deposit_amount = db.Column(db.Numeric(precision=12, scale=2), nullable=False)
+    remaining_cash = db.Column(db.Numeric(precision=12, scale=2), nullable=False)
+    
+    deposit_type = db.Column(db.String(50), nullable=True)
+    bank_name = db.Column(db.String(100), nullable=True)
+    account_number = db.Column(db.String(50), nullable=True)
+    reference_no = db.Column(db.String(100), nullable=True)
+    
+    attachment_path = db.Column(db.String(255), nullable=True)
+    status = db.Column(db.Enum('Pending', 'Approved', 'Rejected'), server_default='Pending', nullable=False)
+    remarks = db.Column(db.Text, nullable=True)
+    
+    approved_by = db.Column(db.Integer, db.ForeignKey('users.user_id'), nullable=True)
+    approved_at = db.Column(db.DateTime, nullable=True)
+    is_active = db.Column(db.Boolean, server_default=db.text('1'), nullable=False)
+
+    branch = db.relationship("Branch")
+    school = db.relationship("School")
+    approver = db.relationship("User", foreign_keys=[approved_by])
+
+
+class RemittanceDenominations(db.Model, AuditMixin):
+    __tablename__ = "remittance_denominations"
+    __audit_module__ = "FEES"
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    remittance_id = db.Column(db.BigInteger, db.ForeignKey('remittance_master.id', ondelete='CASCADE'), nullable=False, index=True)
+    denomination = db.Column(db.Integer, nullable=False)
+    quantity = db.Column(db.Integer, nullable=False)
+    amount = db.Column(db.Numeric(precision=12, scale=2), nullable=False)
+    
+    remittance = db.relationship("RemittanceMaster", backref=db.backref("denominations", cascade="all, delete-orphan", lazy=True))
+
+
+class RemittanceReceipts(db.Model, AuditMixin):
+    __tablename__ = "remittance_receipts"
+    __audit_module__ = "FEES"
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    remittance_id = db.Column(db.BigInteger, db.ForeignKey('remittance_master.id', ondelete='CASCADE'), nullable=False, index=True)
+    fee_receipt_id = db.Column(db.Integer, db.ForeignKey('fee_payments.payment_id'), nullable=False, index=True)
+    receipt_amount = db.Column(db.Numeric(precision=12, scale=2), nullable=False)
+    
+    remittance = db.relationship("RemittanceMaster", backref=db.backref("receipts", cascade="all, delete-orphan", lazy=True))
+    fee_receipt = db.relationship("FeePayment")
 
 
 
@@ -1362,6 +1427,100 @@ class StaffMaster(db.Model, AuditMixin):
     staff_category = db.relationship('StaffCategoryMaster', foreign_keys=[staff_category_id])
     staff_status = db.relationship('StaffStatusMaster', foreign_keys=[staff_status_id])
 
+class StaffDocumentType(db.Model, AuditMixin):
+    __tablename__ = "staff_document_type_master"
+    __audit_module__ = "HR"
+    
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    code = db.Column(db.String(50), unique=True, nullable=False) # e.g., 'AADHAAR', 'PAN'
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.String(255))
+    is_required = db.Column(db.Boolean, default=False)
+    allowed_extensions = db.Column(db.String(100), default='pdf,jpg,jpeg,png')
+    max_file_size = db.Column(db.Integer, default=5242880) # 5MB default
+    requires_expiry = db.Column(db.Boolean, default=False)
+    requires_document_number = db.Column(db.Boolean, default=False)
+    is_active = db.Column(db.Boolean, default=True)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
+
+class StaffDocument(db.Model, AuditMixin):
+    __tablename__ = "staff_documents"
+    __audit_module__ = "HR"
+    
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    staff_id = db.Column(db.Integer, db.ForeignKey('staff_master.id', ondelete='CASCADE'), nullable=False)
+    document_type_id = db.Column(db.Integer, db.ForeignKey('staff_document_type_master.id', ondelete='RESTRICT'), nullable=False)
+    
+    document_no = db.Column(db.String(100))
+    issue_date = db.Column(db.Date)
+    expiry_date = db.Column(db.Date)
+    issued_by = db.Column(db.String(100))
+    notes = db.Column(db.Text)
+    
+    file_name = db.Column(db.String(255), nullable=False)
+    file_path = db.Column(db.String(500), nullable=False) # OCI Object Key
+    file_size = db.Column(db.Integer)
+    mime_type = db.Column(db.String(100))
+    
+    is_verified = db.Column(db.Boolean, default=False)
+    verified_by = db.Column(db.Integer, db.ForeignKey('users.user_id'), nullable=True)
+    verified_at = db.Column(db.DateTime, nullable=True)
+    is_active = db.Column(db.Boolean, default=True)
+    
+    staff = db.relationship('StaffMaster', backref=db.backref('documents', lazy=True, cascade="all, delete-orphan"))
+    document_type = db.relationship('StaffDocumentType')
+
+class StaffAccountDetail(db.Model, AuditMixin):
+    __tablename__ = "staff_account_details"
+    __audit_module__ = "PAYROLL"
+    
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    staff_id = db.Column(db.Integer, db.ForeignKey('staff_master.id', ondelete='CASCADE'), unique=True, nullable=False)
+    
+    # Bank Details
+    account_holder_name = db.Column(db.String(150))
+    bank_name = db.Column(db.String(150))
+    branch_name = db.Column(db.String(150))
+    account_number = db.Column(db.String(50))
+    ifsc_code = db.Column(db.String(20))
+    account_type = db.Column(db.String(50))
+    upi_id = db.Column(db.String(100))
+    
+    # Statutory Details
+    pan_number = db.Column(db.String(20))
+    aadhaar_number = db.Column(db.String(20))
+    pf_applicable = db.Column(db.Boolean, default=False)
+    pf_number = db.Column(db.String(50)) # UAN
+    esi_applicable = db.Column(db.Boolean, default=False)
+    esi_number = db.Column(db.String(50))
+    pt_applicable = db.Column(db.Boolean, default=False)
+    tds_applicable = db.Column(db.Boolean, default=False)
+    
+    staff = db.relationship('StaffMaster', backref=db.backref('account_detail', uselist=False, lazy=True, cascade="all, delete-orphan"))
+
+class StaffSalaryDetail(db.Model, AuditMixin):
+    __tablename__ = "staff_salary_details"
+    __audit_module__ = "PAYROLL"
+    
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    staff_id = db.Column(db.Integer, db.ForeignKey('staff_master.id', ondelete='CASCADE'), unique=True, nullable=False)
+    
+    salary_type = db.Column(db.String(50)) # Monthly, Daily, Hourly
+    basic_salary = db.Column(db.Numeric(10, 2))
+    gross_salary = db.Column(db.Numeric(10, 2))
+    salary_structure_id = db.Column(db.Integer, nullable=True) # Refers to a future SalaryStructure master
+    payment_mode = db.Column(db.String(50)) # Bank Transfer, Cheque, Cash
+    effective_from = db.Column(db.Date)
+    payroll_status = db.Column(db.String(50), default='ACTIVE')
+    
+    gratuity_applicable = db.Column(db.Boolean, default=False)
+    bonus_applicable = db.Column(db.Boolean, default=False)
+    overtime_applicable = db.Column(db.Boolean, default=False)
+    notice_period_days = db.Column(db.Integer, default=30)
+    payroll_remarks = db.Column(db.Text)
+    
+    staff = db.relationship('StaffMaster', backref=db.backref('salary_detail', uselist=False, lazy=True, cascade="all, delete-orphan"))
+
 class BiometricDeviceMaster(db.Model, AuditMixin):
     __tablename__ = "biometric_device_master"
     __audit_module__ = "HR"
@@ -1498,6 +1657,117 @@ class SyncLog(db.Model, AuditMixin):
     errors = db.Column(db.Text, nullable=True)
     agent_version = db.Column(db.String(50), nullable=True)
     status = db.Column(db.Enum('SUCCESS', 'FAILED', 'PARTIAL'), default='SUCCESS')
+
+    # ----------------------------------------------------------
+# ONLINE CLASSES MODULE
+# ----------------------------------------------------------
+
+class ZoomCredentials(db.Model, AuditMixin):
+    """
+    Zoom Server-to-Server OAuth app credentials.
+    branch_id = NULL  -> shared, school-wide credentials (fallback for every branch)
+    branch_id = <id>  -> that specific branch's own Zoom account (takes priority)
+    """
+    __tablename__ = "zoom_credentials"
+    __audit_module__ = "ONLINE_CLASSES"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
+    branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='CASCADE'), nullable=True)
+
+    account_id = db.Column(db.String(120), nullable=False)
+    client_id = db.Column(db.String(120), nullable=False)
+    client_secret_encrypted = db.Column(db.Text, nullable=False)
+    default_host_email = db.Column(db.String(200), nullable=False)
+
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+
+    __table_args__ = (
+        db.UniqueConstraint('school_id', 'branch_id', name='uq_zoom_credentials_school_branch'),
+    )
+
+
+class GoogleOAuthToken(db.Model, AuditMixin):
+    """Per-teacher Google OAuth token — each teacher's Meet links are created under their own Google account."""
+    __tablename__ = "google_oauth_tokens"
+    __audit_module__ = "ONLINE_CLASSES"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    staff_id = db.Column(db.Integer, db.ForeignKey('staff_master.id', ondelete='CASCADE'), nullable=False, unique=True)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
+    branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
+
+    refresh_token_encrypted = db.Column(db.Text, nullable=False)
+    access_token_encrypted = db.Column(db.Text, nullable=True)
+    token_expiry = db.Column(db.DateTime, nullable=True)
+    scope = db.Column(db.String(300), nullable=True)
+    google_email = db.Column(db.String(200), nullable=True)
+
+    staff = db.relationship('StaffMaster', foreign_keys=[staff_id])
+
+
+class OnlineClass(db.Model, AuditMixin):
+    __tablename__ = "online_classes"
+    __audit_module__ = "ONLINE_CLASSES"
+
+    PLATFORM_ZOOM = "zoom"
+    PLATFORM_GOOGLE_MEET = "google_meet"
+
+    STATUS_SCHEDULED = "SCHEDULED"
+    STATUS_CANCELLED = "CANCELLED"
+    STATUS_COMPLETED = "COMPLETED"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='SET NULL'), nullable=True)
+    branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
+
+    title = db.Column(db.String(200), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    subject_id = db.Column(db.Integer, db.ForeignKey('subjectmaster.id', ondelete='SET NULL'), nullable=True)
+
+    class_id = db.Column(db.Integer, db.ForeignKey('classes.id', ondelete='SET NULL'), nullable=True)
+    section_id = db.Column(db.Integer, db.ForeignKey('class_sections.id', ondelete='SET NULL'), nullable=True)
+
+    teacher_id = db.Column(db.Integer, db.ForeignKey('staff_master.id', ondelete='RESTRICT'), nullable=False)
+
+    platform = db.Column(db.String(20), nullable=False)  # "zoom" | "google_meet"
+    external_meeting_id = db.Column(db.String(120), nullable=True)
+    join_url = db.Column(db.String(500), nullable=True)
+    start_url = db.Column(db.String(500), nullable=True)
+    meeting_password = db.Column(db.String(50), nullable=True)
+
+    timezone = db.Column(db.String(60), default="Asia/Kolkata", nullable=False)
+    start_datetime = db.Column(db.DateTime, nullable=False)
+    duration_minutes = db.Column(db.Integer, nullable=False, default=45)
+
+    is_recurring = db.Column(db.Boolean, default=False, nullable=False)
+    recurrence_days = db.Column(db.String(30), nullable=True)  # e.g. "MO,WE,FR"
+    recurrence_end_date = db.Column(db.Date, nullable=True)
+
+    academic_year = db.Column(db.String(20), nullable=True)
+    target_section_ids = db.Column(db.String(300), nullable=True)  # comma-separated ClassSection ids
+
+    status = db.Column(db.String(20), default=STATUS_SCHEDULED, nullable=False)
+    cancel_reason = db.Column(db.String(255), nullable=True)
+
+    # --- Zoom/Meet webhook sync fields ---
+    actual_start_time = db.Column(db.DateTime, nullable=True)
+    actual_end_time = db.Column(db.DateTime, nullable=True)
+    zoom_uuid = db.Column(db.String(120), nullable=True)
+    sync_source = db.Column(db.String(20), nullable=True)  # "webhook" | "auto_expiry" | None
+
+    teacher = db.relationship('StaffMaster', foreign_keys=[teacher_id])
+    class_obj = db.relationship('ClassMaster', foreign_keys=[class_id])
+    section = db.relationship('ClassSection', foreign_keys=[section_id])
+    subject = db.relationship('SubjectMaster', foreign_keys=[subject_id])
+
+    __table_args__ = (
+        db.Index('idx_online_class_teacher_time', 'teacher_id', 'start_datetime'),
+        db.Index('idx_online_class_branch_year', 'branch_id', 'academic_year'),
+        db.Index('idx_online_class_external_meeting', 'external_meeting_id'),
+        db.Index('idx_online_class_status', 'status'),
+    )
 
 # ----------------------------------------------------------
 # GLOBAL AUDIT EVENT LISTENERS

@@ -56,6 +56,20 @@ export const SchoolProvider: React.FC<{ children: ReactNode }> = ({
       return;
     }
 
+    const userStr = localStorage.getItem("user");
+    if (userStr) {
+      try {
+        const user = JSON.parse(userStr);
+        if (['HR', 'Staff Login', 'Staff'].includes(user.role)) {
+          setStudents([]);
+          setLoading(false);
+          return;
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+
     setLoading(true);
 
     api.get(`/students`)
@@ -63,7 +77,14 @@ export const SchoolProvider: React.FC<{ children: ReactNode }> = ({
         setStudents(res.data.students || []);
         setError(null);
       })
-      .catch(() => setError("Failed to load student data"))
+      .catch((err) => {
+        if (err?.response?.status === 403) {
+          setStudents([]);
+          setError(null);
+        } else {
+          setError("Failed to load student data");
+        }
+      })
       .finally(() => setLoading(false));
   }, []);
 

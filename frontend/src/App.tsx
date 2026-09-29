@@ -16,6 +16,7 @@ export type Page =
   | "academic"
   | "academics"
   | "timetable"
+  | "online-class"
   | "setup"
   | "classes-management"
   | "student-attendance"
@@ -55,12 +56,18 @@ export type Page =
   | 'hr-staff-master'
   | 'hr-staff-categories'
   | 'hr-staff-statuses'
+  | 'hr-staff-document-types'
   | 'hr-biometric-devices'
   | 'hr-biometric-mapping'
   | 'hr-attendance-summary'
   | 'hr-punch-log'
   | 'hr-staff-directory'
-  | 'staff-profile';
+  | 'hr-staff-profile-list'
+  | 'hr-staff-update-list'
+  | 'staff-profile'
+  | 'reconciliation-dashboard'
+  | 'remittance-approvals'
+  | 'remittance-deposit';
 
 // Inner component that can access AuthContext
 const AppInner: React.FC = () => {

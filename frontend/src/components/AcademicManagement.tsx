@@ -90,13 +90,13 @@ const AcademicManagement: React.FC<AcademicManagementProps> = ({ navigateTo }) =
             iconColor: 'text-red-600',
             comingSoon: true
         },
-        {
+                {
             id: 'online-class',
             name: 'Online Class',
             icon: <UserIcon className="w-8 h-8" />,
             iconBg: 'bg-cyan-50',
             iconColor: 'text-cyan-600',
-            comingSoon: true
+            page: 'online-class'
         },
         {
             id: 'activity-planner',
