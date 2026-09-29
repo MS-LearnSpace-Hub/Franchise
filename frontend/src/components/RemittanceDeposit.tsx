@@ -306,10 +306,12 @@ const RemittanceDeposit: React.FC = () => {
       const downloadUrl = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = downloadUrl;
-      a.download = `Deposit_Slip_${remittance_no}.png`;
+      const extension = blob.type.split('/')[1] || 'png';
+      a.download = `Deposit_Slip_${remittance_no}.${extension}`;
       document.body.appendChild(a);
       a.click();
       a.remove();
+      window.URL.revokeObjectURL(downloadUrl);
     } catch (e) {
       alert('Failed to download deposit slip attachment. File may not exist.');
     }

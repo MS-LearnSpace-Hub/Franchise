@@ -103,10 +103,12 @@ const RemittanceApprovals: React.FC = () => {
       const downloadUrl = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = downloadUrl;
-      a.download = `Slip_${remittance_no}.png`;
+      const extension = blob.type.split('/')[1] || 'png';
+      a.download = `Slip_${remittance_no}.${extension}`;
       document.body.appendChild(a);
       a.click();
       a.remove();
+      window.URL.revokeObjectURL(downloadUrl);
     } catch (e) {
       alert('Failed to view attachment. The file may have been moved or unassigned.');
     }
@@ -396,7 +398,7 @@ const RemittanceApprovals: React.FC = () => {
                           <tr key={i} className="font-medium">
                             <td className="p-2 font-bold">₹ {d.denomination}</td>
                             <td className="p-2 text-center font-bold text-slate-800">{d.quantity}</td>
-                            <td className="p-2 text-right font-extrabold">₹ {d.amount.toLocaleString()}</td>
+                            <td className="p-2 text-right font-extrabold">₹ {(d.amount || (d.denomination * d.quantity)).toLocaleString()}</td>
                           </tr>
                         ))}
                       </tbody>

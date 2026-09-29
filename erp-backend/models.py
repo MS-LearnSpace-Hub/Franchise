@@ -684,6 +684,11 @@ class RemittanceMaster(db.Model, AuditMixin):
     deposit_amount = db.Column(db.Numeric(precision=12, scale=2), nullable=False)
     remaining_cash = db.Column(db.Numeric(precision=12, scale=2), nullable=False)
     
+    deposit_type = db.Column(db.String(50), nullable=True)
+    bank_name = db.Column(db.String(100), nullable=True)
+    account_number = db.Column(db.String(50), nullable=True)
+    reference_no = db.Column(db.String(100), nullable=True)
+    
     attachment_path = db.Column(db.String(255), nullable=True)
     status = db.Column(db.Enum('Pending', 'Approved', 'Rejected'), server_default='Pending', nullable=False)
     remarks = db.Column(db.Text, nullable=True)

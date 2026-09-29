@@ -546,7 +546,7 @@ const ReconciliationDashboard: React.FC = () => {
                             }`}
                         >
                           <td className="p-3 text-center text-slate-400 font-semibold border-r border-slate-100">
-                            {isOpening ? '-' : idx}
+                            {isOpening ? '-' : idx + 1}
                           </td>
                           <td className="p-3 whitespace-nowrap font-semibold text-slate-800 border-r border-slate-100">
                             {row.date_formatted || row.date}

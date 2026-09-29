@@ -243,9 +243,9 @@ def create_app():
     from werkzeug.exceptions import HTTPException
 
     @app.errorhandler(Exception)
-    def handle_exception(e):
+    def handle_exception(e: Exception):
         if isinstance(e, HTTPException):
-            return jsonify({'error': e.description}), e.code
+            return jsonify({'error': e.description}), e.code if e.code is not None else 500
         import traceback
         with open("global_500_error.log", "w") as f:
             f.write(traceback.format_exc() or str(e))
