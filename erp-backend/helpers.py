@@ -363,9 +363,18 @@ def get_user_allowed_branches(user):
         }
         
     # 2. Check if user has explicit UserSchoolAccess. If so, they can access all branches of those schools!
-    allowed_schools = get_user_allowed_schools(user)
-    if allowed_schools['ids']:
-        branches = Branch.query.filter(Branch.school_id.in_(allowed_schools['ids']), Branch.is_active == True).all()
+    from models import UserSchoolAccess, School
+    school_access_records = UserSchoolAccess.query.join(School).filter(
+        UserSchoolAccess.user_id == user.user_id,
+        UserSchoolAccess.is_active == True,
+        UserSchoolAccess.start_date <= today,
+        (UserSchoolAccess.end_date.is_(None)) | (UserSchoolAccess.end_date >= today),
+        School.is_active == True
+    ).all()
+
+    if school_access_records:
+        explicit_school_ids = {r.school_id for r in school_access_records}
+        branches = Branch.query.filter(Branch.school_id.in_(explicit_school_ids), Branch.is_active == True).all()
         if branches:
             return {
                 'names': {b.branch_name for b in branches},
@@ -481,11 +490,13 @@ def has_permission(user, permission_code, action="read"):
     return bool(permission.get(f"can_{action}", False))
 
 
-def permission_required(permission_code, action="read"):
+def permission_required(permission_codes, action="read"):
     def decorator(func):
         @wraps(func)
         def wrapper(current_user, *args, **kwargs):
-            if not has_permission(current_user, permission_code, action):
+            codes = permission_codes if isinstance(permission_codes, list) else [permission_codes]
+            has_perm = any(has_permission(current_user, code, action) for code in codes)
+            if not has_perm:
                 return jsonify({"error": "Forbidden: missing permission"}), 403
             return func(current_user, *args, **kwargs)
         return wrapper

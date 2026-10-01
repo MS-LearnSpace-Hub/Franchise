@@ -15,6 +15,7 @@ import ClassesManagement from './ClassesManagement';
 import AcademicManagement from './AcademicManagement';
 import Academics from './Academics';
 import Timetable from './Timetable';
+import OnlineClass from './OnlineClass';
 import StudentAttendance from './StudentAttendance';
 import StudentAdministration from './StudentAdministration';
 import ConcessionMaster from './ConcessionMaster';
@@ -45,6 +46,9 @@ import FinancialLayout from './FinancialLayout';
 import SmsCenter from './SmsCenter';
 import HRManagement from './HRManagement';
 import HRLayout from './HRLayout';
+import ReconciliationDashboard from './ReconciliationDashboard';
+import RemittanceApprovals from './RemittanceApprovals';
+import RemittanceDeposit from './RemittanceDeposit';
 import DepartmentMaster from './DepartmentMaster';
 import DesignationMaster from './DesignationMaster';
 import ShiftMaster from './ShiftMaster';
@@ -52,6 +56,7 @@ import StaffMaster from './StaffMaster';
 import StaffDirectory from './StaffDirectory';
 import { StaffCategoryMaster } from './StaffCategoryMaster';
 import { StaffStatusMaster } from './StaffStatusMaster';
+import { StaffDocumentTypeMaster } from './hr/StaffDocumentTypeMaster';
 import StaffProfile from './StaffProfile';
 import { BiometricDevices } from './BiometricDevices';
 import HRPunchLog from './HRPunchLog';
@@ -59,9 +64,9 @@ import { Page } from '../App';
 
 const hrPages = [
   'hr-management', 'hr-departments', 'hr-designations', 'hr-shifts', 'hr-staff-master', 'hr-staff-directory',
-  'hr-staff-categories', 'hr-staff-statuses',
+  'hr-staff-categories', 'hr-staff-statuses', 'hr-staff-document-types',
   'hr-biometric-devices', 'hr-biometric-mapping', 'hr-attendance-summary', 'hr-punch-log',
-  'staff-profile'
+  'hr-staff-profile-list', 'hr-staff-update-list', 'staff-profile'
 ];
 
 const financialPages = [
@@ -69,7 +74,8 @@ const financialPages = [
   'fee-installments', 'take-fee', 'concession-master', 'student-concession',
   'update-student-fee-structure', 'update-rebate-date', 'delete-fee-receipt', 'fee-reports',
   'deleted-receipts', 'fee-concession-report', 'adjust-fee-report',
-  'petty-cash', 'petty-cash-report', 'fund-allocation', 'month-wise-ledger', 'petty-cash-approval'
+  'petty-cash', 'petty-cash-report', 'fund-allocation', 'month-wise-ledger', 'petty-cash-approval',
+  'reconciliation-dashboard', 'remittance-approvals', 'remittance-deposit'
 ];
 
 interface DashboardProps {
@@ -130,6 +136,9 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout, initialPage }) => {
               {currentPage === 'fund-allocation' && <FundAllocation />}
               {currentPage === 'month-wise-ledger' && <MonthWiseLedger />}
               {currentPage === 'petty-cash-approval' && <PettyCashApproval />}
+              {currentPage === 'reconciliation-dashboard' && <ReconciliationDashboard />}
+              {currentPage === 'remittance-approvals' && <RemittanceApprovals />}
+              {currentPage === 'remittance-deposit' && <RemittanceDeposit />}
             </FinancialLayout>
           ) : hrPages.includes(currentPage) ? (
             <HRLayout currentPage={currentPage} navigateTo={navigateTo}>
@@ -137,10 +146,13 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout, initialPage }) => {
               {currentPage === 'hr-departments' && <DepartmentMaster />}
               {currentPage === 'hr-designations' && <DesignationMaster />}
               {currentPage === 'hr-shifts' && <ShiftMaster />}
-              {currentPage === 'hr-staff-master' && <StaffMaster />}
+              {currentPage === 'hr-staff-master' && <StaffMaster mode="master" />}
+              {currentPage === 'hr-staff-profile-list' && <StaffMaster mode="profile" />}
+              {currentPage === 'hr-staff-update-list' && <StaffMaster mode="update" />}
               {currentPage === 'hr-staff-directory' && <StaffDirectory />}
               {currentPage === 'hr-staff-categories' && <StaffCategoryMaster />}
               {currentPage === 'hr-staff-statuses' && <StaffStatusMaster />}
+              {currentPage === 'hr-staff-document-types' && <StaffDocumentTypeMaster />}
               {currentPage === 'hr-biometric-devices' && <BiometricDevices />}
               {currentPage === 'hr-biometric-mapping' && <div className="p-6">Staff Biometric Mapping (Coming Soon)</div>}
               {currentPage === 'hr-attendance-summary' && <HRAttendanceSummary />}
@@ -153,10 +165,11 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout, initialPage }) => {
               {currentPage === 'academic' && <AcademicManagement navigateTo={navigateTo} />}
               {currentPage === 'academics' && <Academics />}
               {currentPage === 'timetable' && <Timetable />}
+              {currentPage === 'online-class' && <OnlineClass />}
               {currentPage === 'setup' && <SetupSchool navigateTo={navigateTo} />}
               {currentPage === 'classes-management' && <ClassesManagement />}
-              {currentPage === 'student-attendance' && <StudentAttendance />}
-              {currentPage === 'student-administration' && <StudentAdministration />}
+              {currentPage === 'student-attendance' && <StudentAttendance navigateTo={navigateTo} />}
+              {currentPage === 'student-administration' && <StudentAdministration navigateTo={navigateTo} />}
               {currentPage === 'configuration' && <Configuration navigateTo={navigateTo} />}
               {currentPage === 'document-management' && <DocumentManagement />}
               {currentPage === 'user-management' && <UserManagement />}

@@ -48,14 +48,17 @@ const FinancialLayout: React.FC<FinancialLayoutProps> = ({ children, currentPage
             ]
         },
         {
-            name: 'Petty Cash',
-            id: 'pettycash',
+            name: 'Cash Management',
+            id: 'cash-management',
             icon: <FinancialIcon className="w-5 h-5" />,
             subItems: [
                 { name: 'Petty Cash Entry', page: 'petty-cash' as Page, icon: <ReceiptIcon className="w-4 h-4" />, permission: 'fees.fee.petty-cash' },
+                { name: 'Cash Remittance Deposit', page: 'remittance-deposit' as Page, icon: <ReceiptIcon className="w-4 h-4" />, permission: 'fees.fee.remittance-deposit' },
+                { name: 'Remittance Approvals', page: 'remittance-approvals' as Page, icon: <DocumentReportIcon className="w-4 h-4" />, permission: 'fees.fee.remittance-approvals' },
                 { name: 'Fund Allocation', page: 'fund-allocation' as Page, icon: <DocumentIcon className="w-4 h-4" />, permission: 'fees.fee.petty-cash-fund-allocation' },
                 { name: 'Month Wise Ledger', page: 'month-wise-ledger' as Page, icon: <ChartBarIcon className="w-4 h-4" />, permission: 'fees.fee.petty-cash-monthly-expenses' },
                 { name: 'Petty Cash Approval', page: 'petty-cash-approval' as Page, icon: <DocumentReportIcon className="w-4 h-4" />, permission: 'fees.fee.petty-cash-approval' },
+                { name: 'Reconciliation Dashboard', page: 'reconciliation-dashboard' as Page, icon: <ChartBarIcon className="w-4 h-4" />, permission: 'fees.fee.reconciliation-dashboard' },
             ]
         },
         {

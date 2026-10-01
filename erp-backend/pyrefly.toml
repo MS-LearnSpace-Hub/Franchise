@@ -1,0 +1,12 @@
+project-includes = [
+    "**/*.py*",
+]
+
+[errors]
+unexpected-keyword = false
+unsupported-operation = false
+bad-argument-type = false
+missing-attribute = false
+not-iterable = false
+unbound-name = false
+no-matching-overload = false

@@ -20,11 +20,14 @@ from routes.auth_routes import bp as auth_bp
 from routes.student_routes import bp as student_bp
 from routes.fee_master_routes import bp as fee_master_bp
 from routes.fee_transaction_routes import bp as fee_transaction_bp
+from routes.remittance_routes import bp as remittance_bp
+from routes.reconciliation_routes import bp as reconciliation_bp
 from routes.attendance_routes import bp as attendance_bp
 from routes.report_routes import bp as report_bp
 from routes.org_routes import bp as org_bp
 from routes.academic_routes import bp as academic_bp
 from routes.timetable_routes import timetable_bp
+from routes.online_class_routes import online_class_bp
 from routes.class_routes import bp as class_bp
 from routes.test_type_routes import test_type_bp
 from routes.class_test_routes import class_test_bp
@@ -40,12 +43,12 @@ from routes.rbac_routes import bp as rbac_bp
 from routes.petty_cash_routes import petty_cash_bp
 from routes.petty_cash_report_routes import petty_cash_report_bp
 from routes.sms_routes import bp as sms_bp
-from routes.sms_routes import bp as sms_bp
 
 # HR & Attendance Modules
 from routes.hr_routes import bp as hr_bp
 from routes.biometric_routes import bp as biometric_bp
 from routes.attendance_sync import attendance_sync_bp
+from routes.staff_attendance_routes import bp as staff_attendance_bp
 from routes.media_routes import bp as media_bp
 # -----------------------------
 # LOAD ENV
@@ -141,11 +144,14 @@ def create_app():
     app.register_blueprint(student_bp)
     app.register_blueprint(fee_master_bp)
     app.register_blueprint(fee_transaction_bp)
+    app.register_blueprint(remittance_bp)
+    app.register_blueprint(reconciliation_bp)
     app.register_blueprint(attendance_bp)
     app.register_blueprint(report_bp)
     app.register_blueprint(org_bp)
     app.register_blueprint(academic_bp)
     app.register_blueprint(timetable_bp, url_prefix="/api/timetable")
+    app.register_blueprint(online_class_bp)
     app.register_blueprint(class_bp)
     app.register_blueprint(test_type_bp, url_prefix="/api/test-types")
     app.register_blueprint(class_test_bp, url_prefix="/api/class-tests")
@@ -167,6 +173,7 @@ def create_app():
     app.register_blueprint(hr_bp, url_prefix="/api/hr")
     app.register_blueprint(biometric_bp, url_prefix="/api/biometric")
     app.register_blueprint(attendance_sync_bp)
+    app.register_blueprint(staff_attendance_bp)
 
     # -----------------------------
     # SERVE UPLOADS (legacy - kept for backward compatibility)
@@ -236,9 +243,9 @@ def create_app():
     from werkzeug.exceptions import HTTPException
 
     @app.errorhandler(Exception)
-    def handle_exception(e):
+    def handle_exception(e: Exception):
         if isinstance(e, HTTPException):
-            return jsonify({'error': e.description}), e.code
+            return jsonify({'error': e.description}), e.code if e.code is not None else 500
         import traceback
         with open("global_500_error.log", "w") as f:
             f.write(traceback.format_exc() or str(e))
