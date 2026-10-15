@@ -43,6 +43,9 @@ from routes.rbac_routes import bp as rbac_bp
 from routes.petty_cash_routes import petty_cash_bp
 from routes.petty_cash_report_routes import petty_cash_report_bp
 from routes.sms_routes import bp as sms_bp
+from routes.sms_template_routes import bp as sms_template_bp
+from routes.sms_account_routes import bp as sms_account_bp
+from routes.sms_event_routes import bp as sms_event_bp
 
 # HR & Attendance Modules
 from routes.hr_routes import bp as hr_bp
@@ -167,6 +170,9 @@ def create_app():
     app.register_blueprint(petty_cash_bp, url_prefix="/api/petty-cash")
     app.register_blueprint(petty_cash_report_bp, url_prefix="/api/petty-cash-report")
     app.register_blueprint(sms_bp)
+    app.register_blueprint(sms_template_bp)
+    app.register_blueprint(sms_account_bp)
+    app.register_blueprint(sms_event_bp)
     app.register_blueprint(media_bp)
     
     # HR & Attendance Blueprints
