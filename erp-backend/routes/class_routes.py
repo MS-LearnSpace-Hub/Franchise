@@ -418,7 +418,7 @@ def copy_branch_structure(current_user):
 @token_required
 def get_class_summary(current_user):
     try:
-        academic_year = request.args.get("academic_year") or request.headers.get("X-Academic-Year", "2025-2026")
+        academic_year = request.args.get("academic_year") or request.headers.get("X-Academic-Year", "2026-2027")
         branch_id_param = request.args.get("branch_id") or request.headers.get("X-Branch-ID") # Optional filter
         if branch_id_param and branch_id_param != 'all':
             if not str(branch_id_param).isdigit():

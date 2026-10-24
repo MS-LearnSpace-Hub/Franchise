@@ -458,7 +458,7 @@ def create_location(current_user):
 @bp.route("/api/org/academic-years", methods=["GET"])
 def get_all_academic_years():
     try:
-        years = OrgMaster.query.filter_by(master_type='ACADEMIC_YEAR', is_active=True).all()
+        years = OrgMaster.query.filter_by(master_type='ACADEMIC_YEAR', is_active=True).order_by(OrgMaster.code.desc()).all()
         return jsonify({
             "academic_years": [{"id": y.id, "code": y.code, "name": y.display_name} for y in years]
         }), 200
