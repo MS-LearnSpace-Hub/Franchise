@@ -196,7 +196,7 @@ const ClassesManagement: React.FC<ClassesManagementProps> = ({ navigateTo }) => 
     const fetchClassSummary = async (branchId?: string) => {
         try {
             setLoading(true);
-            const academicYear = localStorage.getItem('academicYear') || "2025-2026";
+            const academicYear = localStorage.getItem('academicYear') || "2026-2027";
             let url = `/classes/summary?academic_year=${academicYear}`;
 
             // If branchId is passed, use it. Otherwise use state or default.
@@ -339,7 +339,7 @@ const ClassesManagement: React.FC<ClassesManagementProps> = ({ navigateTo }) => 
             const payload = {
                 source_branch_id: selectedBranch,
                 target_branch_ids: Array.from(copyTargets),
-                academic_year: localStorage.getItem('academicYear') || "2025-2026"
+                academic_year: localStorage.getItem('academicYear') || "2026-2027"
             };
 
             const res = await api.post('/classes/copy_branch_structure', payload);

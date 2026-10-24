@@ -429,6 +429,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
       localStorage.removeItem('branch');
       localStorage.removeItem('location');
       localStorage.removeItem('academicYear');
+      localStorage.removeItem('academicYearDefaultVersion');
       localStorage.removeItem('user');
       localStorage.removeItem('token');
       sessionStorage.removeItem('token');
@@ -453,9 +454,15 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
             headers: { Authorization: `Bearer ${response.data.token}` },
           });
           const yearsList = yearsRes.data.academic_years || [];
-          if (yearsList.length > 0) localStorage.setItem('academicYear', yearsList[0].name);
+          const targetDefaultYear = '2026-2027';
+          const defaultYear = yearsList.find((y: any) => y.name === targetDefaultYear)?.name
+            || (yearsList.length > 0 ? yearsList[0].name : targetDefaultYear);
+          localStorage.setItem('academicYear', defaultYear);
+          localStorage.setItem('academicYearDefaultVersion', defaultYear);
         } catch (err) {
           console.warn('Could not fetch academic years during login', err);
+          localStorage.setItem('academicYear', '2026-2027');
+          localStorage.setItem('academicYearDefaultVersion', '2026-2027');
         }
       } catch (ex) {
         console.warn('Could not persist to localStorage', ex);

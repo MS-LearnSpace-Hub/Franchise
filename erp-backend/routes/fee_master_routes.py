@@ -90,7 +90,7 @@ def create_fee_type(current_user):
         if branch not in allowed['names']:
             return jsonify({"error": f"Unauthorized: branch '{branch}' is not in your allowed list"}), 403
         
-    academic_year = data.get("academic_year", "2025-2026")
+    academic_year = data.get("academic_year", "2026-2027")
 
     if not feetype_name:
         return jsonify({"error": "Fee Type Name is required"}), 400
@@ -341,7 +341,7 @@ def create_class_fee_structure(current_user):
         update_assigned_students = data.get("update_assigned_students", False)
         created_ids = []
         class_name = data.get("class")
-        academic_year = data.get("academic_year", "2025-2026")
+        academic_year = data.get("academic_year", "2026-2027")
         fee_group = data.get("fee_group")
         branch = data.get("branch", "All") 
         allowed = get_user_allowed_branches(current_user)
