@@ -1249,6 +1249,9 @@ class SmsLog(db.Model, AuditMixin):
     school_id  = db.Column(db.Integer, db.ForeignKey('schools.id',  ondelete='SET NULL'), nullable=True)
     branch_id  = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='SET NULL'), nullable=True)
 
+    template_id = db.Column(db.Integer, db.ForeignKey('sms_templates.id', ondelete='SET NULL'), nullable=True)
+    event_id    = db.Column(db.Integer, db.ForeignKey('sms_events.id',    ondelete='SET NULL'), nullable=True)
+
     student = db.relationship('Student', foreign_keys=[student_id])
 
     __table_args__ = (
@@ -1256,7 +1259,127 @@ class SmsLog(db.Model, AuditMixin):
         db.Index('idx_sms_log_type',            'sms_type'),
         db.Index('idx_sms_log_school_branch',   'school_id', 'branch_id'),
     )
+class SmsProviderAccount(db.Model, AuditMixin):
+    """
+    SMS gateway account.
+      target_branch_id = NULL  -> the SCHOOL account
+      target_branch_id = <id>  -> that BRANCH's own account
+    A branch uses an account only if its sms_branch_settings says so (no automatic fallback).
+    The token is stored ONLY encrypted and is never returned to the frontend.
+    """
+    __tablename__ = "sms_provider_accounts"
+    __audit_module__ = "SMS"
 
+    id                   = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    school_id            = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
+    target_branch_id     = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='CASCADE'), nullable=True)
+    provider             = db.Column(db.String(30),  nullable=False, default='SMSCOUNTRY')
+    auth_key             = db.Column(db.String(120), nullable=False)
+    auth_token_encrypted = db.Column(db.Text,        nullable=False)
+    default_sender_id    = db.Column(db.String(20),  nullable=False)
+    route                = db.Column(db.String(20),  nullable=False, default='Trans')
+    dlt_entity_id        = db.Column(db.String(50),  nullable=True)    # DLT PE ID
+    extra_config         = db.Column(db.JSON,        nullable=True)    # provider-specific, non-secret
+    is_active            = db.Column(db.Boolean,     nullable=False, default=True)
+
+    school        = db.relationship('School', foreign_keys=[school_id])
+    target_branch = db.relationship('Branch', foreign_keys=[target_branch_id])
+
+    __table_args__ = (
+        db.UniqueConstraint('target_branch_id', name='uq_sms_provider_branch'),   # one own account per branch
+        db.Index('idx_sms_provider_school', 'school_id'),                         # one school account: enforced in code
+    )
+
+
+class SmsEvent(db.Model, AuditMixin):
+    """
+    SMS event created on screen.
+      event_type     : ABSENT | FEE_DUE | FEE_RECEIPT | GENERAL  (decides recipients + variables)
+      target_branch_id = NULL -> common for all branches of the school
+      custom_fields  : extra typed fields for GENERAL events, e.g. ["circular_text"]
+    Never hard-deleted (is_active = False instead).
+    """
+    __tablename__ = "sms_events"
+    __audit_module__ = "SMS"
+
+    id               = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    school_id        = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
+    target_branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='CASCADE'), nullable=True)
+    name             = db.Column(db.String(150), nullable=False)
+    event_type       = db.Column(db.String(30),  nullable=False)
+    custom_fields    = db.Column(db.JSON,        nullable=True)
+    description      = db.Column(db.String(255), nullable=True)
+    is_active        = db.Column(db.Boolean,     nullable=False, default=True)
+
+    school        = db.relationship('School', foreign_keys=[school_id])
+    target_branch = db.relationship('Branch', foreign_keys=[target_branch_id])
+
+    __table_args__ = (
+        db.Index('idx_sms_event_scope', 'school_id', 'target_branch_id', 'is_active'),
+        db.Index('idx_sms_event_type', 'event_type'),
+    )
+
+
+class SmsBranchSetting(db.Model, AuditMixin):
+    """
+    Explicit SMS choices.
+      target_branch_id = <id>  -> a branch's settings
+            account_source   : SCHOOL | OWN | NONE
+            fee_receipt_mode : COMMON | ON | OFF
+      target_branch_id = NULL  -> the school's COMMON fee-receipt setting
+            fee_receipt_mode : ON | OFF   (used only by branches set to COMMON)
+    """
+    __tablename__ = "sms_branch_settings"
+    __audit_module__ = "SMS"
+
+    id                   = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    school_id            = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
+    target_branch_id     = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='CASCADE'), nullable=True)
+    account_source       = db.Column(db.String(10), nullable=False, default='NONE')
+    fee_receipt_mode     = db.Column(db.String(10), nullable=False, default='OFF')
+    fee_receipt_event_id = db.Column(db.Integer, db.ForeignKey('sms_events.id', ondelete='SET NULL'), nullable=True)
+
+    school            = db.relationship('School', foreign_keys=[school_id])
+    target_branch     = db.relationship('Branch', foreign_keys=[target_branch_id])
+    fee_receipt_event = db.relationship('SmsEvent', foreign_keys=[fee_receipt_event_id])
+
+    __table_args__ = (
+        db.UniqueConstraint('target_branch_id', name='uq_sms_settings_branch'),   # one row per branch
+        db.Index('idx_sms_settings_school', 'school_id'),                         # one school row: enforced in code
+    )
+
+
+class SmsTemplate(db.Model, AuditMixin):
+    """
+    Message text for an SmsEvent.
+      target_branch_id = NULL -> common for all branches
+      target_branch_id = <id> -> this branch only (wins over common)
+    event_code is legacy (kept nullable for old rows).
+    """
+    __tablename__ = "sms_templates"
+    __audit_module__ = "SMS"
+
+    id               = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    school_id        = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
+    event_id         = db.Column(db.Integer, db.ForeignKey('sms_events.id', ondelete='RESTRICT'), nullable=True)
+    target_branch_id = db.Column(db.Integer, db.ForeignKey('branches.id', ondelete='CASCADE'), nullable=True)
+    event_code       = db.Column(db.String(50),  nullable=True)     # legacy
+    name             = db.Column(db.String(150), nullable=False)
+    body             = db.Column(db.Text,        nullable=False)
+    dlt_template_id  = db.Column(db.String(50),  nullable=True)
+    sender_id        = db.Column(db.String(20),  nullable=True)
+    recipient        = db.Column(db.String(20),  nullable=False, default='FATHER')
+    is_default       = db.Column(db.Boolean,     nullable=False, default=False)
+    is_active        = db.Column(db.Boolean,     nullable=False, default=True)
+
+    school        = db.relationship('School', foreign_keys=[school_id])
+    event         = db.relationship('SmsEvent', foreign_keys=[event_id])
+    target_branch = db.relationship('Branch', foreign_keys=[target_branch_id])
+
+    __table_args__ = (
+        db.Index('idx_sms_tpl_school_event', 'school_id', 'event_code', 'is_active'),
+        db.Index('idx_sms_tpl_event_scope', 'event_id', 'target_branch_id', 'is_active'),
+    )
 # ----------------------------------------------------------
 # HR & ATTENDANCE MODELS
 # ----------------------------------------------------------
@@ -1773,6 +1896,13 @@ class OnlineClass(db.Model, AuditMixin):
 # GLOBAL AUDIT EVENT LISTENERS
 # ----------------------------------------------------------
 
+def _audit_safe(col_name, value):
+    """Never copy secrets (encrypted columns) into audit_logs."""
+    if col_name.endswith("_encrypted"):
+        return "***" if value is not None else None
+    return value
+
+
 VALID_AUDIT_ACTIONS = {
     "CREATE",
     "UPDATE",
@@ -1872,7 +2002,7 @@ def receive_before_flush(session, flush_context, instances):
         for col in obj.__table__.columns:
             try:
                 value = getattr(obj, col.name)
-                new_data[col.name] = _make_serializable(value)
+                new_data[col.name] = _audit_safe(col.name, _make_serializable(value))
             except Exception:
                 new_data[col.name] = None
         
@@ -1929,8 +2059,8 @@ def receive_before_flush(session, flush_context, instances):
             old_value = hist.deleted[0] if hist.deleted else None
             new_value = hist.added[0] if hist.added else None
 
-            old_data[col.key] = _make_serializable(old_value)
-            new_data[col.key] = _make_serializable(new_value)
+            old_data[col.key] = _audit_safe(col.key, _make_serializable(old_value))
+            new_data[col.key] = _audit_safe(col.key, _make_serializable(new_value))
 
         if old_data:
             module = getattr(obj, "__audit_module__", "GENERAL")
@@ -1968,7 +2098,7 @@ def receive_before_flush(session, flush_context, instances):
         old_data = {}
         for col in obj.__table__.columns:
             try:
-                old_data[col.name] = _make_serializable(getattr(obj, col.name))
+                old_data[col.name] = _audit_safe(col.name, _make_serializable(getattr(obj, col.name)))
             except Exception:
                 old_data[col.name] = None
                 

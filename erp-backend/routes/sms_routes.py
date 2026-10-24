@@ -1,426 +1,316 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, g
+from functools import wraps
+from datetime import datetime
+import logging
+
 from extensions import db
 from models import Student, Attendance
-from helpers import token_required, require_academic_year, get_user_allowed_branches
-from datetime import datetime
+from helpers import (token_required, permission_required, has_permission,
+                     require_academic_year, get_user_allowed_branches, skip_scoping)
+from routes.sms_template_routes import ApiError, _transactional, _bool
+from services.sms_event_types import EVENT_TYPES
 
 bp = Blueprint('sms_routes', __name__)
+logger = logging.getLogger(__name__)
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#  SWAP THIS ONE FUNCTION when going to production
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-def _send_sms(phone: str, message: str) -> dict:
-    """
-    SMSCountry provider — uses Basic Auth.
-    Reads SMS_USERNAME, SMS_PASSWORD, SMS_SENDER from .env
-    """
-    import os, requests
-    username = os.environ.get("SMS_AUTH_KEY", "")
-    password = os.environ.get("SMS_AUTH_TOKEN", "")
-    sender   = os.environ.get("SMS_SENDER_ID", "SCHOOL")
+# ── Permission codes (single source of truth for this file) ──────────────
+PERM_SMS_SEND    = "administration.sms.send-sms"
+PERM_SMS_REPORTS = "administration.sms.reports"
+PERM_TAKE_FEE    = "fees.fee.take-fee"
 
-    if not username or not password:
-        print("[SMS ERROR] SMS_USERNAME or SMS_PASSWORD not set in .env")
-        return {"ok": False, "reason": "credentials not configured"}
+MAX_RECIPIENTS = 2000   # per send request
+FIELD_MAX      = 500    # typed extra field length
 
-    # SMSCountry expects 91XXXXXXXXXX format for India
-    phone_with_code = f"91{phone}"
 
-    payload = {
-        "Text":               message,
-        "Number":             phone_with_code,
-        "SenderId":           sender,
-        "DRNotifyUrl":        "https://www.domainname.com/notifyurl",
-        "DRNotifyHttpMethod": "POST",
-        "Tool":               "API"
+def require_any_permission(*rules):
+    """Allow the request if the user matches ANY (permission_code, action) pair."""
+    def decorator(func):
+        @wraps(func)
+        def wrapper(current_user, *args, **kwargs):
+            if any(has_permission(current_user, code, action) for code, action in rules):
+                return func(current_user, *args, **kwargs)
+            return jsonify({"error": "Forbidden: missing permission"}), 403
+        return wrapper
+    return decorator
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Helpers
+# ─────────────────────────────────────────────────────────────────────────────
+def _ctx():
+    return getattr(g, 'school_id', None), getattr(g, 'branch_id', None), getattr(g, 'user_id', None)
+
+
+def _student_name(s):
+    return " ".join(p for p in [s.first_name, s.last_name] if p)
+
+
+def _fmt_amount(value):
+    try:
+        v = float(value or 0)
+    except (TypeError, ValueError):
+        return str(value)
+    return str(int(v)) if v.is_integer() else f"{v:.2f}"
+
+
+def _int_list(values):
+    out = []
+    for v in values or []:
+        try:
+            i = int(v)
+        except (TypeError, ValueError):
+            continue
+        if i not in out:
+            out.append(i)
+    return out
+
+
+def _result_row(student, res):
+    row = {"student_id": student.student_id, "name": _student_name(student), "status": res["status"]}
+    if res["status"] == "sent":
+        row["phone"] = res["phone"]
+    else:
+        row["reason"] = res.get("reason") or ""
+    return row
+
+
+def _summary(results):
+    sent    = sum(1 for r in results if r["status"] == "sent")
+    failed  = sum(1 for r in results if r["status"] == "failed")
+    skipped = sum(1 for r in results if r["status"] == "skipped")
+    return {
+        "message": f"Done. Sent: {sent}, Failed: {failed}, Skipped: {skipped}",
+        "sent": sent, "failed": failed, "skipped": skipped, "results": results,
     }
 
-    try:
-        print(f"[SMS] Sending to {phone_with_code} via SMSCountry...")
-        r = requests.post(
-            "https://restapi.smscountry.com/v0.1/Accounts/{}/SMSes/".format(username),
-            json=payload,
-            auth=(username, password),
-            timeout=10
-        )
-        print(f"[SMS] Response: {r.status_code} — {r.text}")
 
-        if r.status_code in (200, 201, 202):
-            return {"ok": True, "reason": "sent"}
-        else:
-            return {"ok": False, "reason": r.text}
-
-    except Exception as e:
-        print(f"[SMS ERROR] {e}")
-        return {"ok": False, "reason": str(e)}
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-def _build_message(student_name: str, date_str: str) -> str:
-    # Format date as "2-jun" style to match DLT template
-    from datetime import datetime
-    try:
-        d = datetime.strptime(date_str, "%d %b %Y")
-        formatted = f"{d.day}-{d.strftime('%b').lower()}-{d.year}"
-    except:
-        formatted = date_str
-    return f"Dear parent ur ward is absent today {formatted}, send her regularly to college PRIN, MSDC.Asif Nagar-MS Educational and Welfare Trust."
-
-
-def _log_sms(sms_type: str, phone: str, message: str, status: str,
-             student_id=None, reason=None, sent_by=None,
-             school_id=None, branch_id=None):
-    try:
-        from models import SmsLog
-        log = SmsLog(
-            sms_type   = sms_type,
-            phone      = phone,
-            message    = message,
-            status     = status,
-            reason     = reason,
-            student_id = student_id,
-            sent_at    = datetime.utcnow(),
-            sent_by    = sent_by,
-            school_id  = school_id,
-            branch_id  = branch_id,
-        )
-        db.session.add(log)
-    except Exception as e:
-        print(f"[SMS LOG ERROR] {e}")
-
-
-@bp.route("/api/attendance/send-sms", methods=["POST"])
+# ─────────────────────────────────────────────────────────────────────────────
+#  Send screen: which events can this branch send?
+# ─────────────────────────────────────────────────────────────────────────────
+@bp.route("/api/sms/send-options", methods=["GET"])
 @token_required
-def send_absent_sms(current_user):
+@permission_required(PERM_SMS_SEND, "read")
+@_transactional
+def sms_send_options(current_user):
+    from models import SmsEvent
+    from routes.sms_account_routes import _resolve_scope
+    from services.sms_service import SmsSender
+
+    school_id, branch = _resolve_scope(current_user)
+    if not branch:
+        return jsonify({"branch": None, "account_ready": False,
+                        "account_message": "Select a branch in the top bar to send SMS.",
+                        "events": []}), 200
+
+    sender = SmsSender()
+    _, acc_reason = sender.account_for_branch(branch.id)
+
+    with skip_scoping():
+        events = SmsEvent.query.filter(
+            SmsEvent.school_id == school_id,
+            SmsEvent.is_active == True,
+            (SmsEvent.target_branch_id.is_(None)) | (SmsEvent.target_branch_id == branch.id),
+        ).order_by(SmsEvent.name).all()
+
+    out = []
+    for ev in events:
+        t = EVENT_TYPES.get(ev.event_type)
+        if not t or t["auto"]:          # fee receipt is automatic, not sent from this screen
+            continue
+        reasons = sender.readiness(ev, branch.id)
+        out.append({
+            "id": ev.id, "name": ev.name, "event_type": ev.event_type, "type_label": t["label"],
+            "is_common": ev.target_branch_id is None,
+            "custom_fields": ev.custom_fields or [],
+            "ready": not reasons, "reasons": reasons,
+        })
+
+    return jsonify({
+        "branch":          {"id": branch.id, "name": branch.branch_name},
+        "account_ready":   acc_reason is None,
+        "account_message": acc_reason or "SMS account is ready.",
+        "events":          out,
+    }), 200
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Send screen: preview or send one event to selected students
+#  Body: { event_id, student_ids, date?, cutoff_date?, fields?, preview_only? }
+# ─────────────────────────────────────────────────────────────────────────────
+@bp.route("/api/sms/send", methods=["POST"])
+@token_required
+@permission_required(PERM_SMS_SEND, "write")
+@_transactional
+def sms_send(current_user):
+    from routes.sms_account_routes import _resolve_scope
+    from services.sms_service import SmsSender, format_sms_date
+
+    data = request.json or {}
+    school_id, branch = _resolve_scope(current_user)
+    if not branch:
+        raise ApiError("Select a branch in the top bar to send SMS.")
+
+    _, _, user_id = _ctx()
+    sender = SmsSender(sent_by=user_id)
+
     try:
-        from flask import g
-        data = request.json or {}
-        date_str    = data.get("date")
-        student_ids = data.get("student_ids", [])
+        ev = sender.event(int(data.get("event_id") or 0))
+    except (TypeError, ValueError):
+        ev = None
+    if not ev:
+        raise ApiError("Please choose an event.")
+    if EVENT_TYPES.get(ev.event_type, {}).get("auto"):
+        raise ApiError("Fee receipt SMS is sent automatically after payment.")
 
-        if not date_str or not student_ids:
-            return jsonify({"error": "date and student_ids are required"}), 400
+    reasons = sender.readiness(ev, branch.id)
+    if reasons:
+        raise ApiError(" · ".join(reasons))
 
-        h_year, err, code = require_academic_year()
-        if err: return err, code
+    student_ids = _int_list(data.get("student_ids"))
+    if not student_ids:
+        raise ApiError("Please select at least one student.")
+    if len(student_ids) > MAX_RECIPIENTS:
+        raise ApiError(f"Maximum {MAX_RECIPIENTS} students per send. Please send in smaller groups.")
 
-        target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+    rows = []   # (student, extra_vars)
 
-        confirmed_absent = {
-            r.student_id for r in
-            Attendance.query.filter(
+    if ev.event_type == "ABSENT":
+        date_str = data.get("date")
+        if not date_str:
+            raise ApiError("Please choose the attendance date.")
+        try:
+            target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+        except ValueError:
+            raise ApiError("Invalid date.")
+        absent_ids = {
+            r.student_id for r in Attendance.query.filter(
                 Attendance.student_id.in_(student_ids),
                 Attendance.date == target_date,
-                Attendance.status == "Absent"
+                Attendance.status == "Absent",
             ).all()
         }
+        extra = {"date": format_sms_date(target_date)}
+        rows = [(s, extra) for s in Student.query.filter(Student.student_id.in_(absent_ids)).all()]
 
-        students = Student.query.filter(Student.student_id.in_(confirmed_absent)).all()
-
-        allowed = get_user_allowed_branches(current_user)
-        if not allowed["is_unlimited"]:
-            students = [s for s in students if s.branch in allowed["names"]]
-
-        sent, failed, skipped = 0, 0, 0
-        results = []
-        school_id = getattr(g, 'school_id', None)
-        branch_id = getattr(g, 'branch_id', None)
-        sent_by   = getattr(g, 'user_id',   None)
-
-        for s in students:
-            raw_phone = s.FatherPhone or ""
-            phone = str(raw_phone).strip().replace(" ", "").replace("+91", "").lstrip("0")
-
-            if len(phone) != 10 or not phone.isdigit():
-                skipped += 1
-                _log_sms("ATTENDANCE", phone or raw_phone, "", "skipped",
-                         student_id=s.student_id, reason="No valid phone number",
-                         sent_by=sent_by, school_id=school_id,
-                         branch_id=s.branch_id or branch_id)
-                results.append({
-                    "student_id": s.student_id,
-                    "name": f"{s.first_name} {s.last_name}",
-                    "status": "skipped",
-                    "reason": "No valid phone number"
-                })
-                continue
-
-            msg = _build_message(
-                student_name=f"{s.first_name} {s.last_name}",
-                date_str=target_date.strftime("%d %b %Y")
-            )
-
-            result = _send_sms(phone, msg)
-            status = "sent" if result["ok"] else "failed"
-            _log_sms("ATTENDANCE", phone, msg, status,
-                     student_id=s.student_id,
-                     reason=None if result["ok"] else result.get("reason"),
-                     sent_by=sent_by, school_id=school_id,
-                     branch_id=s.branch_id or branch_id)
-
-            if result["ok"]:
-                sent += 1
-                results.append({
-                    "student_id": s.student_id,
-                    "name": f"{s.first_name} {s.last_name}",
-                    "status": "sent",
-                    "phone": f"XXXXXX{phone[-4:]}"
-                })
-            else:
-                failed += 1
-                results.append({
-                    "student_id": s.student_id,
-                    "name": f"{s.first_name} {s.last_name}",
-                    "status": "failed",
-                    "reason": result.get("reason", "")
-                })
-
-        db.session.commit()
-        return jsonify({
-            "message": f"Done. Sent: {sent}, Failed: {failed}, Skipped: {skipped}",
-            "sent": sent, "failed": failed, "skipped": skipped,
-            "results": results
-        }), 200
-
-    except Exception as e:
-        import traceback; traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
-    
-@bp.route("/api/sms/send-fee-receipt", methods=["POST"])
-@token_required
-def send_fee_receipt_sms(current_user):
-    """
-    Send fee receipt SMS after payment collection.
-    Body: {
-        "phone": "9390769913",
-        "paid_amount": 1000,
-        "total_amount": 2080,
-        "admission_no": "vocJC0001",
-        "balance": 1080,
-        "branch_name": "Main Branch"
-    }
-    """
-    try:
-        import os, requests
-        data       = request.json or {}
-        phone_raw  = data.get("phone", "")
-        paid       = data.get("paid_amount", 0)
-        total      = data.get("total_amount", 0)
-        adm_no     = data.get("admission_no", "")
-        balance    = data.get("balance", 0)
-        branch     = data.get("branch_name", "School")
-
-        if not phone_raw:
-            return jsonify({"error": "phone is required"}), 400
-
-        # Sanitise phone
-        phone = str(phone_raw).strip().replace(" ", "").replace("+91", "").lstrip("0")
-        if len(phone) != 10 or not phone.isdigit():
-            return jsonify({"error": f"Invalid phone number: {phone_raw}"}), 400
-
-        phone_with_code = f"91{phone}"
-
-        # Build message matching your DLT template exactly
-        message = (
-            f"We have received an amount of Rs.{paid} towards fees against "
-            f"Term {total} on GR No {adm_no} .In case of any variance "
-            f"{balance} discrepancies please contact {branch}"
-        )
-
-        username    = os.environ.get("SMS_AUTH_KEY", "")
-        password    = os.environ.get("SMS_AUTH_TOKEN", "")
-        sender      = os.environ.get("SMS_FEE_SENDER_ID", os.environ.get("SMS_SENDER_ID", "SCHOOL"))
-        template_id = os.environ.get("SMS_FEE_TEMPLATE_ID", "")
-
-        student_id = data.get("student_id")
-
-        if not username or not password:
-            return jsonify({"error": "SMS credentials not configured"}), 500
-
-        payload = {
-            "Text":       message,
-            "Number":     phone_with_code,
-            "SenderId":   sender,
-            "Route":      os.environ.get("SMS_ROUTE", "Trans"),
-            "Tool":       "API",
-            "TemplateId": template_id
-        }
-
-        from flask import g
-        school_id  = getattr(g, 'school_id', None)
-        branch_id  = getattr(g, 'branch_id', None)
-        sent_by    = getattr(g, 'user_id',   None)
-        student_id = data.get("student_id")
-
-        print(f"[FEE SMS] Sending to {phone_with_code}...")
-        r = requests.post(
-            f"https://restapi.smscountry.com/v0.1/Accounts/{username}/SMSes/",
-            json=payload,
-            auth=(username, password),
-            timeout=10
-        )
-        print(f"[FEE SMS] Response: {r.status_code} — {r.text}")
-
-        status = "sent" if r.status_code in (200, 201, 202) else "failed"
-        _log_sms("FEE_RECEIPT", phone, message, status,
-                 student_id=student_id,
-                 reason=None if status == "sent" else r.text,
-                 sent_by=sent_by, school_id=school_id, branch_id=branch_id)
-        db.session.commit()
-
-        if status == "sent":
-            return jsonify({"ok": True, "message": "SMS sent"}), 200
-        else:
-            return jsonify({"ok": False, "message": r.text}), 200
-
-    except Exception as e:
-        import traceback; traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
-@bp.route("/api/sms/send-fee-due", methods=["POST"])
-@token_required
-def send_fee_due_sms(current_user):
-    import os
-    import requests as req_lib
-    try:
-        from flask import g
+    elif ev.event_type == "FEE_DUE":
         from models import StudentFee
         from sqlalchemy import func
 
-        data        = request.json or {}
-        student_ids = data.get("student_ids", [])
-        cutoff_str  = data.get("cutoff_date")  # optional: only sum overdue-as-of-cutoff
-
-        if not student_ids:
-            return jsonify({"error": "student_ids are required"}), 400
-
         h_year, err, code = require_academic_year()
-        if err: return err, code
+        if err:
+            return err, code
 
-        base_query = db.session.query(
-            Student,
-            func.sum(StudentFee.due_amount).label("total_due"),
-        ).join(StudentFee).filter(
-            Student.student_id.in_(student_ids),
-            StudentFee.academic_year == h_year,
-            StudentFee.is_active == True,
-            StudentFee.due_amount > 0
-        )
-
+        q = db.session.query(Student, func.sum(StudentFee.due_amount).label("total_due")) \
+            .join(StudentFee).filter(
+                Student.student_id.in_(student_ids),
+                StudentFee.academic_year == h_year,
+                StudentFee.is_active == True,
+                StudentFee.due_amount > 0,
+            )
+        cutoff_str = data.get("cutoff_date")
         if cutoff_str:
-            cutoff_date = datetime.strptime(cutoff_str, "%Y-%m-%d").date()
-            base_query = base_query.filter(
-                StudentFee.due_date != None,
-                StudentFee.due_date <= cutoff_date
-            )
-
-        rows = base_query.group_by(Student.student_id).all()
-
-        allowed = get_user_allowed_branches(current_user)
-        if not allowed["is_unlimited"]:
-            rows = [r for r in rows if r[0].branch in allowed["names"]]
-
-        username    = os.environ.get("SMS_AUTH_KEY", "")
-        password    = os.environ.get("SMS_AUTH_TOKEN", "")
-        sender      = os.environ.get("SMS_SENDER_ID", "SCHOOL")
-        template_id = os.environ.get("SMS_DUE_TEMPLATE_ID", "")
-
-        school_id = getattr(g, 'school_id', None)
-        branch_id = getattr(g, 'branch_id', None)
-        sent_by   = getattr(g, 'user_id',   None)
-
-        sent, failed, skipped = 0, 0, 0
-        results = []
-
-        for s, due in rows:
-            raw_phone = s.FatherPhone or ""
-            phone = str(raw_phone).strip().replace(" ", "").replace("+91", "").lstrip("0")
-
-            if len(phone) != 10 or not phone.isdigit():
-                skipped += 1
-                _log_sms("FEE_DUE", phone or str(raw_phone), "", "skipped",
-                         student_id=s.student_id, reason="No valid phone number",
-                         sent_by=sent_by, school_id=school_id,
-                         branch_id=s.branch_id or branch_id)
-                results.append({
-                    "student_id": s.student_id,
-                    "name": f"{s.first_name} {s.last_name}",
-                    "status": "skipped",
-                    "reason": "No valid phone number"
-                })
-                continue
-
-            phone_with_code = f"91{phone}"
-            message = (
-                "Dear Parent, Kindly clear the fee dues as soon as possible. "
-                "If the fees is cleared kindly ignore. MSDC Asif Nagar. "
-                "MS Educational and Welfare Trust."
-            )
-
-            payload = {
-                "Text":               message,
-                "Number":             phone_with_code,
-                "SenderId":           sender,
-                "DRNotifyUrl":        "https://www.domainname.com/notifyurl",
-                "DRNotifyHttpMethod": "POST",
-                "Tool":               "API",
-                "TemplateId":         template_id
-            }
-
             try:
-                r = req_lib.post(
-                    f"https://restapi.smscountry.com/v0.1/Accounts/{username}/SMSes/",
-                    json=payload,
-                    auth=(username, password),
-                    timeout=10
-                )
-                print(f"[FEE DUE SMS] {phone_with_code} → {r.status_code} {r.text}")
-                sms_status = "sent" if r.status_code in (200, 201, 202) else "failed"
-                _log_sms("FEE_DUE", phone, message, sms_status,
-                         student_id=s.student_id,
-                         reason=None if sms_status == "sent" else r.text,
-                         sent_by=sent_by, school_id=school_id,
-                         branch_id=s.branch_id or branch_id)
-                if sms_status == "sent":
-                    sent += 1
-                    results.append({
-                        "student_id": s.student_id,
-                        "name": f"{s.first_name} {s.last_name}",
-                        "status": "sent",
-                        "phone": f"XXXXXX{phone[-4:]}"
-                    })
-                else:
-                    failed += 1
-                    results.append({
-                        "student_id": s.student_id,
-                        "name": f"{s.first_name} {s.last_name}",
-                        "status": "failed",
-                        "reason": r.text
-                    })
-            except Exception as e:
-                failed += 1
-                _log_sms("FEE_DUE", phone, message, "failed",
-                         student_id=s.student_id, reason=str(e),
-                         sent_by=sent_by, school_id=school_id,
-                         branch_id=s.branch_id or branch_id)
-                results.append({
-                    "student_id": s.student_id,
-                    "name": f"{s.first_name} {s.last_name}",
-                    "status": "failed",
-                    "reason": str(e)
-                })
+                cutoff = datetime.strptime(cutoff_str, "%Y-%m-%d").date()
+            except ValueError:
+                raise ApiError("Invalid cutoff date.")
+            q = q.filter(StudentFee.due_date != None, StudentFee.due_date <= cutoff)
+        cutoff_text = format_sms_date(cutoff_str) if cutoff_str else ""
+        rows = [(s, {"due_amount": _fmt_amount(due), "cutoff_date": cutoff_text})
+                for s, due in q.group_by(Student.student_id).all()]
+
+    elif ev.event_type == "GENERAL":
+        fields = data.get("fields") or {}
+        extra = {}
+        for f in (ev.custom_fields or []):
+            value = str(fields.get(f) or "").strip()
+            if not value:
+                raise ApiError(f"Please fill in '{f}'.")
+            if len(value) > FIELD_MAX:
+                raise ApiError(f"'{f}' must be {FIELD_MAX} characters or less.")
+            extra[f] = value
+        rows = [(s, extra) for s in Student.query.filter(
+            Student.student_id.in_(student_ids), Student.status == "Active").all()]
+
+    else:
+        raise ApiError("This event type can't be sent from this screen.")
+
+    # Only students of the selected branch (and branches the user can access)
+    allowed = get_user_allowed_branches(current_user)
+    rows = [(s, x) for s, x in rows
+            if sender.branch_id_of(s) == branch.id
+            and (allowed["is_unlimited"] or branch.id in (allowed["ids"] or set()))]
+    if not rows:
+        raise ApiError("None of the selected students are eligible for this SMS in this branch.")
+
+    if _bool(data.get("preview_only")):
+        s, extra = rows[0]
+        text, problem = sender.render_for_student(ev, s, extra)
+        return jsonify({"recipients": len(rows), "preview": text,
+                        "preview_student": _student_name(s), "problem": problem}), 200
+
+    results = [_result_row(s, sender.send_to_student(ev, s, extra)) for s, extra in rows]
+    db.session.commit()
+    return jsonify(_summary(results)), 200
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Fee receipt — called automatically after fee collection.
+#  Always returns 200 so it can NEVER disturb the payment.
+# ─────────────────────────────────────────────────────────────────────────────
+@bp.route("/api/sms/send-fee-receipt", methods=["POST"])
+@token_required
+@require_any_permission(
+    (PERM_SMS_SEND, "write"),
+    (PERM_TAKE_FEE, "write"),
+    (PERM_TAKE_FEE, "append"),
+)
+def send_fee_receipt_sms(current_user):
+    try:
+        from services.sms_service import SmsSender
+
+        data = request.json or {}
+        _, branch_id, user_id = _ctx()
+        sender = SmsSender(sent_by=user_id)
+
+        student_id = data.get("student_id")
+        student = Student.query.get(student_id) if student_id else None
+        if student:
+            branch_id = sender.branch_id_of(student) or branch_id
+        if not branch_id:
+            return jsonify({"ok": False, "message": "No branch for this payment; fee receipt SMS not sent."}), 200
+
+        ev, reason = sender.fee_receipt_event(branch_id)
+        if reason:                                     # switched off: nothing to send, nothing logged
+            return jsonify({"ok": False, "message": reason}), 200
+
+        extra = {
+            "paid_amount":  _fmt_amount(data.get("paid_amount", 0)),
+            "total_amount": _fmt_amount(data.get("total_amount", 0)),
+            "balance":      _fmt_amount(data.get("balance", 0)),
+        }
+        if data.get("admission_no"):
+            extra["admission_no"] = data.get("admission_no")
+
+        if student:
+            res = sender.send_to_student(ev, student, extra)
+        else:
+            b = sender.branch(branch_id)
+            variables = {"school_name": sender.school_name(b.school_id) if b else "",
+                         "branch_name": b.branch_name if b else ""}
+            variables.update(extra)
+            res = sender.send_to_phone(ev, branch_id, data.get("phone"), variables)
 
         db.session.commit()
-        return jsonify({
-            "message": f"Done. Sent: {sent}, Failed: {failed}, Skipped: {skipped}",
-            "sent": sent, "failed": failed, "skipped": skipped,
-            "results": results
-        }), 200
+        return jsonify({"ok": res["status"] == "sent",
+                        "message": "SMS sent" if res["status"] == "sent" else (res.get("reason") or "SMS not sent")}), 200
 
-    except Exception as e:
-        import traceback; traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
-
+    except Exception:
+        db.session.rollback()
+        logger.exception("Fee receipt SMS failed")
+        return jsonify({"ok": False, "message": "Fee receipt SMS failed"}), 200
 @bp.route("/api/sms/reports", methods=["GET"])
 @token_required
+@permission_required(PERM_SMS_REPORTS, "read")
 def sms_reports(current_user):
     try:
         from flask import g
@@ -471,6 +361,9 @@ def sms_reports(current_user):
             q = q.filter(SmsLog.sms_type == sms_type)
         if status_filter:
             q = q.filter(SmsLog.status == status_filter)
+        event_filter = request.args.get("event_id", type=int)
+        if event_filter:
+            q = q.filter(SmsLog.event_id == event_filter)
 
         # Summary stats per type
         stats_q = db.session.query(
@@ -540,8 +433,12 @@ def sms_reports(current_user):
              .all()
         )
 
-        from models import Branch
+        from models import Branch, SmsEvent
         branch_map = {b.id: b.branch_name for b in Branch.query.all()}
+        event_ids  = {r.event_id for r in records if r.event_id}
+        with skip_scoping():
+            event_map = ({e.id: e.name for e in SmsEvent.query.filter(SmsEvent.id.in_(event_ids)).all()}
+                         if event_ids else {})
 
         rows = []
         for rec in records:
@@ -551,6 +448,7 @@ def sms_reports(current_user):
             rows.append({
                 "id":           rec.id,
                 "sms_type":     rec.sms_type,
+                "event_name":   event_map.get(rec.event_id) or "—",
                 "phone":        f"XXXXXX{rec.phone[-4:]}" if rec.phone and len(rec.phone) >= 4 else rec.phone,
                 "status":       rec.status,
                 "reason":       rec.reason,
