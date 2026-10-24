@@ -103,6 +103,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     localStorage.removeItem("currentSchool");
     localStorage.removeItem("currentLocation");
     localStorage.removeItem("academicYear");
+    localStorage.removeItem("academicYearDefaultVersion");
     setUserState(null);
   }, []);
 
