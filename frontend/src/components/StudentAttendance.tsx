@@ -20,7 +20,7 @@ interface StudentAttendanceProps {
     defaultTab?: AttendanceTab;
 }
 
-type AttendanceTab = 'take' | 'today' | 'register' | 'absent-report';
+type AttendanceTab = 'take' | 'today' | 'register' | 'delete' | 'absent-report';
 
 interface AttendanceHeaderProps {
     activeTab: AttendanceTab;
@@ -31,8 +31,10 @@ interface AttendanceHeaderProps {
 
 const AttendanceHeader: React.FC<AttendanceHeaderProps> = ({ activeTab, onTabChange, onAction, navigateTo }) => {
     const [openDropdown, setOpenDropdown] = useState<string | null>(null);
-    const buttonStyle = "px-3 py-1.5 text-sm border border-gray-300 bg-white text-gray-700 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-violet-500";
-    const activeButtonStyle = "px-3 py-1.5 text-sm border border-transparent bg-sky-600 text-white rounded-md";
+    const buttonStyle = "px-3 py-1.5 text-sm border border-gray-300 bg-white text-gray-700 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-violet-500 font-medium transition-colors";
+    const activeButtonStyle = "px-3 py-1.5 text-sm border border-transparent bg-sky-600 text-white rounded-md font-medium shadow-sm";
+    const deleteActiveStyle = "px-3 py-1.5 text-sm border border-transparent bg-red-600 text-white rounded-md font-semibold shadow-sm";
+    const deleteButtonStyle = "px-3 py-1.5 text-sm border border-red-300 bg-red-50 text-red-700 hover:bg-red-100 rounded-md font-semibold transition-colors";
 
     const Dropdown: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => {
         const isOpen = openDropdown === title;
@@ -86,6 +88,9 @@ const AttendanceHeader: React.FC<AttendanceHeaderProps> = ({ activeTab, onTabCha
                     <button className={buttonStyle} onClick={() => navigateTo?.('student-administration')}>Student Directory</button>
                     <button className={activeTab === 'take' ? activeButtonStyle : buttonStyle} onClick={() => onTabChange('take')}>Take Attendance</button>
                     <button className={activeTab === 'register' ? activeButtonStyle : buttonStyle} onClick={() => onTabChange('register')}>Register View</button>
+                    <button className={activeTab === 'delete' ? deleteActiveStyle : deleteButtonStyle} onClick={() => onTabChange('delete')}>
+                        Delete Attendance
+                    </button>
                     <Dropdown title="Reports">
                         <DropdownItem action="Absent Report">Absent Report</DropdownItem>
                         <DropdownItem action="SMS">Send SMS To All Present Students</DropdownItem>
@@ -227,6 +232,32 @@ const TakeAttendanceForm: React.FC = () => {
         setAttendance(updated);
     };
 
+    const handleDeleteDateAttendance = async () => {
+        if (!selectedClass || !attendanceDate) return;
+        if (!window.confirm(`Are you sure you want to delete ALL attendance records for Class ${selectedClass}${selectedSection ? ` (Section ${selectedSection})` : ''} on ${attendanceDate}?\nThis will remove attendance for all students on this date.`)) {
+            return;
+        }
+        setLoading(true);
+        try {
+            const academicYear = localStorage.getItem('academicYear') || '';
+            const res = await api.delete('/attendance', {
+                data: {
+                    date: attendanceDate,
+                    class: selectedClass,
+                    section: selectedSection,
+                    academic_year: academicYear
+                }
+            });
+            alert(res.data?.message || "Attendance deleted successfully for this date.");
+            handleGetStudents();
+        } catch (error: any) {
+            console.error("Delete attendance error", error);
+            alert(`Failed to delete attendance: ${error.response?.data?.error || error.message}`);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     // const absentIds = students
     //     .filter(s => attendance[s.student_id!] === 'Absent')
     //     .map(s => s.student_id!);
@@ -344,38 +375,19 @@ const TakeAttendanceForm: React.FC = () => {
 
                     {students.length > 0 && (
                         <div className="overflow-x-auto border rounded-lg">
-                            <div className="p-2 bg-gray-50 border-b flex gap-2">
-                                <button onClick={() => markAll('Present')} className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded border border-green-200 hover:bg-green-200">Mark All Present</button>
-                                <button onClick={() => markAll('Absent')} className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded border border-red-200 hover:bg-red-200">Mark All Absent</button>
-                                {/* <div className="h-4 w-px bg-gray-300" />
-                                <label className="flex items-center gap-1.5 cursor-pointer text-xs text-gray-600 select-none">
-                                    <input
-                                        type="checkbox"
-                                        checked={absentIds.length > 0 && smsSelected.size === absentIds.length}
-                                        ref={el => { if (el) el.indeterminate = smsSelected.size > 0 && smsSelected.size < absentIds.length; }}
-                                        onChange={e => toggleSelectAllAbsent(e.target.checked)}
-                                        className="h-3.5 w-3.5 accent-violet-600"
-                                    />
-                                    Select all absent
-                                </label>
-                                {smsSelected.size > 0 && (
-                                    <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
-                                        {smsSelected.size} selected
-                                    </span>
+                            <div className="p-2 bg-gray-50 border-b flex flex-wrap items-center gap-2">
+                                <button onClick={() => markAll('Present')} className="text-xs bg-green-100 text-green-700 px-2.5 py-1 rounded border border-green-200 hover:bg-green-200 font-medium">Mark All Present</button>
+                                <button onClick={() => markAll('Absent')} className="text-xs bg-red-100 text-red-700 px-2.5 py-1 rounded border border-red-200 hover:bg-red-200 font-medium">Mark All Absent</button>
+                                <button onClick={() => markAll('')} className="text-xs bg-gray-100 text-gray-700 px-2.5 py-1 rounded border border-gray-200 hover:bg-gray-200 font-medium">Clear All</button>
+                                {isUpdateMode && (
+                                    <button
+                                        onClick={handleDeleteDateAttendance}
+                                        disabled={loading}
+                                        className="text-xs bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded font-semibold ml-auto transition-colors shadow-sm"
+                                    >
+                                        Delete Attendance for {attendanceDate}
+                                    </button>
                                 )}
-                                <button
-                                    onClick={handleSendSms}
-                                    disabled={smsSelected.size === 0 || sendingSms}
-                                    className="ml-auto text-xs bg-orange-500 hover:bg-orange-600 disabled:bg-gray-300 text-white px-3 py-1 rounded font-medium flex items-center gap-1"
-                                >
-                                    {sendingSms ? 'Sending…' : `📱 Send SMS (${smsSelected.size})`}
-                                </button>
-                                {smsResult && (
-                                    <span className="text-xs text-gray-500">
-                                        ✅ {smsResult.sent} sent · ⏭ {smsResult.skipped} skipped
-                                        {smsResult.failed > 0 && <> · ❌ {smsResult.failed} failed</>}
-                                    </span>
-                                )} */}
                             </div>
                             <table className="min-w-full divide-y divide-gray-200 text-m">
                                 <thead className="bg-gray-50">
@@ -667,6 +679,30 @@ const RegisterViewTab: React.FC = () => {
         );
     };
 
+    const handleDeleteStudentMonth = async (student: any) => {
+        const monthName = new Date(0, selectedMonth - 1).toLocaleString('default', { month: 'long' });
+        if (!window.confirm(`Are you sure you want to delete ALL attendance records for ${student.name} (${student.admNo || ''}) for ${monthName} ${selectedYear}?\n\nThis will remove their attendance for this entire month.`)) {
+            return;
+        }
+        setLoading(true);
+        try {
+            const res = await api.delete('/attendance', {
+                data: {
+                    student_id: student.student_id,
+                    month: selectedMonth,
+                    year: selectedYear
+                }
+            });
+            alert(res.data?.message || `Attendance deleted for ${student.name} for ${monthName}.`);
+            handleGetReport();
+        } catch (error: any) {
+            console.error("Failed to delete month attendance", error);
+            alert(`Failed to delete attendance: ${error.response?.data?.error || error.message}`);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     return (
         <div className="p-4">
             <div className="bg-white rounded-lg shadow-md border">
@@ -749,6 +785,7 @@ const RegisterViewTab: React.FC = () => {
                                         <th className="px-2 py-2 text-center font-medium text-gray-700 bg-blue-50">Absent</th>
                                         <th className="px-2 py-2 text-center font-medium text-gray-700 bg-blue-50">Total Working Days</th>
                                         <th className="px-2 py-2 text-center font-medium text-gray-700 bg-blue-50">Attendance %</th>
+                                        <th className="px-2 py-2 text-center font-medium text-red-700 bg-red-50 border-l border-red-100">Action</th>
                                     </tr>
 
                                 </thead>
@@ -812,7 +849,15 @@ const RegisterViewTab: React.FC = () => {
                                                 <td className="px-2 py-1 text-center font-bold text-red-700 bg-blue-50">{absentCount}</td>
                                                 <td className="px-2 py-1 text-center font-semibold text-gray-700 bg-blue-50">{workingDays}</td>
                                                 <td className="px-2 py-1 text-center font-bold text-blue-700 bg-blue-50">{percentage}%</td>
-
+                                                <td className="px-2 py-1 text-center bg-white border-l border-gray-100">
+                                                    <button
+                                                        onClick={() => handleDeleteStudentMonth(student)}
+                                                        title={`Delete all attendance for ${student.name} in ${new Date(0, selectedMonth - 1).toLocaleString('default', { month: 'long' })}`}
+                                                        className="text-[11px] bg-red-50 hover:bg-red-100 text-red-600 hover:text-red-800 border border-red-200 px-2 py-0.5 rounded font-medium transition-colors"
+                                                    >
+                                                        Clear Month
+                                                    </button>
+                                                </td>
                                             </tr>
 
                                         );
@@ -957,6 +1002,30 @@ const MonthlyAttendanceEntryTab: React.FC = () => {
             ...prev,
             [key]: newStatus
         }));
+    };
+
+    const handleClearStudentMonth = async (student: any) => {
+        const monthName = new Date(0, selectedMonth - 1).toLocaleString('default', { month: 'long' });
+        if (!window.confirm(`Are you sure you want to delete ALL attendance records for ${student.name} (${student.admNo || ''}) for ${monthName} ${selectedYear}?\n\nThis will remove their attendance records for this entire month.`)) {
+            return;
+        }
+        setSaving(true);
+        try {
+            const res = await api.delete('/attendance', {
+                data: {
+                    student_id: student.student_id,
+                    month: selectedMonth,
+                    year: selectedYear
+                }
+            });
+            alert(res.data?.message || `Attendance deleted for ${student.name}.`);
+            handleGetStudents();
+        } catch (error: any) {
+            console.error("Failed to clear student month", error);
+            alert(`Failed to delete attendance: ${error.response?.data?.error || error.message}`);
+        } finally {
+            setSaving(false);
+        }
     };
 
     const handleReset = () => {
@@ -1230,6 +1299,7 @@ const MonthlyAttendanceEntryTab: React.FC = () => {
                                                     </th>
                                                 );
                                             })}
+                                            <th className="px-2 py-1 text-center font-medium text-red-700 bg-red-50 border-l border-red-200">Action</th>
                                         </tr>
                                     </thead>
                                     <tbody className="bg-white divide-y divide-gray-200">
@@ -1271,6 +1341,16 @@ const MonthlyAttendanceEntryTab: React.FC = () => {
                                                         </td>
                                                     );
                                                 })}
+                                                <td className="px-2 py-1 text-center border-l border-gray-200">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleClearStudentMonth(student)}
+                                                        className="text-[11px] bg-red-50 hover:bg-red-100 text-red-600 hover:text-red-800 border border-red-200 px-2 py-0.5 rounded font-medium transition-colors whitespace-nowrap"
+                                                        title={`Delete all attendance records for ${student.name} in this month`}
+                                                    >
+                                                        Clear Month
+                                                    </button>
+                                                </td>
                                             </tr>
                                         ))}
                                     </tbody>
@@ -1828,6 +1908,442 @@ const AbsentReport: React.FC = () => {
     );
 };
 
+const DeleteAttendanceTab: React.FC = () => {
+    const [deleteType, setDeleteType] = useState<'date' | 'month' | 'holiday' | 'student'>('date');
+    const [selectedClass, setSelectedClass] = useState('');
+    const [selectedSection, setSelectedSection] = useState('');
+    const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+    const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
+    const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+    const [fromDate, setFromDate] = useState('');
+    const [toDate, setToDate] = useState('');
+    const [searchQuery, setSearchQuery] = useState('');
+    const [searchResults, setSearchResults] = useState<any[]>([]);
+    const [selectedStudent, setSelectedStudent] = useState<any>(null);
+    const [studentScope, setStudentScope] = useState<'date' | 'month' | 'range'>('date');
+    const [loading, setLoading] = useState(false);
+    const [resultMessage, setResultMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+
+    const [classOptions, setClassOptions] = useState<{ id: number, class_name: string }[]>([]);
+    const [sectionOptions, setSectionOptions] = useState<string[]>([]);
+
+    useEffect(() => {
+        api.get('/classes')
+            .then(res => setClassOptions(filterClassesForUser(res.data.classes || [])))
+            .catch(err => console.error("Failed to load classes", err));
+    }, []);
+
+    useEffect(() => {
+        if (!selectedClass) {
+            setSectionOptions([]);
+            setSelectedSection('');
+            return;
+        }
+
+        const branch = getNormalizedBranch();
+        const academicYear = localStorage.getItem('academicYear') || '';
+        api.get('/sections', {
+            params: {
+                class: selectedClass,
+                branch,
+                academic_year: academicYear,
+            }
+        })
+            .then(res => setSectionOptions(res.data.sections || []))
+            .catch(err => {
+                console.error("Failed to load sections", err);
+                setSectionOptions([]);
+            });
+    }, [selectedClass]);
+
+    const handleSearchStudent = async () => {
+        if (!searchQuery) {
+            alert("Please enter a student name or admission number");
+            return;
+        }
+        setLoading(true);
+        try {
+            const branch = getNormalizedBranch();
+            const res = await api.get('/students', { params: { search: searchQuery, branch } });
+            setSearchResults(res.data.students || []);
+        } catch (e: any) {
+            alert("Error searching students: " + (e.response?.data?.error || e.message));
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleDelete = async () => {
+        setResultMessage(null);
+        const academicYear = localStorage.getItem('academicYear') || '';
+
+        if (deleteType === 'date') {
+            if (!selectedClass || !date) {
+                alert("Please select both Class and Date.");
+                return;
+            }
+            if (!window.confirm(`Are you sure you want to delete ALL attendance records for Class ${selectedClass}${selectedSection ? ` (Section ${selectedSection})` : ''} on ${date}?`)) {
+                return;
+            }
+            setLoading(true);
+            try {
+                const res = await api.delete('/attendance', {
+                    data: {
+                        date,
+                        class: selectedClass,
+                        section: selectedSection,
+                        academic_year: academicYear
+                    }
+                });
+                setResultMessage({ type: 'success', text: res.data?.message || "Attendance deleted successfully." });
+            } catch (e: any) {
+                setResultMessage({ type: 'error', text: e.response?.data?.error || e.message });
+            } finally {
+                setLoading(false);
+            }
+        } else if (deleteType === 'month') {
+            if (!selectedClass || !selectedMonth || !selectedYear) {
+                alert("Please select Class, Month, and Year.");
+                return;
+            }
+            const monthName = new Date(0, selectedMonth - 1).toLocaleString('default', { month: 'long' });
+            if (!window.confirm(`Are you sure you want to delete ALL attendance records for Class ${selectedClass}${selectedSection ? ` (Section ${selectedSection})` : ''} for ${monthName} ${selectedYear}?`)) {
+                return;
+            }
+            setLoading(true);
+            try {
+                const res = await api.delete('/attendance', {
+                    data: {
+                        class: selectedClass,
+                        section: selectedSection,
+                        month: selectedMonth,
+                        year: selectedYear,
+                        academic_year: academicYear
+                    }
+                });
+                setResultMessage({ type: 'success', text: res.data?.message || "Attendance deleted successfully." });
+            } catch (e: any) {
+                setResultMessage({ type: 'error', text: e.response?.data?.error || e.message });
+            } finally {
+                setLoading(false);
+            }
+        } else if (deleteType === 'holiday') {
+            if (!selectedMonth || !selectedYear) {
+                alert("Please select Month and Year.");
+                return;
+            }
+            const monthName = new Date(0, selectedMonth - 1).toLocaleString('default', { month: 'long' });
+            if (!window.confirm(`Are you sure you want to clean up attendance records on all holidays/weekly-offs for ${selectedClass ? `Class ${selectedClass} in ` : ''}${monthName} ${selectedYear}?`)) {
+                return;
+            }
+            setLoading(true);
+            try {
+                const branch = getNormalizedBranch();
+                const res = await api.post('/attendance/cleanup-holidays', {
+                    class: selectedClass || undefined,
+                    section: selectedSection || undefined,
+                    month: selectedMonth,
+                    year: selectedYear,
+                    branch: branch !== 'All' ? branch : undefined
+                });
+                setResultMessage({ type: 'success', text: res.data?.message || "Holidays attendance cleaned up successfully." });
+            } catch (e: any) {
+                setResultMessage({ type: 'error', text: e.response?.data?.error || e.message });
+            } finally {
+                setLoading(false);
+            }
+        } else if (deleteType === 'student') {
+            if (!selectedStudent) {
+                alert("Please select a student.");
+                return;
+            }
+            const sName = `${selectedStudent.first_name || ''} ${selectedStudent.last_name || ''}`.trim() || selectedStudent.name;
+            const payload: any = { student_id: selectedStudent.student_id, academic_year: academicYear };
+
+            if (studentScope === 'date') {
+                if (!date) { alert("Please select date."); return; }
+                if (!window.confirm(`Delete attendance record for ${sName} on ${date}?`)) return;
+                payload.date = date;
+            } else if (studentScope === 'month') {
+                const monthName = new Date(0, selectedMonth - 1).toLocaleString('default', { month: 'long' });
+                if (!window.confirm(`Delete ALL attendance records for ${sName} for ${monthName} ${selectedYear}?`)) return;
+                payload.month = selectedMonth;
+                payload.year = selectedYear;
+            } else if (studentScope === 'range') {
+                if (!fromDate || !toDate) { alert("Please select both From and To dates."); return; }
+                if (!window.confirm(`Delete attendance records for ${sName} from ${fromDate} to ${toDate}?`)) return;
+                payload.from_date = fromDate;
+                payload.to_date = toDate;
+            }
+
+            setLoading(true);
+            try {
+                const res = await api.delete('/attendance', { data: payload });
+                setResultMessage({ type: 'success', text: res.data?.message || "Student attendance deleted successfully." });
+            } catch (e: any) {
+                setResultMessage({ type: 'error', text: e.response?.data?.error || e.message });
+            } finally {
+                setLoading(false);
+            }
+        }
+    };
+
+    return (
+        <div className="p-4">
+            <div className="bg-white rounded-lg shadow-md border max-w-4xl mx-auto">
+                <div className="bg-red-600 text-white font-semibold p-3 rounded-t-lg flex justify-between items-center">
+                    <span>DELETE ATTENDANCE RECORDS</span>
+                </div>
+                <div className="p-5 space-y-5">
+                    {/* Mode selector pills */}
+                    <div className="flex flex-wrap gap-2 border-b pb-3">
+                        <button
+                            type="button"
+                            onClick={() => { setDeleteType('date'); setResultMessage(null); }}
+                            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${deleteType === 'date' ? 'bg-red-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                        >
+                            📅 Delete by Date
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => { setDeleteType('month'); setResultMessage(null); }}
+                            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${deleteType === 'month' ? 'bg-red-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                        >
+                            🗓️ Delete by Month (Class)
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => { setDeleteType('holiday'); setResultMessage(null); }}
+                            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${deleteType === 'holiday' ? 'bg-red-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                        >
+                            🧹 Clean Up Holidays / Weekoffs
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => { setDeleteType('student'); setResultMessage(null); }}
+                            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${deleteType === 'student' ? 'bg-red-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                        >
+                            👤 Delete for Specific Student
+                        </button>
+                    </div>
+
+                    {/* Feedback Alert */}
+                    {resultMessage && (
+                        <div className={`p-4 rounded-md border text-sm font-medium ${resultMessage.type === 'success' ? 'bg-green-50 text-green-800 border-green-200' : 'bg-red-50 text-red-800 border-red-200'}`}>
+                            {resultMessage.text}
+                        </div>
+                    )}
+
+                    {/* Mode 1: Date */}
+                    {deleteType === 'date' && (
+                        <div className="space-y-4 bg-gray-50 p-4 rounded-lg border">
+                            <h3 className="font-semibold text-gray-700 text-sm">Delete Entire Class Attendance for a Date</h3>
+                            <p className="text-xs text-gray-500">Removes all student attendance records for the selected class and section on this day.</p>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Class *</label>
+                                    <select value={selectedClass} onChange={e => setSelectedClass(e.target.value)} className="mt-1 w-full px-3 py-2 border rounded-md text-sm">
+                                        <option value="">--Select Class--</option>
+                                        {classOptions.map(c => <option key={c.id} value={c.class_name}>{c.class_name}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Section (Optional)</label>
+                                    <select value={selectedSection} onChange={e => setSelectedSection(e.target.value)} className="mt-1 w-full px-3 py-2 border rounded-md text-sm">
+                                        <option value="">--All Sections--</option>
+                                        {sectionOptions.map(s => <option key={s} value={s}>{s}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Attendance Date *</label>
+                                    <input type="date" value={date} onChange={e => setDate(e.target.value)} className="mt-1 w-full px-3 py-2 border rounded-md text-sm" />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Mode 2: Month */}
+                    {deleteType === 'month' && (
+                        <div className="space-y-4 bg-gray-50 p-4 rounded-lg border">
+                            <h3 className="font-semibold text-gray-700 text-sm">Delete Class Attendance for an Entire Month</h3>
+                            <p className="text-xs text-gray-500">Deletes attendance for all students in the selected class across the selected month and year.</p>
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Class *</label>
+                                    <select value={selectedClass} onChange={e => setSelectedClass(e.target.value)} className="mt-1 w-full px-3 py-2 border rounded-md text-sm">
+                                        <option value="">--Select Class--</option>
+                                        {classOptions.map(c => <option key={c.id} value={c.class_name}>{c.class_name}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Section (Optional)</label>
+                                    <select value={selectedSection} onChange={e => setSelectedSection(e.target.value)} className="mt-1 w-full px-3 py-2 border rounded-md text-sm">
+                                        <option value="">--All Sections--</option>
+                                        {sectionOptions.map(s => <option key={s} value={s}>{s}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Month *</label>
+                                    <select value={selectedMonth} onChange={e => setSelectedMonth(parseInt(e.target.value))} className="mt-1 w-full px-3 py-2 border rounded-md text-sm">
+                                        {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
+                                            <option key={m} value={m}>{new Date(0, m - 1).toLocaleString('default', { month: 'long' })}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Year *</label>
+                                    <input type="number" value={selectedYear} onChange={e => setSelectedYear(parseInt(e.target.value))} className="mt-1 w-full px-3 py-2 border rounded-md text-sm" />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Mode 3: Holiday Cleanup */}
+                    {deleteType === 'holiday' && (
+                        <div className="space-y-4 bg-gray-50 p-4 rounded-lg border">
+                            <h3 className="font-semibold text-gray-700 text-sm">Clean Up Attendance on Holidays & Weekly Offs</h3>
+                            <p className="text-xs text-gray-500">Scans and removes any attendance records that were marked on dates declared as holidays or weekly offs in the system calendar.</p>
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Class (Optional)</label>
+                                    <select value={selectedClass} onChange={e => setSelectedClass(e.target.value)} className="mt-1 w-full px-3 py-2 border rounded-md text-sm">
+                                        <option value="">--All Classes--</option>
+                                        {classOptions.map(c => <option key={c.id} value={c.class_name}>{c.class_name}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Section (Optional)</label>
+                                    <select value={selectedSection} onChange={e => setSelectedSection(e.target.value)} className="mt-1 w-full px-3 py-2 border rounded-md text-sm">
+                                        <option value="">--All Sections--</option>
+                                        {sectionOptions.map(s => <option key={s} value={s}>{s}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Month *</label>
+                                    <select value={selectedMonth} onChange={e => setSelectedMonth(parseInt(e.target.value))} className="mt-1 w-full px-3 py-2 border rounded-md text-sm">
+                                        {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
+                                            <option key={m} value={m}>{new Date(0, m - 1).toLocaleString('default', { month: 'long' })}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Year *</label>
+                                    <input type="number" value={selectedYear} onChange={e => setSelectedYear(parseInt(e.target.value))} className="mt-1 w-full px-3 py-2 border rounded-md text-sm" />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Mode 4: Student */}
+                    {deleteType === 'student' && (
+                        <div className="space-y-4 bg-gray-50 p-4 rounded-lg border">
+                            <h3 className="font-semibold text-gray-700 text-sm">Delete Attendance for a Single Student</h3>
+                            <div className="flex gap-2 items-end">
+                                <div className="flex-grow">
+                                    <label className="block text-sm font-medium text-gray-700">Find Student</label>
+                                    <input
+                                        type="text"
+                                        placeholder="Enter Name or Admission No..."
+                                        value={searchQuery}
+                                        onChange={e => setSearchQuery(e.target.value)}
+                                        onKeyDown={e => e.key === 'Enter' && handleSearchStudent()}
+                                        className="mt-1 w-full px-3 py-2 border rounded-md text-sm"
+                                    />
+                                </div>
+                                <button type="button" onClick={handleSearchStudent} disabled={loading} className="bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-md text-sm font-medium">
+                                    Search
+                                </button>
+                            </div>
+
+                            {searchResults.length > 0 && (
+                                <div className="border rounded-md max-h-40 overflow-y-auto bg-white divide-y">
+                                    {searchResults.map(s => (
+                                        <div
+                                            key={s.student_id}
+                                            onClick={() => { setSelectedStudent(s); setSearchResults([]); }}
+                                            className={`p-2 hover:bg-violet-50 cursor-pointer text-sm flex justify-between ${selectedStudent?.student_id === s.student_id ? 'bg-violet-100 font-bold' : ''}`}
+                                        >
+                                            <span>{s.first_name} {s.last_name} ({s.admission_no})</span>
+                                            <span className="text-gray-500">Class {s.class} {s.section || ''}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            {selectedStudent && (
+                                <div className="p-3 bg-white border border-violet-200 rounded-md">
+                                    <div className="flex justify-between items-center mb-3">
+                                        <span className="font-semibold text-violet-800 text-sm">
+                                            Selected: {selectedStudent.first_name} {selectedStudent.last_name} ({selectedStudent.admission_no}) — Class {selectedStudent.class}
+                                        </span>
+                                        <button type="button" onClick={() => setSelectedStudent(null)} className="text-xs text-red-600 hover:underline">Change</button>
+                                    </div>
+                                    <div className="flex gap-4 mb-3 text-sm">
+                                        <label className="flex items-center gap-1 cursor-pointer">
+                                            <input type="radio" checked={studentScope === 'date'} onChange={() => setStudentScope('date')} /> Single Date
+                                        </label>
+                                        <label className="flex items-center gap-1 cursor-pointer">
+                                            <input type="radio" checked={studentScope === 'month'} onChange={() => setStudentScope('month')} /> Entire Month
+                                        </label>
+                                        <label className="flex items-center gap-1 cursor-pointer">
+                                            <input type="radio" checked={studentScope === 'range'} onChange={() => setStudentScope('range')} /> Date Range
+                                        </label>
+                                    </div>
+                                    {studentScope === 'date' && (
+                                        <div>
+                                            <label className="block text-xs font-medium text-gray-700 mb-1">Date</label>
+                                            <input type="date" value={date} onChange={e => setDate(e.target.value)} className="px-3 py-1.5 border rounded-md text-sm w-48" />
+                                        </div>
+                                    )}
+                                    {studentScope === 'month' && (
+                                        <div className="flex gap-3">
+                                            <div>
+                                                <label className="block text-xs font-medium text-gray-700 mb-1">Month</label>
+                                                <select value={selectedMonth} onChange={e => setSelectedMonth(parseInt(e.target.value))} className="px-3 py-1.5 border rounded-md text-sm">
+                                                    {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
+                                                        <option key={m} value={m}>{new Date(0, m - 1).toLocaleString('default', { month: 'long' })}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-medium text-gray-700 mb-1">Year</label>
+                                                <input type="number" value={selectedYear} onChange={e => setSelectedYear(parseInt(e.target.value))} className="px-3 py-1.5 border rounded-md text-sm w-28" />
+                                            </div>
+                                        </div>
+                                    )}
+                                    {studentScope === 'range' && (
+                                        <div className="flex gap-3">
+                                            <div>
+                                                <label className="block text-xs font-medium text-gray-700 mb-1">From Date</label>
+                                                <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} className="px-3 py-1.5 border rounded-md text-sm" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-medium text-gray-700 mb-1">To Date</label>
+                                                <input type="date" value={toDate} onChange={e => setToDate(e.target.value)} className="px-3 py-1.5 border rounded-md text-sm" />
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    <div className="flex justify-end pt-2">
+                        <button
+                            type="button"
+                            onClick={handleDelete}
+                            disabled={loading}
+                            className="bg-red-600 hover:bg-red-700 text-white font-semibold px-6 py-2 rounded-md text-sm shadow-sm disabled:bg-gray-400 transition-colors flex items-center gap-2"
+                        >
+                            {loading ? 'Processing...' : '⚠️ Confirm Delete Attendance'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const StudentAttendance: React.FC<StudentAttendanceProps> = ({ navigateTo, defaultTab = 'take' }) => {
     const [activeTab, setActiveTab] = useState<AttendanceTab>(defaultTab);
 
@@ -1846,6 +2362,8 @@ const StudentAttendance: React.FC<StudentAttendanceProps> = ({ navigateTo, defau
                 return <TakeAttendanceForm />;
             case 'register':
                 return <RegisterView />;
+            case 'delete':
+                return <DeleteAttendanceTab />;
             case 'absent-report' as any:
                 return <AbsentReport />;
             case 'today':

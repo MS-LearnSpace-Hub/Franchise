@@ -1,7 +1,7 @@
 # pyrefly: ignore [missing-import]
 from flask import Blueprint, jsonify, request
 from extensions import db, get_today, get_now, to_local_time
-from models import Student, Attendance, Branch, UserBranchAccess, StudentAcademicRecord
+from models import Student, Attendance, Branch, UserBranchAccess, StudentAcademicRecord, ClassMaster
 from helpers import token_required, permission_required, require_academic_year, student_to_dict, get_default_location, ensure_student_editable, get_user_allowed_branches, StudentRecordLockedError, scope_query, get_target_school_id
 from datetime import datetime, date
 from sqlalchemy import or_
@@ -565,6 +565,244 @@ def upload_attendance(current_user):
         
     except Exception as e:
         print(f"Upload Error: {e}")
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+@bp.route("/api/attendance", methods=["DELETE"])
+@token_required
+def delete_attendance(current_user):
+    try:
+        data = request.get_json(silent=True) or {}
+        
+        student_id = data.get("student_id") or request.args.get("student_id")
+        date_str = data.get("date") or request.args.get("date")
+        dates_list = data.get("dates") or []
+        from_date = data.get("from_date") or request.args.get("from_date")
+        to_date = data.get("to_date") or request.args.get("to_date")
+        month = data.get("month") or request.args.get("month")
+        months_list = data.get("months") or []
+        year = data.get("year") or request.args.get("year")
+        class_name = data.get("class") or request.args.get("class")
+        section = data.get("section") or request.args.get("section")
+        items = data.get("items") or [] # list of { student_id, date }
+        
+        h_year = request.headers.get("X-Academic-Year")
+        target_year = data.get("academic_year") or request.args.get("academic_year") or h_year
+
+        allowed = get_user_allowed_branches(current_user)
+        deleted_count = 0
+        
+        # 1. Bulk delete specific items: [{ student_id, date }, ...]
+        if items:
+            for item in items:
+                s_id = item.get("student_id")
+                d_str = item.get("date")
+                if not s_id or not d_str:
+                    continue
+                d_obj = datetime.strptime(d_str, '%Y-%m-%d').date() if isinstance(d_str, str) else d_str
+                q = Attendance.query.filter(
+                    Attendance.student_id == int(s_id),
+                    Attendance.date == d_obj
+                )
+                if not allowed['is_unlimited']:
+                    q = q.filter(Attendance.branch.in_(list(allowed['names'])))
+                deleted_count += q.delete(synchronize_session=False)
+
+        # 2. Delete by student_id and month(s) & year
+        elif student_id and (month or months_list) and year:
+            student_id = int(student_id)
+            year_int = int(year)
+            m_list = [int(m) for m in months_list] if months_list else [int(month)]
+            
+            q = Attendance.query.filter(
+                Attendance.student_id == student_id,
+                db.extract('year', Attendance.date) == year_int,
+                db.extract('month', Attendance.date).in_(m_list)
+            )
+            if not allowed['is_unlimited']:
+                q = q.filter(Attendance.branch.in_(list(allowed['names'])))
+            deleted_count += q.delete(synchronize_session=False)
+
+        # 3. Delete by student_id and date range (from_date to to_date)
+        elif student_id and from_date and to_date:
+            student_id = int(student_id)
+            d_from = datetime.strptime(from_date, '%Y-%m-%d').date() if isinstance(from_date, str) else from_date
+            d_to = datetime.strptime(to_date, '%Y-%m-%d').date() if isinstance(to_date, str) else to_date
+            q = Attendance.query.filter(
+                Attendance.student_id == student_id,
+                Attendance.date >= d_from,
+                Attendance.date <= d_to
+            )
+            if not allowed['is_unlimited']:
+                q = q.filter(Attendance.branch.in_(list(allowed['names'])))
+            deleted_count += q.delete(synchronize_session=False)
+
+        # 4. Delete by student_id and date(s)
+        elif student_id and (date_str or dates_list):
+            student_id = int(student_id)
+            d_list = []
+            if dates_list:
+                d_list = [datetime.strptime(d, '%Y-%m-%d').date() if isinstance(d, str) else d for d in dates_list]
+            elif date_str:
+                d_list = [datetime.strptime(date_str, '%Y-%m-%d').date() if isinstance(date_str, str) else date_str]
+                
+            q = Attendance.query.filter(
+                Attendance.student_id == student_id,
+                Attendance.date.in_(d_list)
+            )
+            if not allowed['is_unlimited']:
+                q = q.filter(Attendance.branch.in_(list(allowed['names'])))
+            deleted_count += q.delete(synchronize_session=False)
+
+        # 5. Delete by date and class (all students in that class on that date)
+        elif date_str and class_name:
+            d_obj = datetime.strptime(date_str, '%Y-%m-%d').date() if isinstance(date_str, str) else date_str
+            sq = db.session.query(Student.student_id).join(
+                StudentAcademicRecord,
+                Student.student_id == StudentAcademicRecord.student_id
+            ).filter(
+                StudentAcademicRecord.class_name == class_name
+            )
+            if not allowed['is_unlimited']:
+                sq = sq.filter(Student.branch.in_(list(allowed['names'])))
+            if target_year:
+                sq = sq.filter(StudentAcademicRecord.academic_year == target_year)
+            if section:
+                sq = sq.filter(StudentAcademicRecord.section == section)
+            student_ids = [r[0] for r in sq.all()]
+            
+            if student_ids:
+                q = Attendance.query.filter(
+                    Attendance.student_id.in_(student_ids),
+                    Attendance.date == d_obj
+                )
+                deleted_count += q.delete(synchronize_session=False)
+
+        # 6. Delete by class and month(s) & year
+        elif class_name and (month or months_list) and year:
+            year_int = int(year)
+            m_list = [int(m) for m in months_list] if months_list else [int(month)]
+            sq = db.session.query(Student.student_id).join(
+                StudentAcademicRecord,
+                Student.student_id == StudentAcademicRecord.student_id
+            ).filter(
+                StudentAcademicRecord.class_name == class_name
+            )
+            if not allowed['is_unlimited']:
+                sq = sq.filter(Student.branch.in_(list(allowed['names'])))
+            if target_year:
+                sq = sq.filter(StudentAcademicRecord.academic_year == target_year)
+            if section:
+                sq = sq.filter(StudentAcademicRecord.section == section)
+            student_ids = [r[0] for r in sq.all()]
+            
+            if student_ids:
+                q = Attendance.query.filter(
+                    Attendance.student_id.in_(student_ids),
+                    db.extract('year', Attendance.date) == year_int,
+                    db.extract('month', Attendance.date).in_(m_list)
+                )
+                deleted_count += q.delete(synchronize_session=False)
+
+        else:
+            return jsonify({"error": "Missing parameters to identify attendance records to delete."}), 400
+
+        db.session.commit()
+        return jsonify({
+            "message": f"Successfully deleted {deleted_count} attendance record(s).",
+            "deleted_count": deleted_count
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"Delete Attendance Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+@bp.route("/api/attendance/cleanup-holidays", methods=["POST"])
+@token_required
+def cleanup_holiday_attendance(current_user):
+    """
+    Deletes any attendance records that exist on dates that are currently declared as holidays or weekly offs.
+    Accepts: { class, section, month, year, branch }
+    """
+    try:
+        from routes.config_routes import is_weekoff_or_holiday
+        h_year = request.headers.get("X-Academic-Year")
+        data = request.get_json(silent=True) or {}
+        class_name = data.get("class")
+        section = data.get("section")
+        month = data.get("month")
+        year = data.get("year")
+        h_branch = data.get("branch") or request.headers.get("X-Branch")
+
+        branch_id = None
+        if h_branch and h_branch not in ("All", "All Branches"):
+            b_obj = Branch.query.filter(or_(Branch.branch_code == h_branch, Branch.branch_name == h_branch)).first()
+            if b_obj:
+                branch_id = b_obj.id
+
+        class_id = None
+        if class_name:
+            cls = ClassMaster.query.filter_by(class_name=class_name).first()
+            if cls:
+                class_id = cls.id
+
+        allowed = get_user_allowed_branches(current_user)
+
+        q = Attendance.query
+        if not allowed['is_unlimited']:
+            q = q.filter(Attendance.branch.in_(list(allowed['names'])))
+        if h_year:
+            q = q.filter(Attendance.academic_year == h_year)
+        if month:
+            q = q.filter(db.extract('month', Attendance.date) == int(month))
+        if year:
+            q = q.filter(db.extract('year', Attendance.date) == int(year))
+
+        if class_name:
+            sq = db.session.query(Student.student_id).join(
+                StudentAcademicRecord,
+                Student.student_id == StudentAcademicRecord.student_id
+            ).filter(
+                StudentAcademicRecord.class_name == class_name
+            )
+            if not allowed['is_unlimited']:
+                sq = sq.filter(Student.branch.in_(list(allowed['names'])))
+            if h_year:
+                sq = sq.filter(StudentAcademicRecord.academic_year == h_year)
+            if section:
+                sq = sq.filter(StudentAcademicRecord.section == section)
+            s_ids = [r[0] for r in sq.all()]
+            if s_ids:
+                q = q.filter(Attendance.student_id.in_(s_ids))
+            else:
+                return jsonify({"message": "No students found for this class/section.", "deleted_count": 0, "dates": []}), 200
+
+        records = q.all()
+        deleted_count = 0
+        deleted_dates = set()
+
+        for rec in records:
+            res = is_weekoff_or_holiday(rec.date, branch_id, h_year, class_id=class_id)
+            if res.get("is_weekoff") or res.get("is_holiday"):
+                deleted_dates.add(rec.date.isoformat())
+                db.session.delete(rec)
+                deleted_count += 1
+
+        db.session.commit()
+        return jsonify({
+            "message": f"Cleaned up {deleted_count} attendance records from holiday/weekoff dates ({', '.join(sorted(deleted_dates)) or 'None'}).",
+            "deleted_count": deleted_count,
+            "dates": sorted(list(deleted_dates))
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        import traceback
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
